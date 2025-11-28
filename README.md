@@ -1,2 +1,3 @@
 # agrivision-pipeline
-Farmer-ready insights
+Farmer-ready insights 
+small edit for SmartGit
