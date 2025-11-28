@@ -205,3 +205,38 @@ cython_debug/
 marimo/_static/
 marimo/_lsp/
 __marimo__/
+
+
+# -------------------------
+# AgriVision Pipeline Ignore Rules
+# -------------------------
+
+# Virtual environment
+venv/
+# Explanation: prevents uploading your Python venv (big, unnecessary)
+
+# Full-size drone images
+images_full/
+# Explanation: raw camera photos are huge and not needed in the repo
+
+# Resized images
+images_resized/
+# Explanation: intermediary outputs
+
+# ODM project folder
+odm_project/
+# Explanation: extremely large outputs (orthophotos, point clouds, DEMs)
+
+# Large raster outputs
+*.tif
+*.tiff
+# Explanation: orthophotos + NDVI rasters can be hundreds of MB
+
+# Analysis PNGs
+*.png
+# Explanation: we generate PNG NDVI maps; avoid cluttering commits
+
+# OS Files
+.DS_Store
+# Explanation: created by macOS (safe to ignore)
+
