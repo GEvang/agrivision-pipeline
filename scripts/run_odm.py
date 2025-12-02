@@ -2,127 +2,108 @@
 """
 run_odm.py
 
-Run OpenDroneMap (ODM) in Docker on the resized images.
+Prepare an ODM project using data/images_resized/ and run OpenDroneMap
+in Docker to generate a normal (non-fast) orthophoto.
 
-- Input images:  data/images_resized/
-- ODM project:   data/odm_project/project/
-- Output ortho:  data/odm_project/project/odm_orthophoto/odm_orthophoto.tif
+Outputs (inside odm_project):
 
-Run from project root:
+    data/odm_project/project/odm_orthophoto/odm_orthophoto.tif
+
+Usage (from project root):
+
+    source venv/bin/activate
     python3 scripts/run_odm.py
 """
 
-import os
 import shutil
 import subprocess
 from pathlib import Path
 
-# ----- CONFIGURATION -----
-
-ODM_DOCKER_IMAGE = "opendronemap/odm"
-
-# We'll keep a single ODM project called "project"
-PROJECT_NAME = "project"
-
-# Base project directory (folder that contains scripts/, data/, output/, etc.)
 BASE_DIR = Path(__file__).resolve().parent.parent
 
-IMAGES_RESIZED_DIR = BASE_DIR / "data" / "images_resized"
+RESIZED_IMAGES_DIR = BASE_DIR / "data" / "images_resized"
 ODM_PROJECT_ROOT = BASE_DIR / "data" / "odm_project"
-ODM_PROJECT_DIR = ODM_PROJECT_ROOT / PROJECT_NAME
-ODM_IMAGES_DIR = ODM_PROJECT_DIR / "images"
+PROJECT_NAME = "project"
+ODM_DOCKER_IMAGE = "opendronemap/odm:latest"
 
 
-def ensure_images_for_odm():
+def prepare_odm_project():
     """
-    Prepare the ODM project folder and copy resized images into it.
+    Create a clean ODM project folder and copy resized images into it.
 
-    Input:  data/images_resized/
-    Output: data/odm_project/project/images/
+    Note: we COPY rather than symlink because Docker only sees the mounted
+    /datasets path. Absolute symlinks pointing outside the mount will be broken
+    inside the container.
     """
+    project_dir = ODM_PROJECT_ROOT / PROJECT_NAME
+    images_dir = project_dir / "images"
 
-    if not IMAGES_RESIZED_DIR.exists():
-        raise FileNotFoundError(
-            f"Resized images folder not found: {IMAGES_RESIZED_DIR}\n"
-            "Run scripts/resize_images.py first."
-        )
+    if project_dir.exists():
+        print(f"[INFO] Removing existing ODM project directory: {project_dir}")
+        shutil.rmtree(project_dir)
 
-    # Clean any previous ODM project to avoid stale/broken files
-    if ODM_PROJECT_DIR.exists():
-        print(f"Cleaning existing ODM project folder: {ODM_PROJECT_DIR}")
-        shutil.rmtree(ODM_PROJECT_DIR)
+    images_dir.mkdir(parents=True, exist_ok=True)
 
-    # Recreate the images folder
-    ODM_IMAGES_DIR.mkdir(parents=True, exist_ok=True)
+    if not RESIZED_IMAGES_DIR.exists():
+        raise FileNotFoundError(f"Resized images folder does not exist: {RESIZED_IMAGES_DIR}")
 
-    print(f"Copying images from {IMAGES_RESIZED_DIR} -> {ODM_IMAGES_DIR}")
-    count = 0
-    for src in IMAGES_RESIZED_DIR.iterdir():
+    image_count = 0
+    for src in sorted(RESIZED_IMAGES_DIR.iterdir()):
         if not src.is_file():
             continue
         if src.suffix.lower() not in [".jpg", ".jpeg", ".png", ".tif", ".tiff"]:
             continue
 
-        dst = ODM_IMAGES_DIR / src.name
+        dst = images_dir / src.name
         shutil.copy2(src, dst)
-        count += 1
+        print(f"[COPY] {src} -> {dst}")
+        image_count += 1
 
-    print(f"Image copy complete. {count} files copied.")
+    if image_count == 0:
+        raise RuntimeError(f"No images found in {RESIZED_IMAGES_DIR}")
 
+    print(f"[INFO] Copied {image_count} images into ODM project.")
 
 
 
 def run_odm():
     """
-    Run the ODM Docker container.
-
-    We mount:
-      - data/odm_project -> /datasets  (ODM's project path)
-
-    ODM will expect images in:
-      /datasets/project/images
-    which we ensured in ensure_images_for_odm().
+    Run ODM in Docker to create a normal orthophoto.
     """
+    prepare_odm_project()
 
-    ensure_images_for_odm()
-
-    print(f"Running ODM in Docker using image: {ODM_DOCKER_IMAGE}")
-    print(f"ODM project root (host): {ODM_PROJECT_ROOT}")
+    odm_project_root = ODM_PROJECT_ROOT
+    print(f"[INFO] ODM project root (host): {odm_project_root}")
 
     cmd = [
         "docker", "run",
         "-ti",
         "--rm",
-        "-v", f"{ODM_PROJECT_ROOT}:/datasets",
+        "-v", f"{odm_project_root}:/datasets",
         ODM_DOCKER_IMAGE,
         "--project-path", "/datasets",
         PROJECT_NAME,
-        "--fast-orthophoto",
+        "--orthophoto-resolution", "2",  # 2 cm/pixel; 1 is sharper but slower
         "--skip-3dmodel",
         "--skip-report",
     ]
 
+    print("\n[INFO] Executing ODM command:")
+    print(" ", " ".join(cmd), "\n")
 
+    result = subprocess.run(cmd, cwd=BASE_DIR)
 
-    print("\nExecuting command:")
-    print(" ".join(cmd))
-    print()
+    if result.returncode != 0:
+        raise RuntimeError(f"ODM failed with exit code {result.returncode}")
 
-    # Run the process and stream output
-    subprocess.run(cmd, check=True)
-
-    ortho_path = ODM_PROJECT_DIR / "odm_orthophoto" / "odm_orthophoto.tif"
-    print("\nODM processing finished.")
-    print(f"Orthophoto should be here:\n  {ortho_path}")
-    if not ortho_path.exists():
-        print("[WARNING] Orthophoto not found where expected. Check ODM output folders.")
+    print("[INFO] ODM processing finished.")
+    print("Orthophoto should be here:")
+    print("  data/odm_project/project/odm_orthophoto/odm_orthophoto.tif")
 
 
 def main():
-    print(f"Base directory: {BASE_DIR}")
-    print(f"Resized images: {IMAGES_RESIZED_DIR}")
-    print(f"ODM project dir: {ODM_PROJECT_DIR}")
-
+    print(f"[AgriVision] Base directory: {BASE_DIR}")
+    print("[AgriVision] Running ODM for orthophoto...")
     run_odm()
 
 

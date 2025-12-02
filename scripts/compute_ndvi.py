@@ -2,28 +2,15 @@
 """
 compute_ndvi.py
 
-Compute NDVI from the ODM orthophoto and optionally save a colorized PNG.
+Read the orthophoto produced by ODM and compute NDVI, then:
 
-Default paths (relative to project root):
+  - Save NDVI GeoTIFF to output/ndvi/ndvi.tif
+  - Save a color PNG to output/ndvi/ndvi_color.png
 
-  Input orthophoto (from ODM):
-      data/odm_project/project/odm_orthophoto/odm_orthophoto.tif
+Usage (from project root):
 
-  Output NDVI GeoTIFF:
-      output/ndvi/ndvi.tif
-
-  Output NDVI color PNG:
-      output/ndvi/ndvi_color.png
-
-Run from project root:
-    python3 scripts/compute_ndvi.py
-
-You can override paths and camera with CLI options:
-    python3 scripts/compute_ndvi.py \
-        --input-ortho data/odm_project/project/odm_orthophoto/odm_orthophoto.tif \
-        --output-ndvi output/ndvi/ndvi.tif \
-        --output-color output/ndvi/ndvi_color.png \
-        --camera sample_mapir_unknown
+    source venv/bin/activate
+    python3 scripts/compute_ndvi.py --camera sample_mapir_unknown
 """
 
 import argparse
@@ -32,206 +19,130 @@ from pathlib import Path
 import numpy as np
 import rasterio
 from rasterio.enums import Resampling
+from rasterio.shutil import copy as rio_copy
 import matplotlib.pyplot as plt
 
-
-# ------------ CONFIGURATION ------------
-
-# Base project directory = folder that contains "scripts", "data", "output", etc.
 BASE_DIR = Path(__file__).resolve().parent.parent
 
-DEFAULT_ORTHO = BASE_DIR / "data" / "odm_project" / "project" / "odm_orthophoto" / "odm_orthophoto.tif"
-DEFAULT_NDVI_TIF = BASE_DIR / "output" / "ndvi" / "ndvi.tif"
-DEFAULT_NDVI_COLOR = BASE_DIR / "output" / "ndvi" / "ndvi_color.png"
+ORTHO_PATH = BASE_DIR / "data" / "odm_project" / "project" / "odm_orthophoto" / "odm_orthophoto.tif"
+NDVI_TIF_OUT = BASE_DIR / "output" / "ndvi" / "ndvi.tif"
+NDVI_PNG_OUT = BASE_DIR / "output" / "ndvi" / "ndvi_color.png"
 
-# Camera band configuration: which band index is RED / NIR in the orthophoto.
-# NOTE: rasterio bands are 1-based.
-CAMERA_CONFIG = {
-    # This matches the band layout we inferred from your sample Mapir-style data
+# Simple camera profiles: which band is RED, which is NIR.
+# You can extend this later when you know the actual camera setups.
+CAMERA_PROFILES = {
     "sample_mapir_unknown": {
-        "red_band": 1,
-        "nir_band": 4,
+        "red": 1,  # band index (1-based) for RED
+        "nir": 2,  # band index (1-based) for NIR
     },
-    # Example for a generic 4-band multispectral (B,G,R,NIR)
-    "multispectral_4band": {
-        "red_band": 3,
-        "nir_band": 4,
-    },
+    # Add other cameras here as needed
 }
 
 
-# ------------ CORE NDVI LOGIC ------------
-
 def compute_ndvi_array(red: np.ndarray, nir: np.ndarray) -> np.ndarray:
     """
-    Compute NDVI = (NIR - RED) / (NIR + RED) with safety for division by zero.
-
-    Parameters
-    ----------
-    red : np.ndarray
-        Red band values.
-    nir : np.ndarray
-        Near-infrared band values.
-
-    Returns
-    -------
-    np.ndarray
-        NDVI array in float32, values approx in [-1, 1].
+    Compute NDVI = (NIR - RED) / (NIR + RED) with safe handling of division.
     """
     red = red.astype("float32")
     nir = nir.astype("float32")
 
-    # Avoid division by zero
-    denom = nir + red
-    denom[denom == 0] = 1e-6
+    num = nir - red
+    den = nir + red
+    ndvi = np.zeros_like(num, dtype="float32")
 
-    ndvi = (nir - red) / denom
+    mask = den != 0
+    ndvi[mask] = num[mask] / den[mask]
+    ndvi[~mask] = np.nan
 
-    # Clip to reasonable range
-    ndvi = np.clip(ndvi, -1.0, 1.0)
-    return ndvi.astype("float32")
+    return ndvi
 
 
-def save_ndvi_geotiff(ndvi: np.ndarray, ref_src: rasterio.io.DatasetReader, out_path: Path) -> None:
+def save_ndvi_geotiff(template_src: rasterio.DatasetReader, ndvi: np.ndarray, out_path: Path) -> None:
     """
-    Save NDVI as a single-band GeoTIFF using reference metadata from the ortho.
+    Save NDVI array to GeoTIFF using georeferencing from template_src.
     """
     out_path.parent.mkdir(parents=True, exist_ok=True)
 
-    meta = ref_src.meta.copy()
-    meta.update(
-        {
-            "count": 1,          # single band
-            "dtype": "float32",  # NDVI is continuous
-        }
+    profile = template_src.profile.copy()
+    profile.update(
+        dtype="float32",
+        count=1,
+        nodata=np.nan,
     )
 
-    with rasterio.open(out_path, "w", **meta) as dst:
+    with rasterio.open(out_path, "w", **profile) as dst:
         dst.write(ndvi, 1)
 
-    print(f"[OK] NDVI GeoTIFF written to: {out_path}")
+    print(f"[OK] NDVI GeoTIFF saved to {out_path}")
 
 
-def save_ndvi_color_png(ndvi: np.ndarray, out_path: Path) -> None:
+def save_ndvi_png(ndvi: np.ndarray, out_path: Path) -> None:
     """
-    Save a colorized NDVI PNG using a matplotlib colormap.
-
-    Values in [-1, 1] are mapped to [0, 1] for display.
+    Save a colorized NDVI PNG for quick visualization.
     """
     out_path.parent.mkdir(parents=True, exist_ok=True)
 
-    # Normalize NDVI to [0, 1] for visualization
-    ndvi_norm = (ndvi + 1.0) / 2.0
-    ndvi_norm = np.clip(ndvi_norm, 0.0, 1.0)
+    # Limit NDVI to [-1, 1] and normalize to [0, 1]
+    ndvi_clipped = np.clip(ndvi, -1.0, 1.0)
+    ndvi_norm = (ndvi_clipped + 1.0) / 2.0
 
-    plt.figure(figsize=(8, 8))
-    plt.imshow(ndvi_norm, cmap="RdYlGn")  # red = low, green = high
+    # Mask no-data as bright red
+    mask = ~np.isfinite(ndvi_clipped)
+
+    cmap = plt.get_cmap("YlGn")
+    rgba = cmap(ndvi_norm)  # shape (H, W, 4)
+    rgba[mask] = [0.6, 0.0, 0.0, 1.0]  # dark red background
+
+    plt.figure(figsize=(6, 6))
+    plt.imshow(rgba, origin="upper")
     plt.axis("off")
     plt.tight_layout(pad=0)
-
     plt.savefig(out_path, dpi=300, bbox_inches="tight", pad_inches=0)
     plt.close()
 
-    print(f"[OK] NDVI color PNG written to: {out_path}")
+    print(f"[OK] NDVI color PNG saved to {out_path}")
 
 
-def run_compute_ndvi(
-    input_ortho: Path,
-    output_ndvi_tif: Path,
-    output_ndvi_color: Path | None,
-    camera: str,
-) -> None:
-    """
-    High-level NDVI computation function.
-    """
-
-    if camera not in CAMERA_CONFIG:
-        raise ValueError(
-            f"Unknown camera profile '{camera}'. "
-            f"Available: {', '.join(CAMERA_CONFIG.keys())}"
-        )
-
-    red_band_index = CAMERA_CONFIG[camera]["red_band"]
-    nir_band_index = CAMERA_CONFIG[camera]["nir_band"]
-
-    print(f"Base directory: {BASE_DIR}")
-    print(f"Input orthophoto: {input_ortho}")
-    print(f"Output NDVI (tif): {output_ndvi_tif}")
-    if output_ndvi_color:
-        print(f"Output NDVI (color png): {output_ndvi_color}")
-    print(f"Camera profile: {camera} (RED={red_band_index}, NIR={nir_band_index})")
-
-    if not input_ortho.exists():
-        raise FileNotFoundError(f"Input orthophoto not found: {input_ortho}")
-
-    with rasterio.open(input_ortho) as src:
-        if src.count < max(red_band_index, nir_band_index):
-            raise ValueError(
-                f"Input ortho has only {src.count} bands; "
-                f"camera config expects at least {max(red_band_index, nir_band_index)}."
-            )
-
-        red = src.read(red_band_index, resampling=Resampling.nearest)
-        nir = src.read(nir_band_index, resampling=Resampling.nearest)
-
-        print("[INFO] Computing NDVI array...")
-        ndvi = compute_ndvi_array(red, nir)
-
-        print("[INFO] Saving NDVI GeoTIFF...")
-        save_ndvi_geotiff(ndvi, src, output_ndvi_tif)
-
-        if output_ndvi_color is not None:
-            print("[INFO] Saving NDVI color PNG...")
-            save_ndvi_color_png(ndvi, output_ndvi_color)
-
-
-# ------------ CLI ENTRYPOINT ------------
-
-def parse_args() -> argparse.Namespace:
+def main():
     parser = argparse.ArgumentParser(description="Compute NDVI from ODM orthophoto.")
-
-    parser.add_argument(
-        "--input-ortho",
-        type=str,
-        default=str(DEFAULT_ORTHO),
-        help="Path to input orthophoto GeoTIFF (default: ODM output).",
-    )
-    parser.add_argument(
-        "--output-ndvi",
-        type=str,
-        default=str(DEFAULT_NDVI_TIF),
-        help="Path to output NDVI GeoTIFF.",
-    )
-    parser.add_argument(
-        "--output-color",
-        type=str,
-        default=str(DEFAULT_NDVI_COLOR),
-        help="Path to output NDVI color PNG. "
-             "Use --output-color '' to skip PNG generation.",
-    )
     parser.add_argument(
         "--camera",
         type=str,
         default="sample_mapir_unknown",
-        help=f"Camera profile name ({', '.join(CAMERA_CONFIG.keys())}).",
+        help="Camera profile name for band mapping (red/nir).",
     )
+    args = parser.parse_args()
 
-    return parser.parse_args()
+    camera = CAMERA_PROFILES.get(args.camera)
+    if camera is None:
+        raise ValueError(
+            f"Unknown camera profile '{args.camera}'. "
+            f"Known profiles: {', '.join(CAMERA_PROFILES.keys())}"
+        )
 
+    red_band_idx = camera["red"]
+    nir_band_idx = camera["nir"]
 
-def main():
-    args = parse_args()
+    print(f"[AgriVision] Using camera profile: {args.camera}")
+    print(f"  RED band index: {red_band_idx}")
+    print(f"  NIR band index: {nir_band_idx}")
 
-    input_ortho = Path(args.input_ortho)
-    output_ndvi_tif = Path(args.output_ndvi)
-    output_ndvi_color = Path(args.output_color) if args.output_color else None
+    if not ORTHO_PATH.exists():
+        raise FileNotFoundError(f"Orthophoto not found: {ORTHO_PATH}")
 
-    run_compute_ndvi(
-        input_ortho=input_ortho,
-        output_ndvi_tif=output_ndvi_tif,
-        output_ndvi_color=output_ndvi_color,
-        camera=args.camera,
-    )
+    with rasterio.open(ORTHO_PATH) as src:
+        if src.count < max(red_band_idx, nir_band_idx):
+            raise RuntimeError(
+                f"Orthophoto has only {src.count} band(s), cannot access "
+                f"RED={red_band_idx}, NIR={nir_band_idx}"
+            )
+
+        red = src.read(red_band_idx)
+        nir = src.read(nir_band_idx)
+
+        ndvi = compute_ndvi_array(red, nir)
+        save_ndvi_geotiff(src, ndvi, NDVI_TIF_OUT)
+        save_ndvi_png(ndvi, NDVI_PNG_OUT)
 
 
 if __name__ == "__main__":
