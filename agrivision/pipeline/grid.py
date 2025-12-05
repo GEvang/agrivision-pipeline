@@ -1,53 +1,42 @@
 #!/usr/bin/env python3
 """
-ndvi_grid_report.py
+agrivision.pipeline.grid
 
 Create a grid over the NDVI raster, classify each cell, and export:
 
-  1. A grid overlay PNG (NDVI background + grid + colored labels)
-  2. A CSV with one row per cell (cell ID, mean NDVI, class)
-  3. A CSV with columns poor/medium/good/no_data for easy viewing in Excel
-
-Usage (from project root):
-
-    source venv/bin/activate
-    python3 scripts/ndvi_grid_report.py
-
-You can tweak GRID_ROWS, GRID_COLS and thresholds below.
+  1. Grid overlay PNG
+  2. CSV with one row per cell (cell ID, mean NDVI, class)
+  3. CSV with columns poor/medium/good/no_data (lists of cells)
 """
 
 from pathlib import Path
 import csv
 import string
+from typing import List, Dict, Tuple
 
+import matplotlib.pyplot as plt
 import numpy as np
 import rasterio
-import matplotlib.pyplot as plt
+
+from agrivision.utils.settings import get_project_root, load_config
 
 
-# ---------- CONFIG ----------
+CONFIG = load_config()
+PROJECT_ROOT = get_project_root()
 
-BASE_DIR = Path(__file__).resolve().parent.parent
+NDVI_DIR = PROJECT_ROOT / CONFIG["paths"]["ndvi_output"]
+NDVI_TIF = NDVI_DIR / "ndvi.tif"
 
-NDVI_TIF = BASE_DIR / "output" / "ndvi" / "ndvi.tif"
+GRID_PNG = NDVI_DIR / "ndvi_grid_overlay.png"
+GRID_TABLE_CSV = NDVI_DIR / "ndvi_grid_cells.csv"
+GRID_CATEGORIES_CSV = NDVI_DIR / "ndvi_grid_categories.csv"
 
-# Where to save outputs
-GRID_PNG = BASE_DIR / "output" / "ndvi" / "ndvi_grid_overlay.png"
-GRID_TABLE_CSV = BASE_DIR / "output" / "ndvi" / "ndvi_grid_cells.csv"
-GRID_CATEGORIES_CSV = BASE_DIR / "output" / "ndvi" / "ndvi_grid_categories.csv"
+# Grid + thresholds from config.yaml
+GRID_ROWS = int(CONFIG["ndvi"]["grid_rows"])
+GRID_COLS = int(CONFIG["ndvi"]["grid_cols"])
+POOR_MAX = float(CONFIG["ndvi"]["poor_max"])
+MEDIUM_MAX = float(CONFIG["ndvi"]["medium_max"])
 
-# Grid resolution (rows = letters, columns = numbers)
-GRID_ROWS = 17  # A..Q
-GRID_COLS = 17  # 1..17
-
-# NDVI classification thresholds
-#   NDVI < POOR_MAX        -> "poor"
-#   POOR_MAX..MEDIUM_MAX   -> "medium"
-#   MEDIUM_MAX..1          -> "good"
-POOR_MAX = 0.3
-MEDIUM_MAX = 0.6
-
-# Colors for labels
 COLOR_BY_CLASS = {
     "poor": "red",
     "medium": "yellow",
@@ -55,11 +44,20 @@ COLOR_BY_CLASS = {
     "no_data": "gray",
 }
 
-# ----------------------------
+
+def row_letter(idx: int) -> str:
+    """
+    Convert row index (0-based) to Excel-like letter: 0 -> A, 1 -> B, ...
+    Supports >26 rows with AA, AB, ...
+    """
+    letters = string.ascii_uppercase
+    if idx < len(letters):
+        return letters[idx]
+    return letters[idx // len(letters) - 1] + letters[idx % len(letters)]
 
 
-def classify_ndvi(value: float | None) -> str:
-    if value is None or np.isnan(value):
+def classify_ndvi_absolute(value: float | None) -> str:
+    if value is None or not np.isfinite(value):
         return "no_data"
     if value < POOR_MAX:
         return "poor"
@@ -68,31 +66,33 @@ def classify_ndvi(value: float | None) -> str:
     return "good"
 
 
-def row_letter(idx: int) -> str:
-    # 0 -> A, 1 -> B, ...
-    letters = string.ascii_uppercase
-    if idx < len(letters):
-        return letters[idx]
-    # fallback if someone sets GRID_ROWS > 26
-    return letters[idx // len(letters) - 1] + letters[idx % len(letters)]
-
-
-def make_grid(ndvi: np.ndarray):
+def classify_ndvi_dynamic(value: float | None, t1: float, t2: float) -> str:
     """
-    Split the NDVI array into GRID_ROWS x GRID_COLS cells
-    and compute mean NDVI + class for each.
+    Dynamic classification using thresholds t1, t2 (e.g. 33rd and 66th percentile).
+    """
+    if value is None or not np.isfinite(value):
+        return "no_data"
+    if value < t1:
+        return "poor"
+    if value < t2:
+        return "medium"
+    return "good"
 
-    Returns:
-        cells: list of dicts with keys:
-            'row_idx', 'col_idx', 'row_label', 'col_label',
-            'cell_id', 'mean_ndvi', 'class'
+
+def make_grid(
+    ndvi: np.ndarray, classifier
+) -> Tuple[List[Dict[str, object]], np.ndarray, np.ndarray]:
+    """
+    Split the NDVI array into GRID_ROWS x GRID_COLS cells and classify each.
+
+    classifier is a function(mean_value) -> class_name
     """
     h, w = ndvi.shape
 
     row_edges = np.linspace(0, h, GRID_ROWS + 1, dtype=int)
     col_edges = np.linspace(0, w, GRID_COLS + 1, dtype=int)
 
-    cells = []
+    cells: List[Dict[str, object]] = []
 
     for r in range(GRID_ROWS):
         for c in range(GRID_COLS):
@@ -100,14 +100,14 @@ def make_grid(ndvi: np.ndarray):
             c0, c1 = col_edges[c], col_edges[c + 1]
 
             patch = ndvi[r0:r1, c0:c1]
-
             mask = np.isfinite(patch)
+
             if not mask.any():
                 mean_val = None
             else:
                 mean_val = float(patch[mask].mean())
 
-            cls = classify_ndvi(mean_val)
+            cls = classifier(mean_val)
 
             row_lbl = row_letter(r)
             col_lbl = c + 1
@@ -133,14 +133,8 @@ def make_grid(ndvi: np.ndarray):
 
 
 def save_grid_overlay(ndvi: np.ndarray, cells, row_edges, col_edges, out_path: Path):
-    """
-    Create a PNG with NDVI background, grid lines and colored cell labels.
-    """
     out_path.parent.mkdir(parents=True, exist_ok=True)
 
-    h, w = ndvi.shape
-
-    # Normalize NDVI to [0, 1] for visualization
     ndvi_norm = (ndvi + 1.0) / 2.0
     ndvi_norm = np.clip(ndvi_norm, 0.0, 1.0)
 
@@ -148,13 +142,11 @@ def save_grid_overlay(ndvi: np.ndarray, cells, row_edges, col_edges, out_path: P
     plt.imshow(ndvi_norm, cmap="YlGn", origin="upper")
     plt.axis("off")
 
-    # Grid lines
     for x in col_edges:
         plt.axvline(x=x, color="black", linewidth=0.5, alpha=0.5)
     for y in row_edges:
         plt.axhline(y=y, color="black", linewidth=0.5, alpha=0.5)
 
-    # Labels
     for cell in cells:
         r0, r1 = cell["r0"], cell["r1"]
         c0, c1 = cell["c0"], cell["c1"]
@@ -183,10 +175,6 @@ def save_grid_overlay(ndvi: np.ndarray, cells, row_edges, col_edges, out_path: P
 
 
 def save_cell_table_csv(cells, out_path: Path):
-    """
-    Save a CSV with one row per cell:
-        cell_id, row_label, col_label, mean_ndvi, class
-    """
     out_path.parent.mkdir(parents=True, exist_ok=True)
 
     fieldnames = ["cell_id", "row_label", "col_label", "mean_ndvi", "class"]
@@ -194,12 +182,15 @@ def save_cell_table_csv(cells, out_path: Path):
         writer = csv.DictWriter(f, fieldnames=fieldnames)
         writer.writeheader()
         for cell in cells:
+            mean_val = cell["mean_ndvi"]
             writer.writerow(
                 {
                     "cell_id": cell["cell_id"],
                     "row_label": cell["row_label"],
                     "col_label": cell["col_label"],
-                    "mean_ndvi": "" if cell["mean_ndvi"] is None else f"{cell['mean_ndvi']:.4f}",
+                    "mean_ndvi": ""
+                    if mean_val is None
+                    else f"{mean_val:.4f}",
                     "class": cell["class"],
                 }
             )
@@ -208,10 +199,6 @@ def save_cell_table_csv(cells, out_path: Path):
 
 
 def save_categories_csv(cells, out_path: Path):
-    """
-    Save a CSV with columns: poor, medium, good, no_data
-    Each row lists cell IDs for that category (like the screenshot example).
-    """
     out_path.parent.mkdir(parents=True, exist_ok=True)
 
     buckets = {
@@ -242,7 +229,12 @@ def save_categories_csv(cells, out_path: Path):
     print(f"[OK] Category CSV saved to {out_path}")
 
 
-def main():
+def run_grid_report() -> None:
+    """
+    High-level entry point: load NDVI, compute grid, write outputs.
+    Includes a dynamic fallback: if all cells are the same class using
+    the absolute thresholds, we recompute thresholds based on percentiles.
+    """
     print(f"[AgriVision] NDVI grid report")
     print(f"  NDVI source: {NDVI_TIF}")
     print(f"  Grid: {GRID_ROWS} rows x {GRID_COLS} cols")
@@ -255,7 +247,30 @@ def main():
 
     ndvi[~np.isfinite(ndvi)] = np.nan
 
-    cells, row_edges, col_edges = make_grid(ndvi)
+    # First pass: absolute thresholds from config
+    print(f"[Grid] First pass classification with absolute thresholds:")
+    print(f"       POOR_MAX={POOR_MAX}, MEDIUM_MAX={MEDIUM_MAX}")
+    cells, row_edges, col_edges = make_grid(ndvi, classify_ndvi_absolute)
+
+    classes = {c["class"] for c in cells if c["mean_ndvi"] is not None}
+    print(f"[Grid] Classes found: {classes}")
+
+    # If everything is a single class (e.g. all 'poor'), do a dynamic re-class
+    if len(classes) <= 1 and classes and "no_data" not in classes:
+        print("[Grid] All cells fell into one class, applying dynamic thresholds.")
+        # collect all finite mean values
+        values = np.array(
+            [c["mean_ndvi"] for c in cells if c["mean_ndvi"] is not None],
+            dtype="float32",
+        )
+        q33, q66 = np.nanpercentile(values, [33, 66])
+        print(f"[Grid] Dynamic thresholds based on cell means:")
+        print(f"       33rd percentile: {q33:.4f}")
+        print(f"       66th percentile: {q66:.4f}")
+
+        cells, row_edges, col_edges = make_grid(
+            ndvi, lambda v: classify_ndvi_dynamic(v, q33, q66)
+        )
 
     save_grid_overlay(ndvi, cells, row_edges, col_edges, GRID_PNG)
     save_cell_table_csv(cells, GRID_TABLE_CSV)
@@ -264,10 +279,9 @@ def main():
     print("\n[AgriVision] NDVI grid report complete.")
     print(f"  Overlay image : {GRID_PNG}")
     print(f"  Cell table    : {GRID_TABLE_CSV}")
-    print(f"  Categories    : {GRID_CATEGORIES_CSV}")
-    print("\nYou can open the CSV files in Excel or LibreOffice.")
+    print(f"  Categories    : {GRID_CATEGORIES_CSV}\n")
 
 
 if __name__ == "__main__":
-    main()
+    run_grid_report()
 

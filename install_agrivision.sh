@@ -33,11 +33,10 @@ install_if_missing python3-venv
 install_if_missing python3-pip
 install_if_missing gdal-bin
 
-# Docker handling – be VERY careful to avoid conflicts
+# Docker handling – avoid conflicts with containerd.io / official Docker
 if command -v docker >/dev/null 2>&1; then
   echo "[AgriVision] Docker is already installed (docker command found), skipping Docker installation."
 else
-  # If containerd.io is installed from Docker's official repo, installing docker.io will conflict
   if dpkg -s containerd.io >/dev/null 2>&1; then
     echo "[AgriVision] WARNING: 'containerd.io' is installed (likely from Docker's official repo)."
     echo "[AgriVision] Skipping 'docker.io' installation to avoid conflicts."
@@ -62,7 +61,7 @@ mkdir -p "$PROJECT_ROOT/data/images_resized"
 mkdir -p "$PROJECT_ROOT/data/odm_project"
 mkdir -p "$PROJECT_ROOT/output/orthos"
 mkdir -p "$PROJECT_ROOT/output/ndvi"
-mkdir -p "$PROJECT_ROOT/config"
+mkdir -p "$PROJECT_ROOT/output/runs"
 
 echo "[AgriVision] Folder structure ensured."
 
@@ -90,7 +89,15 @@ echo
 source "$PROJECT_ROOT/venv/bin/activate"
 
 pip install --upgrade pip
-pip install pillow rasterio numpy matplotlib
+
+# Core scientific + imaging + config + HTTP deps
+pip install \
+  pillow \
+  rasterio \
+  numpy \
+  matplotlib \
+  pyyaml \
+  requests
 
 # Write requirements.txt for future installs
 pip freeze > "$PROJECT_ROOT/requirements.txt"
@@ -118,6 +125,6 @@ echo "     log out and log back in so Docker works without sudo (if needed)."
 echo "  2) Activate the venv before running the pipeline:"
 echo "        source venv/bin/activate"
 echo "  3) Run the full pipeline with:"
-echo "        python3 scripts/ndvi_pipeline.py"
+echo "        python run.py"
 echo
 

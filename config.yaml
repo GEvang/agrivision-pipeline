@@ -1,0 +1,34 @@
+# Global configuration for the AgriVision ADS
+
+location:
+  name: "Neapolis, Agios Nikolaos, Crete"
+  lat: 35.2600
+  lon: 25.6000
+
+paths:
+  data_root: "data"
+  output_root: "output"
+  images_full: "data/images_full"
+  images_resized: "data/images_resized"
+  odm_project_root: "data/odm_project"
+  ndvi_output: "output/ndvi"
+  runs_output: "output/runs"
+
+resize:
+  enabled: false
+  max_long_edge: 3000
+
+ndvi:
+  poor_max: 0.3
+  medium_max: 0.6
+  grid_rows: 17
+  grid_cols: 17
+
+weather:
+  base_url: "http://127.0.0.1:8010"
+  username: "root"
+  password: "root"
+
+orthophoto:
+  odm_docker_image: "opendronemap/odm:latest"
+  orthophoto_resolution_cm: 1
