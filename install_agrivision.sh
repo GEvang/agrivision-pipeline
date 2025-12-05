@@ -5,27 +5,75 @@ echo "=============================================="
 echo "        AgriVision ADS Installer"
 echo "=============================================="
 
-PROJECT_ROOT="$(pwd)"
+# Resolve project root (where this script lives)
+PROJECT_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+cd "$PROJECT_ROOT"
 
+echo "[System] Project root: $PROJECT_ROOT"
+
+echo
 echo "[System] Updating apt..."
 sudo apt update
 
-echo "[System] Installing Python, GDAL, Docker prerequisites..."
-sudo apt install -y python3 python3-venv python3-pip gdal-bin docker.io docker-compose-plugin
+echo
+echo "[System] Installing base system packages (Python, GDAL, curl, gnupg)..."
+sudo apt install -y \
+  python3 python3-venv python3-pip \
+  gdal-bin \
+  ca-certificates curl gnupg
 
-echo "[System] Ensuring Docker service is enabled..."
+
+# ---------------------------------------------------------
+# 1) Docker Engine (official repo, only if missing)
+# ---------------------------------------------------------
+echo
+if command -v docker &> /dev/null; then
+  echo "[Docker] Docker already installed: $(docker --version)"
+else
+  echo "[Docker] Docker not found – installing Docker Engine from official repo..."
+
+  # Remove potentially conflicting packages (safe if not present)
+  sudo apt remove -y docker.io docker-doc docker-compose podman-docker containerd runc || true
+
+  # Add Docker's official GPG key
+  sudo install -m 0755 -d /etc/apt/keyrings
+  curl -fsSL https://download.docker.com/linux/ubuntu/gpg | \
+    sudo gpg --dearmor -o /etc/apt/keyrings/docker.gpg
+  sudo chmod a+r /etc/apt/keyrings/docker.gpg
+
+  # Add the Docker apt repository
+  echo \
+    "deb [arch=$(dpkg --print-architecture) signed-by=/etc/apt/keyrings/docker.gpg] \
+    https://download.docker.com/linux/ubuntu $(lsb_release -cs) stable" | \
+    sudo tee /etc/apt/sources.list.d/docker.list > /dev/null
+
+  sudo apt update
+
+  # Install Docker Engine + CLI + containerd + compose plugin
+  sudo apt install -y \
+    docker-ce docker-ce-cli containerd.io \
+    docker-buildx-plugin docker-compose-plugin
+
+  echo "[Docker] Installed: $(docker --version)"
+fi
+
+echo
+echo "[Docker] Ensuring Docker service is enabled and running..."
 sudo systemctl enable docker
 sudo systemctl start docker
 
 
 # ---------------------------------------------------------
-# 1) Python virtual environment
+# 2) Python virtual environment
 # ---------------------------------------------------------
 echo
-echo "[Python] Creating virtual environment..."
-python3 -m venv venv
+echo "[Python] Creating virtual environment (venv)..."
+if [ ! -d "venv" ]; then
+  python3 -m venv venv
+fi
 
 echo "[Python] Activating venv and installing requirements..."
+# shellcheck disable=SC1091
 source venv/bin/activate
 
 pip install --upgrade pip
@@ -35,7 +83,7 @@ deactivate
 
 
 # ---------------------------------------------------------
-# 2) Create project folders
+# 3) Create project folders
 # ---------------------------------------------------------
 echo
 echo "[Folders] Creating AgriVision folder structure..."
@@ -48,36 +96,34 @@ mkdir -p output/runs
 
 
 # ---------------------------------------------------------
-# 3) Pull ODM docker image
+# 4) Pull ODM docker image
 # ---------------------------------------------------------
 echo
-echo "[Docker] Pulling ODM image..."
+echo "[Docker] Pulling ODM image (opendronemap/odm:latest)..."
 sudo docker pull opendronemap/odm:latest
 
 
 # ---------------------------------------------------------
-# 4) Clone OpenAgri WeatherService
+# 5) Clone OpenAgri WeatherService (no YAML modifications)
 # ---------------------------------------------------------
 echo
-echo "[Weather] Cloning OpenAgri-WeatherService..."
-if [ ! -d "OpenAgri-WeatherService" ]; then
-    git clone https://github.com/openagri-eu/OpenAgri-WeatherService.git
+echo "[Weather] Cloning OpenAgri-WeatherService (if missing)..."
+if [ ! -d "$PROJECT_ROOT/OpenAgri-WeatherService" ]; then
+  git clone https://github.com/openagri-eu/OpenAgri-WeatherService.git "$PROJECT_ROOT/OpenAgri-WeatherService"
 else
-    echo "[Weather] Already exists, skipping clone."
+  echo "[Weather] OpenAgri-WeatherService already exists, skipping clone."
 fi
 
-
-# ---------------------------------------------------------
-# 5) DO NOT modify their docker-compose files.
-#    User will run the correct compose file manually or via auto-start logic.
-# ---------------------------------------------------------
-
 echo
-echo "[Weather] Starting WeatherService using docker compose (default try)..."
-cd "$PROJECT_ROOT/OpenAgri-WeatherService" || exit 1
+echo "[Weather] Attempting to start WeatherService (best effort)..."
+cd "$PROJECT_ROOT/OpenAgri-WeatherService"
 
-# Try the default file (may fail; ADS auto-start script will handle x86_64)
-sudo docker compose up -d || true
+if [ -f "docker-compose.yml" ]; then
+  sudo docker compose up -d || true
+else
+  echo "[Weather] No default docker-compose.yml found."
+  echo "[Weather] This is OK – the AgriVision pipeline will start the correct compose file automatically when needed."
+fi
 
 cd "$PROJECT_ROOT"
 
@@ -95,7 +141,7 @@ echo "  cd \"$PROJECT_ROOT\""
 echo "  source venv/bin/activate"
 echo "  python run.py"
 echo
-echo "If WeatherService is not running, your pipeline"
-echo "will automatically start it using the correct compose file."
+echo "Docker Engine is installed and running."
+echo "OpenAgri WeatherService will be auto-started by the pipeline if needed."
 echo
 
