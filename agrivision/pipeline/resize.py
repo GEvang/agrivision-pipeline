@@ -53,7 +53,7 @@ def run_resize() -> None:
         # If resizing disabled → just copy file
         if not RESIZE_ENABLED:
             print(f"[Resize] Skipping resize, copying {img_path.name}")
-            out_path.write_bytes(img_path.read_bytes())
+            shutil.copy2(img_path, out_path)
             continue
 
         # Resize enabled
@@ -63,7 +63,7 @@ def run_resize() -> None:
 
             if long_edge <= MAX_LONG_EDGE:
                 print(f"[Resize] Already small enough → copying {img_path.name}")
-                out_path.write_bytes(img_path.read_bytes())
+                shutil.copy2(img_path, out_path)
                 continue
 
             scale = MAX_LONG_EDGE / long_edge

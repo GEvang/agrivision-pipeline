@@ -5,7 +5,6 @@ agrivision.pipeline.odm
 Prepare an ODM project using resized images and run OpenDroneMap
 in Docker to generate an orthophoto.
 
-Modular version of scripts/run_odm.py.
 """
 
 import os
@@ -72,8 +71,6 @@ def run_odm() -> None:
     """
     Run ODM in Docker to create an orthophoto.
     """
-    project_dir = prepare_odm_project()
-
     odm_project_root = ODM_PROJECT_ROOT
     print(f"[ODM] ODM project root (host): {odm_project_root}")
 

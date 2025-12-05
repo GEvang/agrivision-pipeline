@@ -2,7 +2,7 @@
 """
 agrivision.pipeline.controller
 
-High-level controller that orchestrates the full AgriVision pipeline:
+AgriVision pipeline:
 
   1. Resize images
   2. ODM orthophoto generation (Docker)
@@ -10,10 +10,6 @@ High-level controller that orchestrates the full AgriVision pipeline:
   4. NDVI grid report
   5. Final HTML report
 
-This is the clean modern replacement for scripts/agrivision_controller.py.
-"""
-
-from agrivision.utils.settings import get_project_root, load_config
 
 # Import pipeline modules
 from agrivision.pipeline.resize import run_resize

@@ -1,71 +1,44 @@
 #!/usr/bin/env bash
 set -e
 
-echo "==============================="
-echo " AgriVision ADS Installer"
-echo "==============================="
+echo "=============================================="
+echo "        AgriVision ADS Installer"
+echo "=============================================="
 
-PROJECT_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-echo "[AgriVision] Project root: $PROJECT_ROOT"
+PROJECT_ROOT="$(pwd)"
 
-echo
-echo "==== [1/7] Install system dependencies (Python, GDAL, etc.) ===="
-echo
-
+echo "[System] Updating apt..."
 sudo apt update
-sudo apt install -y \
-  python3 python3-venv python3-pip \
-  gdal-bin
 
-echo
-echo "==== [2/7] Check Docker installation ===="
-echo
+echo "[System] Installing Python, GDAL, Docker prerequisites..."
+sudo apt install -y python3 python3-venv python3-pip gdal-bin docker.io docker-compose-plugin
 
-if ! command -v docker &> /dev/null; then
-    echo "[Docker] Docker not found. Installing Ubuntu docker.io + compose plugin..."
-    sudo apt install -y docker.io docker-compose-plugin
-else
-    echo "[Docker] Docker installed: $(docker --version)"
-fi
-
-if ! docker compose version &> /dev/null; then
-    echo "[Docker] Docker compose plugin missing. Installing..."
-    sudo apt install -y docker-compose-plugin
-else
-    echo "[Docker] Docker compose plugin available."
-fi
-
-echo
-echo "==== [3/7] Ensure Docker is running ===="
-echo
-
+echo "[System] Ensuring Docker service is enabled..."
 sudo systemctl enable docker
 sudo systemctl start docker
 
-echo "[Docker] Status:"
-sudo systemctl --no-pager --full status docker || true
 
+# ---------------------------------------------------------
+# 1) Python virtual environment
+# ---------------------------------------------------------
 echo
-echo "==== [4/7] Create Python virtual environment ===="
-echo
+echo "[Python] Creating virtual environment..."
+python3 -m venv venv
 
-cd "$PROJECT_ROOT"
-
-if [ ! -d "venv" ]; then
-  python3 -m venv venv
-fi
-
-# shellcheck disable=SC1090
+echo "[Python] Activating venv and installing requirements..."
 source venv/bin/activate
 
 pip install --upgrade pip
-pip install pillow rasterio numpy matplotlib pyyaml requests
+pip install -r requirements.txt
 
-pip freeze > requirements.txt
+deactivate
 
+
+# ---------------------------------------------------------
+# 2) Create project folders
+# ---------------------------------------------------------
 echo
-echo "==== [5/7] Prepare data/output folders ===="
-echo
+echo "[Folders] Creating AgriVision folder structure..."
 
 mkdir -p data/images_full
 mkdir -p data/images_resized
@@ -73,38 +46,56 @@ mkdir -p data/odm_project
 mkdir -p output/ndvi
 mkdir -p output/runs
 
-echo
-echo "==== [6/7] Pull ODM Docker image ===="
-echo
 
+# ---------------------------------------------------------
+# 3) Pull ODM docker image
+# ---------------------------------------------------------
+echo
+echo "[Docker] Pulling ODM image..."
 sudo docker pull opendronemap/odm:latest
 
-echo
-echo "==== [7/7] Install + Configure OpenAgri WeatherService ===="
-echo
 
-cd "$PROJECT_ROOT"
-
+# ---------------------------------------------------------
+# 4) Clone OpenAgri WeatherService
+# ---------------------------------------------------------
+echo
+echo "[Weather] Cloning OpenAgri-WeatherService..."
 if [ ! -d "OpenAgri-WeatherService" ]; then
-    echo "[Weather] Cloning OpenAgri-WeatherService..."
-    git clone https://github.com/agstack/OpenAgri-WeatherService.git OpenAgri-WeatherService
+    git clone https://github.com/openagri-eu/OpenAgri-WeatherService.git
 else
     echo "[Weather] Already exists, skipping clone."
 fi
 
-echo "[Weather] Creating docker-compose.override.yml..."
 
-cat <<EOF > "$PROJECT_ROOT/OpenAgri-WeatherService/docker-compose.override.yml"
-sudo docker compose up -d
+# ---------------------------------------------------------
+# 5) DO NOT modify their docker-compose files.
+#    User will run the correct compose file manually or via auto-start logic.
+# ---------------------------------------------------------
 
 echo
-echo "======================================"
-echo " AgriVision installation complete! 🎉"
-echo "======================================"
+echo "[Weather] Starting WeatherService using docker compose (default try)..."
+cd "$PROJECT_ROOT/OpenAgri-WeatherService" || exit 1
+
+# Try the default file (may fail; ADS auto-start script will handle x86_64)
+sudo docker compose up -d || true
+
+cd "$PROJECT_ROOT"
+
+
+# ---------------------------------------------------------
+# Final message
+# ---------------------------------------------------------
+echo
+echo "=============================================="
+echo " AgriVision ADS installation complete!"
+echo "=============================================="
 echo
 echo "To run the pipeline:"
-echo "  cd $PROJECT_ROOT"
+echo "  cd \"$PROJECT_ROOT\""
 echo "  source venv/bin/activate"
 echo "  python run.py"
+echo
+echo "If WeatherService is not running, your pipeline"
+echo "will automatically start it using the correct compose file."
 echo
 
