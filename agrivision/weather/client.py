@@ -23,6 +23,8 @@ from __future__ import annotations
 from dataclasses import dataclass
 from datetime import datetime
 from typing import Any, Dict
+import subprocess
+import time
 
 import requests
 
@@ -100,26 +102,46 @@ def get_token() -> str:
     payload = resp.json()
     return payload["jwt_token"]
 
+def _start_weather_service_if_needed() -> None:
+    """
+    Check if the WeatherService is reachable; if not, try to start it via
+    `docker compose -f docker-compose-x86_64.yml up -d`
+    in the OpenAgri-WeatherService folder.
+    """
+    # Quick connectivity check
+    try:
+        ping_url = f"{BASE_URL}/"
+        requests.get(ping_url, timeout=2)
+        return  # service is reachable, nothing to do
+    except requests.RequestException:
+        pass  # not reachable → try to start it
+
+    svc_dir = PROJECT_ROOT / "OpenAgri-WeatherService"
+    if not svc_dir.exists():
+        print(f"[Weather] OpenAgri-WeatherService folder not found at {svc_dir}, cannot auto-start.")
+        return
+
+    print(f"[Weather] Service not reachable, trying to start via docker compose in {svc_dir}...")
+    try:
+        subprocess.run(
+            ["docker", "compose", "-f", "docker-compose-x86_64.yml", "up", "-d"],
+            cwd=str(svc_dir),
+            check=False,
+        )
+        # give it a few seconds to come up
+        time.sleep(5)
+    except Exception as e:
+        print(f"[Weather] Failed to start WeatherService: {e}")
+
 
 def fetch_current_weather(token: str | None = None) -> CurrentWeather:
     """
     Fetch current weather from the OpenAgri WeatherService.
-
-    Endpoint:
-        GET /api/data/weather?lat={lat}&lon={lon}
-
-    The service currently returns a JSON payload with OpenWeather-like fields,
-    e.g.:
-
-      {
-        "dt": 1764765075,
-        "main": {"humidity": 64, "pressure": 1018, "temp": 20.38},
-        "weather": [{"description": "overcast clouds"}],
-        "wind": {"speed": 3.93}
-      }
-
-    We normalize this into a CurrentWeather dataclass.
     """
+
+    # Ensure service is up (or at least try to start it)
+    _start_weather_service_if_needed()
+
     if token is None:
         token = get_token()
 
@@ -130,6 +152,7 @@ def fetch_current_weather(token: str | None = None) -> CurrentWeather:
     resp = requests.get(url, params=params, headers=headers, timeout=10)
     resp.raise_for_status()
     payload = resp.json()
+    
 
     # The service may wrap data inside {"data": {...}} or return the dict directly.
     data = payload.get("data", payload)
