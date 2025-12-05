@@ -28,6 +28,7 @@ weather:
   base_url: "http://127.0.0.1:8010"
   username: "root"
   password: "root"
+  openweather_api_key: "413f5263fc5c7eb65c41890f7b0ed02a"
 
 orthophoto:
   odm_docker_image: "opendronemap/odm:latest"

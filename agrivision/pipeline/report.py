@@ -67,7 +67,25 @@ def read_ndvi_stats() -> Dict[str, Any]:
 
 
 def build_weather_context() -> Dict[str, Any]:
-    cw = fetch_current_weather()
+    """
+    Fetch current weather from OpenAgri WeatherService.
+    If anything fails, return a minimal context with 'N/A' values so that
+    the report can still be generated.
+    """
+    try:
+        cw = fetch_current_weather()
+    except Exception as e:
+        print(f"[Weather] WARNING: could not fetch weather data: {e}")
+        return {
+            "location_name": "Weather service unavailable",
+            "time_local": "N/A",
+            "temp_c": "N/A",
+            "humidity": "N/A",
+            "pressure_hpa": "N/A",
+            "wind_speed": "N/A",
+            "description": "Weather data not available.",
+        }
+
     ts_str = cw.timestamp.strftime("%Y-%m-%d %H:%M") if cw.timestamp else "N/A"
 
     return {
@@ -79,6 +97,7 @@ def build_weather_context() -> Dict[str, Any]:
         "wind_speed": cw.wind_speed,
         "description": cw.description,
     }
+
 
 
 def load_grid_cells() -> List[Dict[str, str]]:

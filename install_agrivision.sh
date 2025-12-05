@@ -95,20 +95,6 @@ fi
 echo "[Weather] Creating docker-compose.override.yml..."
 
 cat <<EOF > "$PROJECT_ROOT/OpenAgri-WeatherService/docker-compose.override.yml"
-services:
-  app:
-    restart: always
-
-  mongodb:
-    restart: always
-EOF
-
-echo "[Weather] Override file created:"
-cat "$PROJECT_ROOT/OpenAgri-WeatherService/docker-compose.override.yml"
-
-echo
-echo "[Weather] Starting WeatherService..."
-cd "$PROJECT_ROOT/OpenAgri-WeatherService"
 sudo docker compose up -d
 
 echo

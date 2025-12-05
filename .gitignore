@@ -240,3 +240,8 @@ odm_project/
 .DS_Store
 # Explanation: created by macOS (safe to ignore)
 
+# AgriVision pipeline outputs - do not track
+*.csv
+*.html
+
+
