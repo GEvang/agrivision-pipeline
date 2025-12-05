@@ -4,7 +4,6 @@ agrivision.pipeline.odm
 
 Prepare an ODM project using resized images and run OpenDroneMap
 in Docker to generate an orthophoto.
-
 """
 
 import os
@@ -37,8 +36,6 @@ def prepare_odm_project() -> Path:
 
     if project_dir.exists():
         print(f"[ODM] Removing existing ODM project directory: {project_dir}")
-        # Remove entire tree (we assume it is owned by current user after we
-        # started running docker with -u UID:GID).
         shutil.rmtree(project_dir)
 
     images_dir.mkdir(parents=True, exist_ok=True)
@@ -71,6 +68,9 @@ def run_odm() -> None:
     """
     Run ODM in Docker to create an orthophoto.
     """
+    
+    prepare_odm_project()
+
     odm_project_root = ODM_PROJECT_ROOT
     print(f"[ODM] ODM project root (host): {odm_project_root}")
 
@@ -83,7 +83,7 @@ def run_odm() -> None:
         "-ti",
         "--rm",
         "-u",
-        f"{uid}:{gid}",          # run container as current user
+        f"{uid}:{gid}",
         "-v",
         f"{odm_project_root}:/datasets",
         ODM_DOCKER_IMAGE,
