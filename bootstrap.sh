@@ -12,7 +12,7 @@ if [ ! -d "agrivision-ads" ]; then
     git clone https://github.com/GEvang/agrivision-pipeline.git
 fi
 
-cd agrivision-ads
+cd agrivision-pipeline
 
 # 3) Run the main installer inside the repo
 chmod +x install_agrivision.sh
