@@ -3,7 +3,7 @@
 agrivision.pipeline.resize
 
 Optionally resize original images before ODM.
-Resizing can be disabled entirely using config.yaml:
+Resizing behavior is controlled by config.yaml:
 
 resize:
   enabled: true
@@ -12,6 +12,7 @@ resize:
 
 from pathlib import Path
 from PIL import Image
+import shutil
 
 from agrivision.utils.settings import get_project_root, load_config
 
@@ -30,12 +31,11 @@ def run_resize() -> None:
     If enabled, resize images so their longest side <= MAX_LONG_EDGE.
     If disabled, simply copy original images into the resized folder.
     """
-
     print("\n[AgriVision] Resize step")
-    print(f"  Enabled: {RESIZE_ENABLED}")
-    print(f"  Max long edge: {MAX_LONG_EDGE} px")
-    print(f"  Input folder: {IMAGES_FULL_DIR}")
-    print(f"  Output folder: {IMAGES_RESIZED_DIR}")
+    print(f"  Enabled        : {RESIZE_ENABLED}")
+    print(f"  Max long edge  : {MAX_LONG_EDGE} px")
+    print(f"  Input folder   : {IMAGES_FULL_DIR}")
+    print(f"  Output folder  : {IMAGES_RESIZED_DIR}")
 
     if not IMAGES_FULL_DIR.exists():
         raise FileNotFoundError(f"Source folder missing: {IMAGES_FULL_DIR}")
@@ -52,11 +52,11 @@ def run_resize() -> None:
 
         # If resizing disabled → just copy file
         if not RESIZE_ENABLED:
-            print(f"[Resize] Skipping resize, copying {img_path.name}")
+            print(f"[Resize] Copy (no resize) → {img_path.name}")
             shutil.copy2(img_path, out_path)
             continue
 
-        # Resize enabled
+        # Resizing enabled
         with Image.open(img_path) as img:
             w, h = img.size
             long_edge = max(w, h)
