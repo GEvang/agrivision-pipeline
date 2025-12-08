@@ -104,7 +104,7 @@ sudo docker pull opendronemap/odm:latest
 
 
 # ---------------------------------------------------------
-# 5) Clone OpenAgri WeatherService (no YAML modifications)
+# 5) Clone + prepare OpenAgri WeatherService
 # ---------------------------------------------------------
 echo
 echo "[Weather] Cloning OpenAgri-WeatherService (if missing)..."
@@ -114,15 +114,38 @@ else
   echo "[Weather] OpenAgri-WeatherService already exists, skipping clone."
 fi
 
+# Ensure .env exists
+if [ ! -f "$PROJECT_ROOT/OpenAgri-WeatherService/.env" ]; then
+  echo "[Weather] No .env found, copying env.example -> .env"
+  cp "$PROJECT_ROOT/OpenAgri-WeatherService/env.example" \
+     "$PROJECT_ROOT/OpenAgri-WeatherService/.env"
+fi
+
 echo
-echo "[Weather] Attempting to start WeatherService (best effort)..."
+echo "[Weather] Starting WeatherService..."
+
 cd "$PROJECT_ROOT/OpenAgri-WeatherService"
 
-if [ -f "docker-compose.yml" ]; then
-  sudo docker compose up -d || true
+ARCH=$(uname -m)
+COMPOSE_FILE=""
+
+if [ "$ARCH" = "x86_64" ]; then
+  COMPOSE_FILE="docker-compose-x86_64.yml"
+elif [[ "$ARCH" == "aarch64" || "$ARCH" == "arm64" ]]; then
+  COMPOSE_FILE="docker-compose-arm64.yml"
 else
-  echo "[Weather] No default docker-compose.yml found."
-  echo "[Weather] This is OK – the AgriVision pipeline will start the correct compose file automatically when needed."
+  echo "[Weather] Unknown architecture '$ARCH'. Cannot auto-select compose file."
+  echo "[Weather] WeatherService will instead be started automatically by the pipeline when needed."
+fi
+
+if [ -n "$COMPOSE_FILE" ]; then
+  if [ -f "$COMPOSE_FILE" ]; then
+    echo "[Weather] Using compose file: $COMPOSE_FILE"
+    sudo docker compose -f "$COMPOSE_FILE" up -d || true
+  else
+    echo "[Weather] Compose file '$COMPOSE_FILE' not found!"
+    echo "[Weather] WeatherService will be started automatically by the pipeline when needed."
+  fi
 fi
 
 cd "$PROJECT_ROOT"
@@ -142,6 +165,7 @@ echo "  source venv/bin/activate"
 echo "  python run.py"
 echo
 echo "Docker Engine is installed and running."
-echo "OpenAgri WeatherService will be auto-started by the pipeline if needed."
+echo "OpenAgri WeatherService is configured (.env) and will be"
+echo "started automatically by the installer and, if needed,"
+echo "by the pipeline itself."
 echo
-
