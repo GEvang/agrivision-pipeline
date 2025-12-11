@@ -8,6 +8,7 @@ Generate a static HTML farmer report that combines:
 - NDVI basic statistics (min / max / mean)
 - NDVI grid overlay and links to CSV tables
 - Current weather from the OpenAgri WeatherService
+- 5-day forecast summary (new)
 - A table of all grid cells (ID, NDVI, class)
 """
 
@@ -16,13 +17,13 @@ from __future__ import annotations
 from pathlib import Path
 from datetime import datetime
 from typing import Any, Dict, List
-
 import csv
+
 import numpy as np
 import rasterio
 
 from agrivision.utils.settings import get_project_root, load_config
-from agrivision.weather.client import fetch_current_weather
+from agrivision.weather.client import fetch_current_weather, fetch_forecast5
 
 
 CONFIG = load_config()
@@ -99,6 +100,62 @@ def build_weather_context() -> Dict[str, Any]:
     }
 
 
+def build_forecast_context() -> List[Dict[str, Any]]:
+    """
+    Fetch 5-day forecast from OpenAgri WeatherService and convert it into
+    a simplified list of daily aggregates suitable for HTML rendering.
+
+    Strategy:
+      - Fetch all forecast points (3-hourly, typically).
+      - Filter to temperature-like entries (data_type/measurement_type contains 'temp').
+      - Group by date, compute mean value per day.
+    """
+    try:
+        points = fetch_forecast5()
+    except Exception as e:
+        print(f"[Weather] WARNING: could not fetch 5-day forecast: {e}")
+        return []
+
+    if not points:
+        return []
+
+    # Filter to temperature-like entries if possible
+    temp_points = []
+    for p in points:
+        dt = (getattr(p, "data_type", "") or "").lower()
+        mt = (getattr(p, "measurement_type", "") or "").lower()
+        if "temp" in dt or "temp" in mt:
+            temp_points.append(p)
+
+    if not temp_points:
+        # Fallback: use all points as "generic" values
+        temp_points = points
+
+    by_date: Dict[str, List[float]] = {}
+    for p in temp_points:
+        ts = getattr(p, "timestamp", None)
+        val = getattr(p, "value", None)
+        if ts is None or val is None:
+            continue
+        date_str = ts.date().isoformat()
+        by_date.setdefault(date_str, []).append(val)
+
+    forecast_days: List[Dict[str, Any]] = []
+    for day in sorted(by_date.keys()):
+        vals = by_date[day]
+        if not vals:
+            continue
+        avg_val = float(sum(vals) / len(vals))
+        forecast_days.append(
+            {
+                "date": day,
+                "avg_value": avg_val,
+                "n_points": len(vals),
+            }
+        )
+
+    return forecast_days
+
 
 def load_grid_cells() -> List[Dict[str, str]]:
     """
@@ -121,6 +178,7 @@ def generate_html(
     ndvi_stats: Dict[str, Any],
     weather_ctx: Dict[str, Any],
     grid_cells: List[Dict[str, str]],
+    forecast_ctx: List[Dict[str, Any]],
 ) -> str:
     if NDVI_COLOR_PNG.exists():
         ndvi_img_tag = '<img src="ndvi/ndvi_color.png" alt="NDVI map" class="ndvi-img" />'
@@ -148,65 +206,64 @@ def generate_html(
     for cell in grid_cells:
         cls = cell.get("class", "")
         mean_str = cell.get("mean_ndvi", "")
-        cell_id = cell.get("cell_id", "")
-        row_label = cell.get("row_label", "")
-        col_label = cell.get("col_label", "")
+        row_class = f"class-{cls}" if cls else ""
+        grid_rows_html += (
+            f'<tr class="{row_class}">'
+            f"<td>{cell.get('cell_id', '')}</td>"
+            f"<td>{cell.get('row_label', '')}</td>"
+            f"<td>{cell.get('col_label', '')}</td>"
+            f"<td>{mean_str}</td>"
+            f"<td>{cls}</td>"
+            "</tr>"
+        )
 
-        # CSS class for coloring
-        tr_class = f"class-{cls}" if cls else ""
-        grid_rows_html += f"""
-        <tr class="{tr_class}">
-          <td>{cell_id}</td>
-          <td>{row_label}</td>
-          <td>{col_label}</td>
-          <td>{mean_str}</td>
-          <td>{cls}</td>
-        </tr>
-        """
-
-    if not grid_rows_html:
-        grid_table_html = "<p>No grid data available (run NDVI grid step first).</p>"
+    # Build forecast table HTML
+    if not forecast_ctx:
+        forecast_html = "<p>No forecast data available.</p>"
     else:
-        grid_table_html = f"""
-        <div class="grid-table-wrapper">
-          <table class="grid-table">
-            <thead>
-              <tr>
-                <th>Cell ID</th>
-                <th>Row</th>
-                <th>Col</th>
-                <th>Mean NDVI</th>
-                <th>Class</th>
-              </tr>
-            </thead>
-            <tbody>
-              {grid_rows_html}
-            </tbody>
-          </table>
-        </div>
+        forecast_rows = ""
+        for day in forecast_ctx:
+            forecast_rows += (
+                "<tr>"
+                f"<td>{day['date']}</td>"
+                f"<td>{_fmt(day['avg_value'], digits=1)}</td>"
+                f"<td>{day['n_points']}</td>"
+                "</tr>"
+            )
+        forecast_html = f"""
+        <table class="stats-table">
+          <tr>
+            <th>Date</th>
+            <th>Avg. temperature (°C)</th>
+            <th>Points</th>
+          </tr>
+          {forecast_rows}
+        </table>
         """
 
     html = f"""<!DOCTYPE html>
 <html lang="en">
 <head>
-<meta charset="utf-8" />
+<meta charset="UTF-8" />
 <title>AgriVision Field Report</title>
 <style>
     body {{
         font-family: system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+        background-color: #f3f6f7;
         margin: 0;
         padding: 0;
-        background-color: #f4f4f4;
         color: #222;
     }}
     header {{
-        background-color: #114b5f;
-        color: white;
-        padding: 1.5rem 2rem;
+        background: linear-gradient(135deg, #114b5f, #028090);
+        color: #fff;
+        padding: 1.5rem 1rem;
+        text-align: center;
     }}
     header h1 {{
-        margin: 0 0 0.25rem 0;
-        font-size: 1.6rem;
+        margin: 0;
+        font-size: 1.8rem;
+        letter-spacing: 0.03em;
     }}
     header p {{
         margin: 0;
@@ -325,6 +382,14 @@ def generate_html(
 </section>
 
 <section>
+  <h2>5-Day Forecast</h2>
+  {forecast_html}
+  <p class="meta-note">
+    Daily averages based on the 5-day forecast returned by the OpenAgri WeatherService.
+  </p>
+</section>
+
+<section>
   <h2>NDVI Overview</h2>
   {ndvi_img_tag}
   <table class="stats-table">
@@ -351,22 +416,31 @@ def generate_html(
 </section>
 
 <section>
-  <h2>NDVI Grid &amp; CSV Reports</h2>
+  <h2>NDVI Grid Map</h2>
   {ndvi_grid_tag}
   <div class="csv-links">
     {csv_links_html}
   </div>
-  <p class="meta-note">
-    The grid divides the field into {CONFIG["ndvi"]["grid_rows"]} × {CONFIG["ndvi"]["grid_cols"]} cells.
-  </p>
 </section>
 
 <section>
-  <h2>Per-cell NDVI Table</h2>
-  <p class="meta-note">
-    Each row corresponds to a grid cell (same IDs as in the overlay image), with its mean NDVI and class.
-  </p>
-  {grid_table_html}
+  <h2>Grid Cells Detail</h2>
+  <div class="grid-table-wrapper">
+    <table class="grid-table">
+      <thead>
+        <tr>
+          <th>Cell ID</th>
+          <th>Row</th>
+          <th>Col</th>
+          <th>Mean NDVI</th>
+          <th>Class</th>
+        </tr>
+      </thead>
+      <tbody>
+        {grid_rows_html}
+      </tbody>
+    </table>
+  </div>
 </section>
 
 </main>
@@ -380,9 +454,10 @@ def run_report() -> None:
     ndvi_stats = read_ndvi_stats()
     weather_ctx = build_weather_context()
     grid_cells = load_grid_cells()
+    forecast_ctx = build_forecast_context()
 
     REPORT_HTML.parent.mkdir(parents=True, exist_ok=True)
-    html = generate_html(ndvi_stats, weather_ctx, grid_cells)
+    html = generate_html(ndvi_stats, weather_ctx, grid_cells, forecast_ctx)
     REPORT_HTML.write_text(html, encoding="utf-8")
 
     print(f"[AgriVision] Report written to: {REPORT_HTML}")
@@ -392,4 +467,3 @@ def run_report() -> None:
 
 if __name__ == "__main__":
     run_report()
-

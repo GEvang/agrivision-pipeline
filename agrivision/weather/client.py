@@ -13,16 +13,17 @@ weather:
 
 Provides simple functions to fetch:
   - auth token
-  - current weather (already integrated in your previous test)
+  - current weather
+  - 5-day forecast (new)
 
-You can later extend this with forecast, THI, spray windows, etc.
+The WeatherService itself may use OpenWeather and/or other sources internally.
 """
 
 from __future__ import annotations
 
 from dataclasses import dataclass
 from datetime import datetime
-from typing import Any, Dict
+from typing import Any, Dict, List, Optional
 import subprocess
 import time
 
@@ -46,7 +47,7 @@ LOCATION_NAME: str = LOCATION_CFG.get("name", "Unknown location")
 
 
 # ---------------------------------------------------------------------------
-# Data model
+# Data models
 # ---------------------------------------------------------------------------
 
 @dataclass
@@ -61,6 +62,22 @@ class CurrentWeather:
     raw: Dict[str, Any]
 
 
+@dataclass
+class ForecastPoint:
+    """
+    Single forecast point from /api/data/forecast5.
+
+    The WeatherService returns a list of items. The exact schema may evolve,
+    so we keep this structure flexible and also store the raw dict.
+    """
+    timestamp: datetime | None
+    value: float | None
+    data_type: str | None
+    measurement_type: str | None
+    source: str | None
+    raw: Dict[str, Any]
+
+
 # ---------------------------------------------------------------------------
 # Helpers
 # ---------------------------------------------------------------------------
@@ -69,6 +86,22 @@ def _ts_from_unix(ts: int | float | None) -> datetime | None:
     if ts is None:
         return None
     return datetime.fromtimestamp(ts)
+
+
+def _ts_from_iso(s: Any) -> datetime | None:
+    """
+    Best-effort conversion of an ISO 8601 timestamp or None.
+    Handles 'Z' suffix by converting to '+00:00'.
+    """
+    if not s:
+        return None
+    try:
+        text = str(s)
+        if text.endswith("Z"):
+            text = text.replace("Z", "+00:00")
+        return datetime.fromisoformat(text)
+    except Exception:
+        return None
 
 
 # ---------------------------------------------------------------------------
@@ -102,11 +135,11 @@ def get_token() -> str:
     payload = resp.json()
     return payload["jwt_token"]
 
+
 def _start_weather_service_if_needed() -> None:
     """
     Check if the WeatherService is reachable; if not, try to start it via
-    `docker compose -f docker-compose-x86_64.yml up -d`
-    in the OpenAgri-WeatherService folder.
+    `docker compose` in the OpenAgri-WeatherService folder.
     """
     # Quick connectivity check
     try:
@@ -137,6 +170,9 @@ def _start_weather_service_if_needed() -> None:
 def fetch_current_weather(token: str | None = None) -> CurrentWeather:
     """
     Fetch current weather from the OpenAgri WeatherService.
+
+    Endpoint:
+        GET /api/data/weather?lat={lat}&lon={lon}
     """
 
     # Ensure service is up (or at least try to start it)
@@ -152,7 +188,6 @@ def fetch_current_weather(token: str | None = None) -> CurrentWeather:
     resp = requests.get(url, params=params, headers=headers, timeout=10)
     resp.raise_for_status()
     payload = resp.json()
-    
 
     # The service may wrap data inside {"data": {...}} or return the dict directly.
     data = payload.get("data", payload)
@@ -184,6 +219,76 @@ def fetch_current_weather(token: str | None = None) -> CurrentWeather:
     )
 
 
+def fetch_forecast5(token: Optional[str] = None) -> List[ForecastPoint]:
+    """
+    Fetch 5-day forecast (3-hour steps) from the OpenAgri WeatherService.
+
+    Endpoint:
+        GET /api/data/forecast5?lat={lat}&lon={lon}
+
+    Returns a list of ForecastPoint objects. This is intentionally tolerant to
+    schema differences: if the WeatherService changes field names slightly,
+    we still keep the raw item so we can inspect it later.
+    """
+    # Ensure service is up (or at least try to start it)
+    _start_weather_service_if_needed()
+
+    if token is None:
+        token = get_token()
+
+    url = f"{BASE_URL}/api/data/forecast5"
+    params = {"lat": LAT, "lon": LON}
+    headers = {"Authorization": f"Bearer {token}"}
+
+    resp = requests.get(url, params=params, headers=headers, timeout=15)
+    resp.raise_for_status()
+    payload = resp.json()
+
+    # Could be a list directly, or {data: [...]}, or something similar.
+    items: Any = payload
+    if isinstance(items, dict):
+        items = items.get("data") or items.get("results") or []
+
+    if not isinstance(items, list):
+        print("[Weather] WARNING: Unexpected forecast5 payload format.")
+        return []
+
+    points: List[ForecastPoint] = []
+    for item in items:
+        if not isinstance(item, dict):
+            continue
+
+        ts_raw = (
+            item.get("timestamp")
+            or item.get("time")
+            or item.get("ts")
+        )
+        ts = _ts_from_iso(ts_raw)
+
+        raw_val = item.get("value")
+        try:
+            value = float(raw_val) if raw_val is not None else None
+        except (TypeError, ValueError):
+            value = None
+
+        data_type = item.get("data_type")
+        measurement_type = item.get("measurement_type")
+        source = item.get("source")
+
+        points.append(
+            ForecastPoint(
+                timestamp=ts,
+                value=value,
+                data_type=data_type,
+                measurement_type=measurement_type,
+                source=source,
+                raw=item,
+            )
+        )
+
+    return points
+
+
 # ---------------------------------------------------------------------------
 # Simple CLI test
 # ---------------------------------------------------------------------------
@@ -205,4 +310,3 @@ if __name__ == "__main__":
     # Allow quick testing with: python -m agrivision.weather.client
     cw = fetch_current_weather()
     print(_format_current_weather(cw))
-
