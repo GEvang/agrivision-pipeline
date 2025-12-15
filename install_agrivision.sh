@@ -88,9 +88,24 @@ deactivate
 echo
 echo "[Folders] Creating AgriVision folder structure..."
 
-mkdir -p data/images_full
-mkdir -p data/images_resized
-mkdir -p data/odm_project
+# Data roots
+mkdir -p data
+
+# Full-resolution images (separate by camera type)
+mkdir -p data/images_full/rgb
+mkdir -p data/images_full/mapir
+
+# Resized images (separate by camera type)
+mkdir -p data/images_resized/rgb
+mkdir -p data/images_resized/mapir
+
+# ODM projects:
+#  - RGB project
+#  - MAPIR project
+mkdir -p data/odm_project_rgb
+mkdir -p data/odm_project_mapir
+
+# Outputs
 mkdir -p output/ndvi
 mkdir -p output/runs
 
@@ -149,23 +164,3 @@ if [ -n "$COMPOSE_FILE" ]; then
 fi
 
 cd "$PROJECT_ROOT"
-
-
-# ---------------------------------------------------------
-# Final message
-# ---------------------------------------------------------
-echo
-echo "=============================================="
-echo " AgriVision ADS installation complete!"
-echo "=============================================="
-echo
-echo "To run the pipeline:"
-echo "  cd \"$PROJECT_ROOT\""
-echo "  source venv/bin/activate"
-echo "  python run.py"
-echo
-echo "Docker Engine is installed and running."
-echo "OpenAgri WeatherService is configured (.env) and will be"
-echo "started automatically by the installer and, if needed,"
-echo "by the pipeline itself."
-echo

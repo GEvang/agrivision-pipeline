@@ -2,12 +2,22 @@
 """
 agrivision.pipeline.resize
 
-Optionally resize original images before ODM.
-Resizing behavior is controlled by config.yaml:
+Resize original images before ODM.
 
-resize:
-  enabled: true
-  max_long_edge: 3000
+Resizing behavior is now controlled by:
+  - The CLI flag: --run-resize  (whether the step runs at all)
+  - config.yaml -> resize.max_long_edge  (how aggressively to resize)
+
+This module now supports TWO datasets:
+
+  - RGB images:
+      data/images_full/rgb     -> data/images_resized/rgb
+
+  - MAPIR images (multispectral):
+      data/images_full/mapir   -> data/images_resized/mapir
+
+If a given source folder is missing or empty, that dataset is skipped
+with a friendly message.
 """
 
 from pathlib import Path
@@ -19,59 +29,111 @@ from agrivision.utils.settings import get_project_root, load_config
 CONFIG = load_config()
 PROJECT_ROOT = get_project_root()
 
-IMAGES_FULL_DIR = PROJECT_ROOT / CONFIG["paths"]["images_full"]
-IMAGES_RESIZED_DIR = PROJECT_ROOT / CONFIG["paths"]["images_resized"]
+# RGB paths (current pipeline uses these)
+IMAGES_FULL_RGB = PROJECT_ROOT / CONFIG["paths"]["images_full"]
+IMAGES_RESIZED_RGB = PROJECT_ROOT / CONFIG["paths"]["images_resized"]
 
-RESIZE_ENABLED = CONFIG.get("resize", {}).get("enabled", True)
+# MAPIR paths (reserved for MAPIR-based NDVI; wired in future steps)
+IMAGES_FULL_MAPIR = PROJECT_ROOT / CONFIG["paths"]["images_full_mapir"]
+IMAGES_RESIZED_MAPIR = PROJECT_ROOT / CONFIG["paths"]["images_resized_mapir"]
+
 MAX_LONG_EDGE = CONFIG.get("resize", {}).get("max_long_edge", 3000)
 
+IMAGE_EXTS = {".jpg", ".jpeg", ".png", ".tif", ".tiff"}
 
-def run_resize() -> None:
+
+def _resize_dataset(src_dir: Path, dst_dir: Path, label: str) -> int:
     """
-    If enabled, resize images so their longest side <= MAX_LONG_EDGE.
-    If disabled, simply copy original images into the resized folder.
+    Resize all images in src_dir into dst_dir for a given dataset label.
+
+    Returns the number of processed images.
     """
-    print("\n[AgriVision] Resize step")
-    print(f"  Enabled        : {RESIZE_ENABLED}")
-    print(f"  Max long edge  : {MAX_LONG_EDGE} px")
-    print(f"  Input folder   : {IMAGES_FULL_DIR}")
-    print(f"  Output folder  : {IMAGES_RESIZED_DIR}")
+    if not src_dir.exists():
+        print(f"[Resize] {label}: source folder does not exist, skipping: {src_dir}")
+        return 0
 
-    if not IMAGES_FULL_DIR.exists():
-        raise FileNotFoundError(f"Source folder missing: {IMAGES_FULL_DIR}")
+    # Collect images
+    image_files = [
+        p for p in sorted(src_dir.iterdir())
+        if p.is_file() and p.suffix.lower() in IMAGE_EXTS
+    ]
 
-    IMAGES_RESIZED_DIR.mkdir(parents=True, exist_ok=True)
+    if not image_files:
+        print(f"[Resize] {label}: no images found in {src_dir}, skipping.")
+        return 0
 
-    image_exts = {".jpg", ".jpeg", ".png", ".tif", ".tiff"}
+    dst_dir.mkdir(parents=True, exist_ok=True)
 
-    for img_path in sorted(IMAGES_FULL_DIR.iterdir()):
-        if img_path.suffix.lower() not in image_exts:
-            continue
+    processed = 0
+    print(f"[Resize] {label}: processing {len(image_files)} images...")
+    print(f"         Input folder : {src_dir}")
+    print(f"         Output folder: {dst_dir}")
+    print(f"         Max long edge: {MAX_LONG_EDGE} px")
 
-        out_path = IMAGES_RESIZED_DIR / img_path.name
+    for img_path in image_files:
+        out_path = dst_dir / img_path.name
 
-        # If resizing disabled → just copy file
-        if not RESIZE_ENABLED:
-            print(f"[Resize] Copy (no resize) → {img_path.name}")
-            shutil.copy2(img_path, out_path)
-            continue
-
-        # Resizing enabled
         with Image.open(img_path) as img:
             w, h = img.size
             long_edge = max(w, h)
 
             if long_edge <= MAX_LONG_EDGE:
-                print(f"[Resize] Already small enough → copying {img_path.name}")
+                print(f"[Resize] {label}: already small → copying {img_path.name}")
                 shutil.copy2(img_path, out_path)
+                processed += 1
                 continue
 
             scale = MAX_LONG_EDGE / long_edge
             new_size = (int(w * scale), int(h * scale))
 
-            print(f"[Resize] Resizing {img_path.name} to {new_size}")
+            print(f"[Resize] {label}: resizing {img_path.name} to {new_size}")
             img = img.resize(new_size, Image.LANCZOS)
             img.save(out_path, quality=95)
+            processed += 1
 
-    print("[AgriVision] Resize step completed.")
+    print(f"[Resize] {label}: completed, processed {processed} images.")
+    return processed
 
+
+def run_resize() -> None:
+    """
+    Resize images for all supported datasets (RGB, MAPIR).
+
+    - RGB:
+        data/images_full/rgb     -> data/images_resized/rgb
+
+    - MAPIR:
+        data/images_full/mapir   -> data/images_resized/mapir
+
+    If a dataset has no images, it is skipped.
+    """
+    print("\n[AgriVision] Resize step")
+    print(f"  Max long edge : {MAX_LONG_EDGE} px\n")
+
+    total_processed = 0
+
+    # 1) RGB dataset (current main pipeline)
+    total_processed += _resize_dataset(
+        src_dir=IMAGES_FULL_RGB,
+        dst_dir=IMAGES_RESIZED_RGB,
+        label="RGB",
+    )
+
+    # 2) MAPIR dataset (for real NDVI, wired in next steps)
+    total_processed += _resize_dataset(
+        src_dir=IMAGES_FULL_MAPIR,
+        dst_dir=IMAGES_RESIZED_MAPIR,
+        label="MAPIR",
+    )
+
+    if total_processed == 0:
+        print("[AgriVision] WARNING: No images were processed in the resize step.")
+        print("  Make sure you have placed images in at least one of:")
+        print(f"    - {IMAGES_FULL_RGB}")
+        print(f"    - {IMAGES_FULL_MAPIR}")
+    else:
+        print(f"[AgriVision] Resize step finished. Total images processed: {total_processed}")
+
+
+if __name__ == "__main__":
+    run_resize()

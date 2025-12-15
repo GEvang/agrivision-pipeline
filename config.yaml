@@ -8,21 +8,65 @@ location:
 paths:
   data_root: "data"
   output_root: "output"
-  images_full: "data/images_full"
-  images_resized: "data/images_resized"
-  odm_project_root: "data/odm_project"
+
+  # RGB images (default dataset for current pipeline)
+  images_full: "data/images_full/rgb"
+  images_resized: "data/images_resized/rgb"
+
+  # ODM projects
+  # For backwards compatibility, odm_project_root points to the RGB project.
+  odm_project_root: "data/odm_project_rgb"
+  odm_project_root_rgb: "data/odm_project_rgb"
+  odm_project_root_mapir: "data/odm_project_mapir"
+
+  # NDVI + runs output
   ndvi_output: "output/ndvi"
   runs_output: "output/runs"
 
+  # MAPIR image paths (for multispectral / false-color)
+  images_full_mapir: "data/images_full/mapir"
+  images_resized_mapir: "data/images_resized/mapir"
+
 resize:
-  enabled: false
+  # Only how we resize, not whether.
+  # Whether the resize step runs is controlled by the CLI flag: --run-resize
   max_long_edge: 3000
 
 ndvi:
-  poor_max: 0.3
-  medium_max: 0.6
+  # Classification thresholds (used by grid/report)
+  poor_max: 0.25
+  medium_max: 0.4
   grid_rows: 17
   grid_cols: 17
+
+  # ----------------------------
+  # Camera / band profiles
+  # ----------------------------
+
+  # MAPIR false-color orthophoto profile (what ODM produced for you is RGBA)
+  # Your gdalinfo shows:
+  #   Band 1 = Red (but in false-color workflows this often contains NIR)
+  #   Band 2 = Green
+  #   Band 3 = Blue
+  #   Band 4 = Alpha
+  #
+  # We therefore treat Band 1 as NIR and Band 2 as Green and compute
+  # a vegetation index of the form:
+  #   (NIR - GREEN) / (NIR + GREEN)
+  #
+  # This is GNDVI-like (not true NDVI). We'll reflect that in code + later in report text.
+  mapir_profile:
+    index_mode: "nir_green"   # options we will support: "nir_red" or "nir_green"
+    nir_band: 1
+    green_band: 2
+    red_band: null            # not available as a clean spectral band in this dataset
+
+  # RGB fallback profile (only used if MAPIR orthophoto does not exist)
+  # This remains a "pseudo" vegetation index unless RGB truly contains NIR.
+  rgb_profile:
+    index_mode: "pseudo"
+    red_band: 1
+    nir_band: 2
 
 weather:
   base_url: "http://127.0.0.1:8010"
@@ -33,3 +77,4 @@ weather:
 orthophoto:
   odm_docker_image: "opendronemap/odm:latest"
   orthophoto_resolution_cm: 1
+

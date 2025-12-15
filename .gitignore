@@ -1,36 +1,103 @@
-# Python cache / build
+############################################
+# Python
+############################################
 __pycache__/
 *.py[cod]
+*.pyo
+*.pyd
 *.so
+.Python
+.pytest_cache/
+.mypy_cache/
 
-# Virtual env
+############################################
+# Virtual environments
+############################################
 venv/
-env/
-.venv/
+.env
+.env.*
+pip-wheel-metadata/
 
-# Drone image data (real paths)
-data/images_full/
-data/images_resized/
-data/odm_project/
-
-# Outputs
-output/ndvi/
-output/runs/
-*.csv
-*.html
-*.png
-*.tif
-*.tiff
-
-# OS junk
+############################################
+# OS / Editor junk
+############################################
 .DS_Store
-
-# IDE
-.cursorignore
-.cursorindexingignore
+Thumbs.db
 .idea/
 .vscode/
+*.swp
+*.swo
+*.tmp
 
-# OpenAgri Weather Service
+############################################
+# Logs
+############################################
+*.log
+logs/
+
+############################################
+# External services (vendored / reproducible)
+############################################
+
+# OpenAgri Weather Service (Docker-based, cloned from upstream)
 OpenAgri-WeatherService/
-OpenAgri-PestAndDiseaseManagement/
+
+############################################
+# AgriVision – DATA (RAW & PROCESSED)
+############################################
+
+# Raw images (VERY LARGE)
+data/images_full/
+data/images_resized/
+
+# ODM projects (very large, reproducible)
+data/odm_project_rgb/
+data/odm_project_mapir/
+data/odm_project/
+
+############################################
+# AgriVision – OUTPUTS
+############################################
+
+# Vegetation index outputs
+output/ndvi/
+output/ndvi_*/
+
+# Reports
+output/report*.html
+output/reports/
+
+# Run metadata / weather snapshots
+output/runs/
+
+############################################
+# Temporary / cache folders
+############################################
+tmp/
+temp/
+cache/
+
+############################################
+# Docker
+############################################
+*.pid
+docker-compose.override.yml
+
+############################################
+# Safety: never commit large binaries
+############################################
+*.tif
+*.tiff
+*.jpg
+*.jpeg
+*.png
+*.zip
+*.tar
+*.gz
+
+############################################
+# Exceptions (keep structure)
+############################################
+!data/.gitkeep
+!output/.gitkeep
+
