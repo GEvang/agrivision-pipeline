@@ -7,29 +7,21 @@ Compute a vegetation index from an orthophoto and save:
   - GeoTIFF:  output/ndvi/ndvi.tif
   - Color PNG: output/ndvi/ndvi_color.png
 
-IMPORTANT (2025):
------------------
+NEW (Priority 1 - Metadata):
+----------------------------
+After computation, write a self-describing metadata file:
 
-This module now supports multiple index modes:
+  output/ndvi/metadata.json
 
-MAPIR (preferred, if MAPIR orthophoto exists)
-  - index_mode = "nir_green"  -> (NIR - GREEN) / (NIR + GREEN)   (GNDVI-like)
-  - index_mode = "nir_red"    -> (NIR - RED) / (NIR + RED)       (true NDVI)
-
-RGB fallback (if MAPIR orthophoto is missing)
-  - index_mode = "pseudo"     -> uses configured bands (may not be true NDVI)
-
-Why:
-  Your MAPIR ODM orthophoto may be RGBA where "Red" channel actually contains NIR
-  (false-color). In that case there is no clean RED band for true NDVI, so we compute
-  a NIR/GREEN vegetation index instead.
-
-Output filenames remain ndvi.tif / ndvi_color.png for backwards compatibility.
-In a later step, we can rename outputs and update the report wording.
+This helps SIP7-style auditability and makes results reproducible.
 """
 
+from __future__ import annotations
+
 from pathlib import Path
-from typing import Dict, Tuple
+from typing import Dict, Tuple, Any
+from datetime import datetime
+import json
 
 import matplotlib.pyplot as plt
 import numpy as np
@@ -52,17 +44,18 @@ ORTHO_MAPIR = (
     / "project/odm_orthophoto/odm_orthophoto.tif"
 )
 
-# NDVI output folder
+# Output folder
 OUT_DIR = PROJECT_ROOT / CONFIG["paths"]["ndvi_output"]
 OUT_TIF = OUT_DIR / "ndvi.tif"
 OUT_PNG = OUT_DIR / "ndvi_color.png"
+OUT_META = OUT_DIR / "metadata.json"
 
-# Thresholds (used elsewhere, printed here for clarity)
-POOR_MAX = CONFIG["ndvi"]["poor_max"]
-MEDIUM_MAX = CONFIG["ndvi"]["medium_max"]
+# Thresholds (used by grid/report)
+POOR_MAX = float(CONFIG["ndvi"]["poor_max"])
+MEDIUM_MAX = float(CONFIG["ndvi"]["medium_max"])
 
-MAPIR_PROFILE: Dict = CONFIG["ndvi"]["mapir_profile"]
-RGB_PROFILE: Dict = CONFIG["ndvi"]["rgb_profile"]
+MAPIR_PROFILE: Dict[str, Any] = CONFIG["ndvi"]["mapir_profile"]
+RGB_PROFILE: Dict[str, Any] = CONFIG["ndvi"]["rgb_profile"]
 
 
 # ---------------------------------------------------------------------
@@ -72,7 +65,7 @@ def _exists(p: Path) -> bool:
     return p.exists()
 
 
-def choose_source() -> Tuple[Path, str, Dict]:
+def choose_source() -> Tuple[Path, str, Dict[str, Any]]:
     """
     Choose which orthophoto to compute from.
 
@@ -98,58 +91,11 @@ def choose_source() -> Tuple[Path, str, Dict]:
 # Index computation
 # ---------------------------------------------------------------------
 def _read_band(src: rasterio.io.DatasetReader, band_idx: int) -> np.ndarray:
-    if band_idx is None:
-        raise ValueError("Band index is None.")
     if band_idx < 1 or band_idx > src.count:
         raise ValueError(
             f"Invalid band index {band_idx}. Available bands: 1..{src.count}"
         )
     return src.read(band_idx).astype("float32")
-
-
-def compute_index(src: rasterio.io.DatasetReader, label: str, profile: Dict) -> Tuple[np.ndarray, str]:
-    """
-    Compute vegetation index based on profile['index_mode'].
-
-    Returns:
-      (index_array, human_readable_index_name)
-    """
-    mode = (profile.get("index_mode") or "").strip().lower()
-
-    if mode == "nir_red":
-        # True NDVI
-        nir_idx = profile.get("nir_band")
-        red_idx = profile.get("red_band")
-        nir = _read_band(src, int(nir_idx))
-        red = _read_band(src, int(red_idx))
-        name = "NDVI (NIR-RED)"
-        print(f"[NDVI] {label} index_mode=nir_red → computing {name}")
-        return _normalized_diff(nir, red), name
-
-    if mode == "nir_green":
-        # GNDVI-like
-        nir_idx = profile.get("nir_band")
-        green_idx = profile.get("green_band")
-        nir = _read_band(src, int(nir_idx))
-        green = _read_band(src, int(green_idx))
-        name = "Vegetation Index (NIR-GREEN, GNDVI-like)"
-        print(f"[NDVI] {label} index_mode=nir_green → computing {name}")
-        return _normalized_diff(nir, green), name
-
-    if mode == "pseudo":
-        # Backwards-compatible pseudo index using configured "nir_band" and "red_band"
-        nir_idx = profile.get("nir_band")
-        red_idx = profile.get("red_band")
-        nir = _read_band(src, int(nir_idx))
-        red = _read_band(src, int(red_idx))
-        name = "Pseudo Vegetation Index (configured bands)"
-        print(f"[NDVI] {label} index_mode=pseudo → computing {name}")
-        return _normalized_diff(nir, red), name
-
-    raise ValueError(
-        f"[NDVI] Unsupported index_mode '{mode}' for {label} profile. "
-        "Supported: 'nir_red', 'nir_green', 'pseudo'."
-    )
 
 
 def _normalized_diff(a: np.ndarray, b: np.ndarray) -> np.ndarray:
@@ -160,6 +106,76 @@ def _normalized_diff(a: np.ndarray, b: np.ndarray) -> np.ndarray:
     eps = 1e-6
     idx = (a - b) / (denom + eps)
     return np.clip(idx, -1.0, 1.0)
+
+
+def compute_index(
+    src: rasterio.io.DatasetReader,
+    label: str,
+    profile: Dict[str, Any],
+) -> Tuple[np.ndarray, Dict[str, Any]]:
+    """
+    Compute vegetation index based on profile['index_mode'].
+
+    Returns:
+      (index_array, meta_index_block)
+
+    meta_index_block includes:
+      - index_name
+      - formula
+      - band_mapping
+      - index_mode
+    """
+    mode = (profile.get("index_mode") or "").strip().lower()
+
+    if mode == "nir_red":
+        nir_idx = int(profile["nir_band"])
+        red_idx = int(profile["red_band"])
+        nir = _read_band(src, nir_idx)
+        red = _read_band(src, red_idx)
+
+        meta = {
+            "index_mode": "nir_red",
+            "index_name": "NDVI",
+            "formula": "(NIR - RED) / (NIR + RED)",
+            "band_mapping": {"nir_band": nir_idx, "red_band": red_idx},
+        }
+        print(f"[VI] {label} index_mode=nir_red → computing NDVI (true NDVI)")
+        return _normalized_diff(nir, red), meta
+
+    if mode == "nir_green":
+        nir_idx = int(profile["nir_band"])
+        green_idx = int(profile["green_band"])
+        nir = _read_band(src, nir_idx)
+        green = _read_band(src, green_idx)
+
+        meta = {
+            "index_mode": "nir_green",
+            "index_name": "GNDVI-like Vegetation Index",
+            "formula": "(NIR - GREEN) / (NIR + GREEN)",
+            "band_mapping": {"nir_band": nir_idx, "green_band": green_idx},
+        }
+        print(f"[VI] {label} index_mode=nir_green → computing Vegetation Index (GNDVI-like)")
+        return _normalized_diff(nir, green), meta
+
+    if mode == "pseudo":
+        nir_idx = int(profile["nir_band"])
+        red_idx = int(profile["red_band"])
+        nir = _read_band(src, nir_idx)
+        red = _read_band(src, red_idx)
+
+        meta = {
+            "index_mode": "pseudo",
+            "index_name": "Pseudo Vegetation Index",
+            "formula": "(B2 - B1) / (B2 + B1)  (configured bands)",
+            "band_mapping": {"band_a": nir_idx, "band_b": red_idx},
+        }
+        print(f"[VI] {label} index_mode=pseudo → computing pseudo vegetation index")
+        return _normalized_diff(nir, red), meta
+
+    raise ValueError(
+        f"[VI] Unsupported index_mode '{mode}' for {label} profile. "
+        "Supported: 'nir_red', 'nir_green', 'pseudo'."
+    )
 
 
 # ---------------------------------------------------------------------
@@ -178,7 +194,7 @@ def save_geotiff(src: rasterio.io.DatasetReader, arr: np.ndarray, out_path: Path
     with rasterio.open(out_path, "w", **profile) as dst:
         dst.write(arr.astype(rasterio.float32), 1)
 
-    print(f"[NDVI] GeoTIFF saved: {out_path}")
+    print(f"[VI] GeoTIFF saved: {out_path}")
 
 
 def save_png(arr: np.ndarray, out_path: Path, title: str) -> None:
@@ -186,7 +202,7 @@ def save_png(arr: np.ndarray, out_path: Path, title: str) -> None:
 
     valid = np.isfinite(arr)
     if not np.any(valid):
-        raise RuntimeError("[NDVI] No valid values to render.")
+        raise RuntimeError("[VI] No valid values to render.")
 
     vals = arr[valid]
     vmin, vmax = np.percentile(vals, [2, 98])
@@ -194,7 +210,7 @@ def save_png(arr: np.ndarray, out_path: Path, title: str) -> None:
         vmin -= 0.1
         vmax += 0.1
 
-    print(f"[NDVI] Rendering PNG with vmin={vmin:.3f}, vmax={vmax:.3f}")
+    print(f"[VI] Rendering PNG with vmin={vmin:.3f}, vmax={vmax:.3f}")
 
     plt.figure(figsize=(10, 8))
     im = plt.imshow(arr, cmap="RdYlGn", vmin=vmin, vmax=vmax)
@@ -204,7 +220,14 @@ def save_png(arr: np.ndarray, out_path: Path, title: str) -> None:
     plt.savefig(out_path, dpi=200)
     plt.close()
 
-    print(f"[NDVI] PNG saved: {out_path}")
+    print(f"[VI] PNG saved: {out_path}")
+
+
+def save_metadata(meta: Dict[str, Any], out_path: Path) -> None:
+    out_path.parent.mkdir(parents=True, exist_ok=True)
+    with out_path.open("w", encoding="utf-8") as f:
+        json.dump(meta, f, indent=2, ensure_ascii=False)
+    print(f"[VI] Metadata saved: {out_path}")
 
 
 # ---------------------------------------------------------------------
@@ -212,19 +235,46 @@ def save_png(arr: np.ndarray, out_path: Path, title: str) -> None:
 # ---------------------------------------------------------------------
 def run_ndvi() -> None:
     """
-    Compute vegetation index from MAPIR or RGB orthophoto (auto-selected).
+    Compute vegetation index from MAPIR or RGB orthophoto (auto-selected),
+    write outputs, and emit metadata.json for traceability.
     """
     print("\n[AgriVision] Vegetation index computation starting...")
     print(f"  thresholds: poor_max={POOR_MAX}, medium_max={MEDIUM_MAX}")
 
     src_path, label, profile = choose_source()
-    print(f"[NDVI] Source orthophoto: {src_path} ({label})")
+    print(f"[VI] Source orthophoto: {src_path} ({label})")
+
+    OUT_DIR.mkdir(parents=True, exist_ok=True)
 
     with rasterio.open(src_path) as src:
-        idx, idx_name = compute_index(src, label, profile)
+        idx, idx_meta = compute_index(src, label, profile)
         save_geotiff(src, idx, OUT_TIF)
-        save_png(idx, OUT_PNG, title=idx_name)
+        save_png(idx, OUT_PNG, title=idx_meta["index_name"])
 
+        meta = {
+            "generated_at_utc": datetime.utcnow().replace(microsecond=0).isoformat() + "Z",
+            "source": {
+                "dataset": label,
+                "orthophoto_path": str(src_path),
+                "band_count": int(src.count),
+            },
+            "index": idx_meta,
+            "classification_thresholds": {
+                "poor_max": POOR_MAX,
+                "medium_max": MEDIUM_MAX,
+            },
+            "artifacts": {
+                "geotiff": str(OUT_TIF),
+                "png": str(OUT_PNG),
+                "metadata": str(OUT_META),
+            },
+            "notes": [
+                "If index_mode is 'nir_green', this is a GNDVI-like vegetation index (not true NDVI).",
+                "Thresholds are user-configurable and may be calibrated per crop/season/sensor.",
+            ],
+        }
+
+    save_metadata(meta, OUT_META)
     print("[AgriVision] Vegetation index computation completed.")
 
 

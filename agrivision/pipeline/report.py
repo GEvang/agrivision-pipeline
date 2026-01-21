@@ -2,467 +2,380 @@
 """
 agrivision.pipeline.report
 
-Generate a static HTML farmer report that combines:
+Generate the final HTML report for AgriVision.
 
-- Latest NDVI color image
-- NDVI basic statistics (min / max / mean)
-- NDVI grid overlay and links to CSV tables
-- Current weather from the OpenAgri WeatherService
-- 5-day forecast summary (new)
-- A table of all grid cells (ID, NDVI, class)
+Features:
+- Reads output/ndvi/metadata.json produced by agrivision.pipeline.ndvi
+  and includes a "Vegetation Index Methodology" section documenting:
+  - index type (index_name)
+  - formula
+  - sensor source dataset (MAPIR / RGB)
+  - band mapping
+  - configured classification thresholds (from ndvi metadata)
+
+- Reads output/ndvi/grid_metadata.json produced by agrivision.pipeline.grid
+  and includes factual grid classification details:
+  - classification mode (fixed vs percentile_fallback)
+  - thresholds used
+
+- Restores a grid table in the report by reading output/ndvi/ndvi_grid_cells.csv
+  and rendering all cells:
+  - supports both mean_index (new) and mean_ndvi (legacy)
+  - labels are index-aware (uses index_name in headings)
+
+Usability:
+- Uses relative links so the report works when opened locally:
+  report:  <output_root>/report_latest.html
+  assets:  <output_root>/ndvi/...
+- Existence checks for all artifacts
+- Handles unreadable/malformed JSON gracefully
+- Escapes metadata-derived content for safe HTML rendering
 """
 
 from __future__ import annotations
 
 from pathlib import Path
 from datetime import datetime
-from typing import Any, Dict, List
+import json
+from json import JSONDecodeError
+import html
 import csv
-
-import numpy as np
-import rasterio
+from typing import Dict, List
 
 from agrivision.utils.settings import get_project_root, load_config
-from agrivision.weather.client import fetch_current_weather, fetch_forecast5
 
 
 CONFIG = load_config()
 PROJECT_ROOT = get_project_root()
 
-NDVI_DIR = PROJECT_ROOT / CONFIG["paths"]["ndvi_output"]
-OUTPUT_ROOT = PROJECT_ROOT / CONFIG["paths"]["output_root"]
+# Output root from config.yaml
+OUTPUT_DIR = PROJECT_ROOT / CONFIG["paths"]["output_root"]
+REPORT_PATH = OUTPUT_DIR / "report_latest.html"
 
+# NDVI/VegIndex output folder configured in config.yaml (typically output/ndvi)
+NDVI_DIR = PROJECT_ROOT / CONFIG["paths"]["ndvi_output"]
+
+# Metadata files
+NDVI_META_PATH = NDVI_DIR / "metadata.json"
+GRID_META_PATH = NDVI_DIR / "grid_metadata.json"
+
+# Expected artifacts (filenames stable)
 NDVI_TIF = NDVI_DIR / "ndvi.tif"
 NDVI_COLOR_PNG = NDVI_DIR / "ndvi_color.png"
-NDVI_GRID_PNG = NDVI_DIR / "ndvi_grid_overlay.png"
-NDVI_GRID_CELLS_CSV = NDVI_DIR / "ndvi_grid_cells.csv"
-NDVI_GRID_CATEGORIES_CSV = NDVI_DIR / "ndvi_grid_categories.csv"
 
-REPORT_HTML = OUTPUT_ROOT / "report_latest.html"
-
-
-def _fmt(value: float | None, digits: int = 3) -> str:
-    if value is None or not np.isfinite(value):
-        return "N/A"
-    return f"{value:.{digits}f}"
+GRID_OVERLAY_PNG = NDVI_DIR / "ndvi_grid_overlay.png"
+GRID_CELLS_CSV = NDVI_DIR / "ndvi_grid_cells.csv"
+GRID_CATEGORIES_CSV = NDVI_DIR / "ndvi_grid_categories.csv"
 
 
-def read_ndvi_stats() -> Dict[str, Any]:
-    if not NDVI_TIF.exists():
-        return {"available": False, "min": None, "max": None, "mean": None}
-
-    with rasterio.open(NDVI_TIF) as src:
-        arr = src.read(1).astype("float32")
-
-    arr[~np.isfinite(arr)] = np.nan
-
-    if np.all(np.isnan(arr)):
-        return {"available": False, "min": None, "max": None, "mean": None}
-
-    return {
-        "available": True,
-        "min": float(np.nanmin(arr)),
-        "max": float(np.nanmax(arr)),
-        "mean": float(np.nanmean(arr)),
-    }
-
-
-def build_weather_context() -> Dict[str, Any]:
+# ---------------------------------------------------------------------
+# Helpers
+# ---------------------------------------------------------------------
+def _rel_to_report(abs_path: Path) -> str:
     """
-    Fetch current weather from OpenAgri WeatherService.
-    If anything fails, return a minimal context with 'N/A' values so that
-    the report can still be generated.
+    Convert an absolute artifact path under OUTPUT_DIR to a relative href/src
+    relative to REPORT_PATH (<output_root>/report_latest.html).
     """
     try:
-        cw = fetch_current_weather()
-    except Exception as e:
-        print(f"[Weather] WARNING: could not fetch weather data: {e}")
-        return {
-            "location_name": "Weather service unavailable",
-            "time_local": "N/A",
-            "temp_c": "N/A",
-            "humidity": "N/A",
-            "pressure_hpa": "N/A",
-            "wind_speed": "N/A",
-            "description": "Weather data not available.",
-        }
-
-    ts_str = cw.timestamp.strftime("%Y-%m-%d %H:%M") if cw.timestamp else "N/A"
-
-    return {
-        "location_name": cw.location_name,
-        "time_local": ts_str,
-        "temp_c": cw.temperature,
-        "humidity": cw.humidity,
-        "pressure_hpa": cw.pressure,
-        "wind_speed": cw.wind_speed,
-        "description": cw.description,
-    }
+        rel = abs_path.relative_to(OUTPUT_DIR)
+        return rel.as_posix()
+    except ValueError:
+        return abs_path.name
 
 
-def build_forecast_context() -> List[Dict[str, Any]]:
-    """
-    Fetch 5-day forecast from OpenAgri WeatherService and convert it into
-    a simplified list of daily aggregates suitable for HTML rendering.
+def _safe(s: object) -> str:
+    if s is None:
+        return ""
+    return html.escape(str(s), quote=True)
 
-    Strategy:
-      - Fetch all forecast points (3-hourly, typically).
-      - Filter to temperature-like entries (data_type/measurement_type contains 'temp').
-      - Group by date, compute mean value per day.
-    """
+
+def _load_json(path: Path) -> dict:
+    if not path.exists():
+        return {}
     try:
-        points = fetch_forecast5()
-    except Exception as e:
-        print(f"[Weather] WARNING: could not fetch 5-day forecast: {e}")
-        return []
+        with path.open("r", encoding="utf-8") as f:
+            data = json.load(f)
+        return data if isinstance(data, dict) else {}
+    except (OSError, JSONDecodeError):
+        return {}
 
-    if not points:
-        return []
 
-    # Filter to temperature-like entries if possible
-    temp_points = []
-    for p in points:
-        dt = (getattr(p, "data_type", "") or "").lower()
-        mt = (getattr(p, "measurement_type", "") or "").lower()
-        if "temp" in dt or "temp" in mt:
-            temp_points.append(p)
+def _get_index_title(ndvi_meta: dict, grid_meta: dict) -> str:
+    """
+    Prefer ndvi metadata index_name; fall back to grid metadata; otherwise generic.
+    """
+    idx = (ndvi_meta.get("index", {}) or {}).get("index_name")
+    if idx:
+        return str(idx)
 
-    if not temp_points:
-        # Fallback: use all points as "generic" values
-        temp_points = points
+    idx2 = grid_meta.get("index_name")
+    if idx2:
+        return str(idx2)
 
-    by_date: Dict[str, List[float]] = {}
-    for p in temp_points:
-        ts = getattr(p, "timestamp", None)
-        val = getattr(p, "value", None)
-        if ts is None or val is None:
-            continue
-        date_str = ts.date().isoformat()
-        by_date.setdefault(date_str, []).append(val)
+    return "Vegetation Index"
 
-    forecast_days: List[Dict[str, Any]] = []
-    for day in sorted(by_date.keys()):
-        vals = by_date[day]
-        if not vals:
-            continue
-        avg_val = float(sum(vals) / len(vals))
-        forecast_days.append(
-            {
-                "date": day,
-                "avg_value": avg_val,
-                "n_points": len(vals),
-            }
+
+def _render_methodology_section(meta: dict) -> str:
+    if not meta:
+        return (
+            "<h2>Vegetation Index Methodology</h2>"
+            "<p><em>No metadata available for this run (metadata.json missing or unreadable).</em></p>"
         )
 
-    return forecast_days
+    index = meta.get("index", {}) or {}
+    thresholds = meta.get("classification_thresholds", {}) or {}
+    source = meta.get("source", {}) or {}
+
+    band_map = index.get("band_mapping", {}) or {}
+    if isinstance(band_map, dict) and band_map:
+        band_map_str = ", ".join(f"{_safe(k)} = {_safe(v)}" for k, v in band_map.items())
+    else:
+        band_map_str = "N/A"
+
+    notes_html = ""
+    notes = meta.get("notes", [])
+    if isinstance(notes, list) and notes:
+        notes_html = "<ul>" + "".join(f"<li>{_safe(n)}</li>" for n in notes) + "</ul>"
+
+    return f"""
+<h2>Vegetation Index Methodology</h2>
+<table border="1" cellpadding="6" cellspacing="0">
+  <tr><th align="left">Index type</th><td>{_safe(index.get("index_name", "Unknown"))}</td></tr>
+  <tr><th align="left">Formula</th><td><code>{_safe(index.get("formula", "N/A"))}</code></td></tr>
+  <tr><th align="left">Source dataset</th><td>{_safe(source.get("dataset", "Unknown"))}</td></tr>
+  <tr><th align="left">Band mapping</th><td>{band_map_str}</td></tr>
+  <tr><th align="left">Configured poor threshold (max)</th><td>{_safe(thresholds.get("poor_max", "N/A"))}</td></tr>
+  <tr><th align="left">Configured medium threshold (max)</th><td>{_safe(thresholds.get("medium_max", "N/A"))}</td></tr>
+  <tr><th align="left">Generated at (UTC)</th><td>{_safe(meta.get("generated_at_utc", "N/A"))}</td></tr>
+</table>
+{notes_html}
+""".strip()
 
 
-def load_grid_cells() -> List[Dict[str, str]]:
+def _render_grid_metadata_section(grid_meta: dict) -> str:
+    if not grid_meta:
+        return (
+            "<h3>Grid Classification Details</h3>"
+            "<p><em>No grid metadata available (grid_metadata.json missing or unreadable).</em></p>"
+        )
+
+    mode = grid_meta.get("classification_mode", "Unknown")
+    thresholds_used = grid_meta.get("thresholds_used", {}) or {}
+    poor_used = thresholds_used.get("poor_max", "N/A")
+    medium_used = thresholds_used.get("medium_max", "N/A")
+    generated_at = grid_meta.get("generated_at_utc", "N/A")
+    index_name = grid_meta.get("index_name", "Vegetation Index")
+
+    mode_expl = "Unknown."
+    if mode == "fixed":
+        mode_expl = "Fixed thresholds from configuration were applied."
+    elif mode == "percentile_fallback":
+        mode_expl = "Percentile-based thresholds were applied because fixed thresholds produced insufficient class separation."
+
+    return f"""
+<h3>Grid Classification Details</h3>
+<table border="1" cellpadding="6" cellspacing="0">
+  <tr><th align="left">Index</th><td>{_safe(index_name)}</td></tr>
+  <tr><th align="left">Classification mode</th><td>{_safe(mode)}</td></tr>
+  <tr><th align="left">Mode explanation</th><td>{_safe(mode_expl)}</td></tr>
+  <tr><th align="left">Poor threshold used (max)</th><td>{_safe(poor_used)}</td></tr>
+  <tr><th align="left">Medium threshold used (max)</th><td>{_safe(medium_used)}</td></tr>
+  <tr><th align="left">Grid metadata generated at (UTC)</th><td>{_safe(generated_at)}</td></tr>
+</table>
+""".strip()
+
+
+def _render_artifact_link(label: str, path: Path) -> str:
+    if path.exists():
+        href = _rel_to_report(path)
+        return f'<li><strong>{_safe(label)}:</strong> <a href="{_safe(href)}">{_safe(href)}</a></li>'
+    return f"<li><strong>{_safe(label)}:</strong> <em>Not found</em></li>"
+
+
+def _render_image_if_exists(title: str, path: Path) -> str:
+    if not path.exists():
+        return f"<p><em>{_safe(title)} not found.</em></p>"
+    src = _rel_to_report(path)
+    return f"""
+<h3>{_safe(title)}</h3>
+<img src="{_safe(src)}" alt="{_safe(title)}" style="max-width: 100%; height: auto; border: 1px solid #ddd;" />
+""".strip()
+
+
+def _load_grid_cells() -> List[Dict[str, str]]:
     """
-    Load ndvi_grid_cells.csv into a list of dicts:
-        {'cell_id', 'row_label', 'col_label', 'mean_ndvi', 'class'}
-    If the CSV does not exist, return [].
+    Load ndvi_grid_cells.csv into a list of dict rows.
+    Supports both schemas:
+      - mean_index (new)
+      - mean_ndvi (legacy)
     """
-    if not NDVI_GRID_CELLS_CSV.exists():
+    if not GRID_CELLS_CSV.exists():
         return []
 
-    cells: List[Dict[str, str]] = []
-    with NDVI_GRID_CELLS_CSV.open("r", newline="", encoding="utf-8") as f:
+    rows: List[Dict[str, str]] = []
+    with GRID_CELLS_CSV.open("r", newline="", encoding="utf-8") as f:
         reader = csv.DictReader(f)
-        for row in reader:
-            cells.append(row)
-    return cells
+        for r in reader:
+            rows.append(r)
+    return rows
 
 
-def generate_html(
-    ndvi_stats: Dict[str, Any],
-    weather_ctx: Dict[str, Any],
-    grid_cells: List[Dict[str, str]],
-    forecast_ctx: List[Dict[str, Any]],
-) -> str:
-    if NDVI_COLOR_PNG.exists():
-        ndvi_img_tag = '<img src="ndvi/ndvi_color.png" alt="NDVI map" class="ndvi-img" />'
-    else:
-        ndvi_img_tag = "<p>No NDVI image found. Run the NDVI pipeline first.</p>"
+def _render_grid_table(index_title: str, rows: List[Dict[str, str]]) -> str:
+    if not rows:
+        return "<p><em>No grid cell CSV available.</em></p>"
 
-    if NDVI_GRID_PNG.exists():
-        ndvi_grid_tag = '<img src="ndvi/ndvi_grid_overlay.png" alt="NDVI grid overlay" class="ndvi-img" />'
-    else:
-        ndvi_grid_tag = "<p>No NDVI grid overlay found. Run the NDVI grid step.</p>"
+    body = []
+    for r in rows:
+        mean_val = r.get("mean_index")
+        if mean_val in (None, ""):
+            mean_val = r.get("mean_ndvi", "")
 
-    cells_link = "ndvi/ndvi_grid_cells.csv" if NDVI_GRID_CELLS_CSV.exists() else None
-    cats_link = "ndvi/ndvi_grid_categories.csv" if NDVI_GRID_CATEGORIES_CSV.exists() else None
-
-    csv_links_html_parts = []
-    if cells_link:
-        csv_links_html_parts.append(f'<a href="{cells_link}" download>Per-cell NDVI CSV</a>')
-    if cats_link:
-        csv_links_html_parts.append(f'<a href="{cats_link}" download>Categories CSV</a>')
-
-    csv_links_html = " | ".join(csv_links_html_parts) if csv_links_html_parts else "<em>No NDVI CSVs found.</em>"
-
-    # Build HTML rows for grid table
-    grid_rows_html = ""
-    for cell in grid_cells:
-        cls = cell.get("class", "")
-        mean_str = cell.get("mean_ndvi", "")
+        cls = r.get("class", "")
         row_class = f"class-{cls}" if cls else ""
-        grid_rows_html += (
-            f'<tr class="{row_class}">'
-            f"<td>{cell.get('cell_id', '')}</td>"
-            f"<td>{cell.get('row_label', '')}</td>"
-            f"<td>{cell.get('col_label', '')}</td>"
-            f"<td>{mean_str}</td>"
-            f"<td>{cls}</td>"
-            "</tr>"
+
+        body.append(
+            f"""
+<tr class="{_safe(row_class)}">
+  <td>{_safe(r.get("cell_id", ""))}</td>
+  <td>{_safe(r.get("row_label", ""))}</td>
+  <td>{_safe(r.get("col_label", ""))}</td>
+  <td>{_safe(mean_val)}</td>
+  <td>{_safe(cls)}</td>
+</tr>
+""".strip()
         )
 
-    # Build forecast table HTML
-    if not forecast_ctx:
-        forecast_html = "<p>No forecast data available.</p>"
-    else:
-        forecast_rows = ""
-        for day in forecast_ctx:
-            forecast_rows += (
-                "<tr>"
-                f"<td>{day['date']}</td>"
-                f"<td>{_fmt(day['avg_value'], digits=1)}</td>"
-                f"<td>{day['n_points']}</td>"
-                "</tr>"
-            )
-        forecast_html = f"""
-        <table class="stats-table">
-          <tr>
-            <th>Date</th>
-            <th>Avg. temperature (°C)</th>
-            <th>Points</th>
-          </tr>
-          {forecast_rows}
-        </table>
-        """
+    return f"""
+<div style="max-height: 420px; overflow-y: auto; border: 1px solid #ddd; padding: 0; margin-top: 10px;">
+  <table style="width: 100%; border-collapse: collapse;" border="1" cellpadding="6" cellspacing="0">
+    <thead style="position: sticky; top: 0; background: #f0f0f0;">
+      <tr>
+        <th align="left">Cell ID</th>
+        <th align="left">Row</th>
+        <th align="left">Col</th>
+        <th align="left">Mean { _safe(index_title) }</th>
+        <th align="left">Class</th>
+      </tr>
+    </thead>
+    <tbody>
+      {'\n'.join(body)}
+    </tbody>
+  </table>
+</div>
 
-    html = f"""<!DOCTYPE html>
+<style>
+  .class-poor {{ background-color: #ffe0e0; }}
+  .class-medium {{ background-color: #fff9d9; }}
+  .class-good {{ background-color: #e4ffe0; }}
+  .class-no_data {{ background-color: #f0f0f0; color: #777; }}
+</style>
+""".strip()
+
+
+# ---------------------------------------------------------------------
+# Main report generator
+# ---------------------------------------------------------------------
+def run_report() -> None:
+    print("\n[AgriVision] Generating HTML report...")
+
+    OUTPUT_DIR.mkdir(parents=True, exist_ok=True)
+
+    ndvi_meta = _load_json(NDVI_META_PATH)
+    grid_meta = _load_json(GRID_META_PATH)
+
+    index_title = _get_index_title(ndvi_meta, grid_meta)
+    methodology_html = _render_methodology_section(ndvi_meta)
+    grid_meta_html = _render_grid_metadata_section(grid_meta)
+
+    grid_rows = _load_grid_cells()
+    grid_table_html = _render_grid_table(index_title=index_title, rows=grid_rows)
+
+    generated_at = datetime.utcnow().strftime("%Y-%m-%d %H:%M UTC")
+
+    artifacts_list_html = "\n".join(
+        [
+            _render_artifact_link(f"{index_title} Map (PNG)", NDVI_COLOR_PNG),
+            _render_artifact_link(f"{index_title} GeoTIFF", NDVI_TIF),
+            _render_artifact_link("Grid Overlay (PNG)", GRID_OVERLAY_PNG),
+            _render_artifact_link("Grid Cells (CSV)", GRID_CELLS_CSV),
+            _render_artifact_link("Grid Categories (CSV)", GRID_CATEGORIES_CSV),
+            _render_artifact_link("Index Run Metadata (JSON)", NDVI_META_PATH),
+            _render_artifact_link("Grid Run Metadata (JSON)", GRID_META_PATH),
+        ]
+    )
+
+    html_doc = f"""<!DOCTYPE html>
 <html lang="en">
 <head>
-<meta charset="UTF-8" />
-<title>AgriVision Field Report</title>
-<style>
+  <meta charset="utf-8" />
+  <title>AgriVision Vegetation Analysis Report</title>
+  <style>
     body {{
-        font-family: system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
-        background-color: #f3f6f7;
-        margin: 0;
-        padding: 0;
-        color: #222;
+      font-family: Arial, sans-serif;
+      margin: 40px;
+      color: #111;
     }}
-    header {{
-        background: linear-gradient(135deg, #114b5f, #028090);
-        color: #fff;
-        padding: 1.5rem 1rem;
-        text-align: center;
+    h1, h2 {{
+      color: #2a5d34;
     }}
-    header h1 {{
-        margin: 0;
-        font-size: 1.8rem;
-        letter-spacing: 0.03em;
+    table {{
+      border-collapse: collapse;
+      margin-top: 10px;
     }}
-    header p {{
-        margin: 0;
-        opacity: 0.8;
+    th {{
+      background-color: #f0f0f0;
     }}
-    main {{
-        max-width: 1100px;
-        margin: 2rem auto;
-        padding: 0 1rem 3rem;
+    code {{
+      background-color: #f7f7f7;
+      padding: 2px 4px;
     }}
-    section {{
-        background-color: #ffffff;
-        border-radius: 8px;
-        padding: 1.5rem;
-        margin-bottom: 1.5rem;
-        box-shadow: 0 1px 3px rgba(0,0,0,0.08);
+    a {{
+      color: #2a5d34;
+      text-decoration: none;
     }}
-    h2 {{
-        margin-top: 0;
-        font-size: 1.3rem;
-        color: #114b5f;
+    a:hover {{
+      text-decoration: underline;
     }}
-    .ndvi-img {{
-        max-width: 100%;
-        height: auto;
-        display: block;
-        margin: 0 auto;
-        border-radius: 6px;
-        border: 1px solid #ddd;
-    }}
-    .stats-table {{
-        width: 100%;
-        border-collapse: collapse;
-        margin-top: 0.5rem;
-    }}
-    .stats-table th,
-    .stats-table td {{
-        border: 1px solid #ddd;
-        padding: 0.4rem 0.6rem;
-        text-align: left;
-        font-size: 0.9rem;
-    }}
-    .stats-table th {{
-        background-color: #f0f4f5;
-    }}
-    .meta-note {{
-        font-size: 0.85rem;
-        color: #555;
-        margin-top: 0.5rem;
-    }}
-    .csv-links {{
-        margin-top: 0.6rem;
-        font-size: 0.9rem;
-    }}
-    .csv-links a {{
-        color: #114b5f;
-        text-decoration: none;
-        font-weight: 500;
-    }}
-    .csv-links a:hover {{
-        text-decoration: underline;
-    }}
-
-    /* Grid table */
-    .grid-table-wrapper {{
-        max-height: 400px;
-        overflow-y: auto;
-        margin-top: 1rem;
-        border: 1px solid #ddd;
-        border-radius: 6px;
-    }}
-    .grid-table {{
-        width: 100%;
-        border-collapse: collapse;
-        font-size: 0.85rem;
-    }}
-    .grid-table th,
-    .grid-table td {{
-        border: 1px solid #ddd;
-        padding: 0.35rem 0.5rem;
-        text-align: center;
-    }}
-    .grid-table thead th {{
-        position: sticky;
-        top: 0;
-        background-color: #f2f6f7;
-        z-index: 1;
-    }}
-
-    /* Row coloring by class */
-    .class-poor {{ background-color: #ffe0e0; }}
-    .class-medium {{ background-color: #fff9d9; }}
-    .class-good {{ background-color: #e4ffe0; }}
-    .class-no_data {{ background-color: #f0f0f0; color: #777; }}
-</style>
+  </style>
 </head>
 <body>
-<header>
-  <h1>AgriVision Field Report</h1>
-  <p>{weather_ctx.get("location_name", "Field location")} – generated {datetime.now().strftime("%Y-%m-%d %H:%M")}</p>
-</header>
 
-<main>
+  <h1>AgriVision Vegetation Analysis Report</h1>
+  <p><em>Generated at {generated_at}</em></p>
 
-<section>
-  <h2>Current Weather (OpenAgri WeatherService)</h2>
-  <p><strong>Time:</strong> {weather_ctx.get("time_local", "N/A")}</p>
-  <p><strong>Temperature:</strong> {weather_ctx.get("temp_c", "N/A")} °C</p>
-  <p><strong>Humidity:</strong> {weather_ctx.get("humidity", "N/A")} %</p>
-  <p><strong>Pressure:</strong> {weather_ctx.get("pressure_hpa", "N/A")} hPa</p>
-  <p><strong>Wind speed:</strong> {weather_ctx.get("wind_speed", "N/A")} m/s</p>
-  <p><strong>Conditions:</strong> {weather_ctx.get("description", "N/A")}</p>
-  <p class="meta-note">
-    Weather data provided by the OpenAgri WeatherService for the configured field location.
+  {methodology_html}
+
+  <h2>Outputs</h2>
+  <p>
+    The following products were generated as part of this run.
   </p>
-</section>
 
-<section>
-  <h2>5-Day Forecast</h2>
-  {forecast_html}
-  <p class="meta-note">
-    Daily averages based on the 5-day forecast returned by the OpenAgri WeatherService.
+  <ul>
+    {artifacts_list_html}
+  </ul>
+
+  <h2>{_safe(index_title)} Visualization</h2>
+  {_render_image_if_exists(f"{index_title} Map", NDVI_COLOR_PNG)}
+
+  <h2>Grid-Based Analysis</h2>
+  <p>
+    Grid statistics are computed by averaging vegetation index values within each grid cell and classifying each cell
+    into poor / medium / good using thresholds recorded for this grid run.
   </p>
-</section>
 
-<section>
-  <h2>NDVI Overview</h2>
-  {ndvi_img_tag}
-  <table class="stats-table">
-    <tr>
-      <th>Statistic</th>
-      <th>Value</th>
-    </tr>
-    <tr>
-      <td>NDVI minimum</td>
-      <td>{_fmt(ndvi_stats.get("min"))}</td>
-    </tr>
-    <tr>
-      <td>NDVI maximum</td>
-      <td>{_fmt(ndvi_stats.get("max"))}</td>
-    </tr>
-    <tr>
-      <td>NDVI mean</td>
-      <td>{_fmt(ndvi_stats.get("mean"))}</td>
-    </tr>
-  </table>
-  <p class="meta-note">
-    NDVI values range from -1 (no vegetation) to +1 (dense healthy vegetation).
-  </p>
-</section>
+  {grid_meta_html}
 
-<section>
-  <h2>NDVI Grid Map</h2>
-  {ndvi_grid_tag}
-  <div class="csv-links">
-    {csv_links_html}
-  </div>
-</section>
+  {_render_image_if_exists("Grid Overlay", GRID_OVERLAY_PNG)}
 
-<section>
-  <h2>Grid Cells Detail</h2>
-  <div class="grid-table-wrapper">
-    <table class="grid-table">
-      <thead>
-        <tr>
-          <th>Cell ID</th>
-          <th>Row</th>
-          <th>Col</th>
-          <th>Mean NDVI</th>
-          <th>Class</th>
-        </tr>
-      </thead>
-      <tbody>
-        {grid_rows_html}
-      </tbody>
-    </table>
-  </div>
-</section>
+  <h3>Grid Cells Detail</h3>
+  {grid_table_html}
 
-</main>
 </body>
 </html>
 """
-    return html
 
-
-def run_report() -> None:
-    ndvi_stats = read_ndvi_stats()
-    weather_ctx = build_weather_context()
-    grid_cells = load_grid_cells()
-    forecast_ctx = build_forecast_context()
-
-    REPORT_HTML.parent.mkdir(parents=True, exist_ok=True)
-    html = generate_html(ndvi_stats, weather_ctx, grid_cells, forecast_ctx)
-    REPORT_HTML.write_text(html, encoding="utf-8")
-
-    print(f"[AgriVision] Report written to: {REPORT_HTML}")
-    print("[AgriVision] Open it in a browser, for example:")
-    print(f"  firefox {REPORT_HTML}")
+    REPORT_PATH.write_text(html_doc, encoding="utf-8")
+    print(f"[AgriVision] Report written to: {REPORT_PATH}")
 
 
 if __name__ == "__main__":
