@@ -15,16 +15,15 @@ Includes:
 
 from __future__ import annotations
 
-from pathlib import Path
-from datetime import datetime
-import json
-from json import JSONDecodeError
-import html
 import csv
-from typing import Dict, List, Optional, Any
+import html
+import json
+from datetime import datetime
+from json import JSONDecodeError
+from pathlib import Path
+from typing import Any, Dict, List, Optional
 
 from agrivision.utils.settings import get_project_root, load_config
-
 
 CONFIG = load_config()
 PROJECT_ROOT = get_project_root()
@@ -200,7 +199,8 @@ def _render_grid_table(index_title: str, rows: List[Dict[str, str]]) -> str:
 </tr>
 """.strip()
         )
-
+        
+    body_html = "\n".join(body)
     return f"""
 <div style="max-height: 420px; overflow-y: auto; border: 1px solid #ddd; padding: 0; margin-top: 10px;">
   <table style="width: 100%; border-collapse: collapse;" border="1" cellpadding="6" cellspacing="0">
@@ -214,7 +214,7 @@ def _render_grid_table(index_title: str, rows: List[Dict[str, str]]) -> str:
       </tr>
     </thead>
     <tbody>
-      {'\n'.join(body)}
+      {body_html}
     </tbody>
   </table>
 </div>

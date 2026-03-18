@@ -27,16 +27,15 @@ Artifacts written:
 
 from __future__ import annotations
 
-from pathlib import Path
-from typing import Any, Dict, Optional, Tuple, List
-from datetime import date, timedelta
 import json
+import subprocess
 import time
+import urllib.error
 import urllib.parse
 import urllib.request
-import urllib.error
-import subprocess
-
+from datetime import date, timedelta
+from pathlib import Path
+from typing import Any, Dict, List, Optional, Tuple
 
 PROJECT_ROOT = Path(__file__).resolve().parents[2]
 CONFIG_PATH = PROJECT_ROOT / "config.yaml"

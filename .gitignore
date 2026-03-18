@@ -108,3 +108,4 @@ docker-compose.override.yml
 
 output/irrigation/auth_token.json
 output/irrigation/eto.json
+OpenAgri-IrrigationManagement/

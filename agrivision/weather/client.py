@@ -21,16 +21,15 @@ The WeatherService itself may use OpenWeather and/or other sources internally.
 
 from __future__ import annotations
 
+import subprocess
+import time
 from dataclasses import dataclass
 from datetime import datetime
 from typing import Any, Dict, List, Optional
-import subprocess
-import time
 
 import requests
 
 from agrivision.utils.settings import get_project_root, load_config
-
 
 CONFIG = load_config()
 PROJECT_ROOT = get_project_root()

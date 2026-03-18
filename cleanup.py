@@ -16,9 +16,9 @@ Usage:
     python cleanup.py --interactive
 """
 
+import argparse
 import shutil
 from pathlib import Path
-import argparse
 
 PROJECT_ROOT = Path(__file__).resolve().parent
 

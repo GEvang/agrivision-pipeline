@@ -49,7 +49,6 @@ from pathlib import Path
 
 from agrivision.utils.settings import get_project_root, load_config
 
-
 CONFIG = load_config()
 PROJECT_ROOT = get_project_root()
 
@@ -223,7 +222,7 @@ def run_odm_rgb() -> None:
         resized_dir=IMAGES_RESIZED_RGB,
     )
 
-    project_dir = _prepare_odm_project(
+    _prepare_odm_project(
         src_images_dir=input_folder,
         project_root=ODM_PROJECT_ROOT_RGB,
         label="RGB",
@@ -257,7 +256,7 @@ def run_odm_mapir() -> None:
         resized_dir=IMAGES_RESIZED_MAPIR,
     )
 
-    project_dir = _prepare_odm_project(
+    _prepare_odm_project(
         src_images_dir=input_folder,
         project_root=ODM_PROJECT_ROOT_MAPIR,
         label="MAPIR",

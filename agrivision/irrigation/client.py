@@ -25,18 +25,17 @@ Swagger shows ETo endpoint as:
 
 from __future__ import annotations
 
-from dataclasses import dataclass
-from datetime import date, datetime
-from pathlib import Path
-from typing import Any, Dict, List, Optional, Tuple
 import os
 import subprocess
 import time
+from dataclasses import dataclass
+from datetime import date, datetime
+from pathlib import Path
+from typing import Any, Dict, List
 
 import requests
 
 from agrivision.utils.settings import get_project_root, load_config
-
 
 CONFIG = load_config()
 PROJECT_ROOT = get_project_root()

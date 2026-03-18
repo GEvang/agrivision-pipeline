@@ -20,9 +20,10 @@ If a given source folder is missing or empty, that dataset is skipped
 with a friendly message.
 """
 
-from pathlib import Path
-from PIL import Image
 import shutil
+from pathlib import Path
+
+from PIL import Image
 
 from agrivision.utils.settings import get_project_root, load_config
 

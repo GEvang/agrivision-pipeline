@@ -19,10 +19,11 @@ Control which steps run using CLI flags:
 """
 
 import argparse
-from pathlib import Path
 import os
+from pathlib import Path
 
 from agrivision.pipeline.controller import run_full_pipeline
+
 
 def load_local_env() -> None:
     env_path = Path(__file__).resolve().parent / ".env"
