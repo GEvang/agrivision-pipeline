@@ -70,16 +70,16 @@ ndvi:
 
 weather:
   base_url: "http://127.0.0.1:8010"
-  username: "root"
-  password: "root"
-  openweather_api_key: "API KEY"
+  username: ""
+  password: ""
+  openweather_api_key: ""
 
 # OpenAgri Irrigation Management Service integration
 irrigation:
   base_url: "http://127.0.0.1:8004"
   auth:
-    email: "dummy@email.com"
-    password: "StrongPass1"
+    email: ""
+    password: ""
   default_parcel_wkt: "POINT (35.2600 25.6000)"
 
   # ETo retrieval settings (official get-calculations workflow)
