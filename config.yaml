@@ -74,7 +74,19 @@ weather:
   password: "root"
   openweather_api_key: "API KEY"
 
+# OpenAgri Irrigation Management Service integration
+irrigation:
+  base_url: "http://127.0.0.1:8004"
+  auth:
+    email: "dummy@email.com"
+    password: "StrongPass1"
+  default_parcel_wkt: "POINT (35.2600 25.6000)"
+
+  # ETo retrieval settings (official get-calculations workflow)
+  eto:
+    location_id: 1
+    days_back: 1
+
 orthophoto:
   odm_docker_image: "opendronemap/odm:latest"
   orthophoto_resolution_cm: 1
-

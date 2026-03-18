@@ -4,32 +4,13 @@ agrivision.pipeline.report
 
 Generate the final HTML report for AgriVision.
 
-Features:
-- Reads output/ndvi/metadata.json produced by agrivision.pipeline.ndvi
-  and includes a "Vegetation Index Methodology" section documenting:
-  - index type (index_name)
-  - formula
-  - sensor source dataset (MAPIR / RGB)
-  - band mapping
-  - configured classification thresholds (from ndvi metadata)
-
-- Reads output/ndvi/grid_metadata.json produced by agrivision.pipeline.grid
-  and includes factual grid classification details:
-  - classification mode (fixed vs percentile_fallback)
-  - thresholds used
-
-- Restores a grid table in the report by reading output/ndvi/ndvi_grid_cells.csv
-  and rendering all cells:
-  - supports both mean_index (new) and mean_ndvi (legacy)
-  - labels are index-aware (uses index_name in headings)
-
-Usability:
-- Uses relative links so the report works when opened locally:
-  report:  <output_root>/report_latest.html
-  assets:  <output_root>/ndvi/...
-- Existence checks for all artifacts
-- Handles unreadable/malformed JSON gracefully
-- Escapes metadata-derived content for safe HTML rendering
+Includes:
+- Vegetation index methodology + artifacts
+- Grid analysis table
+- Irrigation integration summary:
+  - service status + auth
+  - parcel count
+  - ETo get-calculations request summary + count + preview + link to eto.json
 """
 
 from __future__ import annotations
@@ -40,7 +21,7 @@ import json
 from json import JSONDecodeError
 import html
 import csv
-from typing import Dict, List
+from typing import Dict, List, Optional, Any
 
 from agrivision.utils.settings import get_project_root, load_config
 
@@ -48,34 +29,22 @@ from agrivision.utils.settings import get_project_root, load_config
 CONFIG = load_config()
 PROJECT_ROOT = get_project_root()
 
-# Output root from config.yaml
 OUTPUT_DIR = PROJECT_ROOT / CONFIG["paths"]["output_root"]
 REPORT_PATH = OUTPUT_DIR / "report_latest.html"
 
-# NDVI/VegIndex output folder configured in config.yaml (typically output/ndvi)
 NDVI_DIR = PROJECT_ROOT / CONFIG["paths"]["ndvi_output"]
 
-# Metadata files
 NDVI_META_PATH = NDVI_DIR / "metadata.json"
 GRID_META_PATH = NDVI_DIR / "grid_metadata.json"
 
-# Expected artifacts (filenames stable)
 NDVI_TIF = NDVI_DIR / "ndvi.tif"
 NDVI_COLOR_PNG = NDVI_DIR / "ndvi_color.png"
-
 GRID_OVERLAY_PNG = NDVI_DIR / "ndvi_grid_overlay.png"
 GRID_CELLS_CSV = NDVI_DIR / "ndvi_grid_cells.csv"
 GRID_CATEGORIES_CSV = NDVI_DIR / "ndvi_grid_categories.csv"
 
 
-# ---------------------------------------------------------------------
-# Helpers
-# ---------------------------------------------------------------------
 def _rel_to_report(abs_path: Path) -> str:
-    """
-    Convert an absolute artifact path under OUTPUT_DIR to a relative href/src
-    relative to REPORT_PATH (<output_root>/report_latest.html).
-    """
     try:
         rel = abs_path.relative_to(OUTPUT_DIR)
         return rel.as_posix()
@@ -101,17 +70,12 @@ def _load_json(path: Path) -> dict:
 
 
 def _get_index_title(ndvi_meta: dict, grid_meta: dict) -> str:
-    """
-    Prefer ndvi metadata index_name; fall back to grid metadata; otherwise generic.
-    """
     idx = (ndvi_meta.get("index", {}) or {}).get("index_name")
     if idx:
         return str(idx)
-
     idx2 = grid_meta.get("index_name")
     if idx2:
         return str(idx2)
-
     return "Vegetation Index"
 
 
@@ -125,12 +89,11 @@ def _render_methodology_section(meta: dict) -> str:
     index = meta.get("index", {}) or {}
     thresholds = meta.get("classification_thresholds", {}) or {}
     source = meta.get("source", {}) or {}
-
     band_map = index.get("band_mapping", {}) or {}
+
+    band_map_str = "N/A"
     if isinstance(band_map, dict) and band_map:
         band_map_str = ", ".join(f"{_safe(k)} = {_safe(v)}" for k, v in band_map.items())
-    else:
-        band_map_str = "N/A"
 
     notes_html = ""
     notes = meta.get("notes", [])
@@ -203,15 +166,8 @@ def _render_image_if_exists(title: str, path: Path) -> str:
 
 
 def _load_grid_cells() -> List[Dict[str, str]]:
-    """
-    Load ndvi_grid_cells.csv into a list of dict rows.
-    Supports both schemas:
-      - mean_index (new)
-      - mean_ndvi (legacy)
-    """
     if not GRID_CELLS_CSV.exists():
         return []
-
     rows: List[Dict[str, str]] = []
     with GRID_CELLS_CSV.open("r", newline="", encoding="utf-8") as f:
         reader = csv.DictReader(f)
@@ -272,10 +228,98 @@ def _render_grid_table(index_title: str, rows: List[Dict[str, str]]) -> str:
 """.strip()
 
 
-# ---------------------------------------------------------------------
-# Main report generator
-# ---------------------------------------------------------------------
-def run_report() -> None:
+def _render_irrigation_section(irrigation_summary: Optional[Dict[str, Any]]) -> str:
+    if not irrigation_summary:
+        return (
+            "<h2>Irrigation Service Integration</h2>"
+            "<p><em>No irrigation integration data provided for this run.</em></p>"
+        )
+
+    enabled = bool(irrigation_summary.get("enabled", True))
+    authenticated = bool(irrigation_summary.get("authenticated", False))
+    base_url = irrigation_summary.get("base_url", "")
+    email = irrigation_summary.get("email", "")
+    parcel_count = irrigation_summary.get("parcel_count", "unknown")
+    created_default = bool(irrigation_summary.get("created_default_parcel", False))
+    notes = irrigation_summary.get("notes", [])
+
+    eto = irrigation_summary.get("eto", {}) or {}
+    eto_method = eto.get("method", "get_calculations")
+    eto_ok = bool(eto.get("ok", False))
+    eto_status = eto.get("http_status", None)
+    eto_location_id = eto.get("location_id", "")
+    eto_from = eto.get("from_date", "")
+    eto_to = eto.get("to_date", "")
+    eto_count = eto.get("count", None)
+    eto_preview = eto.get("preview", "")
+    eto_artifact_path = eto.get("artifact_path", "")
+
+    status_label = "OK" if authenticated else "Not authenticated / unavailable"
+    status_color = "#2a5d34" if authenticated else "#a13a3a"
+
+    notes_html = ""
+    if isinstance(notes, list) and notes:
+        notes_html = "<ul>" + "".join(f"<li>{_safe(n)}</li>" for n in notes) + "</ul>"
+
+    eto_label = "OK" if eto_ok else "Failed"
+    eto_color = "#2a5d34" if eto_ok else "#a13a3a"
+
+    # artifact link (eto.json)
+    eto_link_html = ""
+    try:
+        eto_path = Path(eto_artifact_path)
+        if eto_path.exists():
+            href = _rel_to_report(eto_path)
+            eto_link_html = f'<a href="{_safe(href)}">{_safe(href)}</a>'
+        else:
+            eto_link_html = "<em>Not found</em>"
+    except Exception:
+        eto_link_html = "<em>Not available</em>"
+
+    # Count messaging
+    if eto_ok and eto_count == 0:
+        eto_count_msg = "0 values (no calculations returned yet — expected if meteo ingestion hasn’t populated the DB for this range)"
+    elif eto_count is None:
+        eto_count_msg = "Unknown (response schema not recognized)"
+    else:
+        eto_count_msg = str(eto_count)
+
+    eto_preview_html = ""
+    if eto_preview:
+        eto_preview_html = f"<pre style='white-space: pre-wrap; max-height: 260px; overflow:auto; border:1px solid #ddd; padding:10px;'>{_safe(eto_preview)}</pre>"
+
+    return f"""
+<h2>Irrigation Service Integration</h2>
+<p>
+  This run includes an integration check against the OpenAgri Irrigation Management Service:
+  authentication, parcel availability, and ETo retrieval using the official <code>{_safe(eto_method)}</code> workflow.
+</p>
+
+<table border="1" cellpadding="6" cellspacing="0">
+  <tr><th align="left">Enabled</th><td>{_safe(enabled)}</td></tr>
+  <tr><th align="left">Service URL</th><td>{_safe(base_url)}</td></tr>
+  <tr><th align="left">Status</th><td><span style="color:{status_color}; font-weight:bold;">{_safe(status_label)}</span></td></tr>
+  <tr><th align="left">Authenticated as</th><td>{_safe(email)}</td></tr>
+  <tr><th align="left">Parcels visible to user</th><td>{_safe(parcel_count)}</td></tr>
+  <tr><th align="left">Created default parcel this run</th><td>{_safe(created_default)}</td></tr>
+</table>
+
+<h3>ETo (FAO-56 Penman–Monteith) — Official get-calculations workflow</h3>
+<table border="1" cellpadding="6" cellspacing="0">
+  <tr><th align="left">Request status</th><td><span style="color:{eto_color}; font-weight:bold;">{_safe(eto_label)}</span> (HTTP {_safe(eto_status)})</td></tr>
+  <tr><th align="left">Location ID</th><td>{_safe(eto_location_id)}</td></tr>
+  <tr><th align="left">Date range</th><td>{_safe(eto_from)} → {_safe(eto_to)}</td></tr>
+  <tr><th align="left">Returned values</th><td>{_safe(eto_count_msg)}</td></tr>
+  <tr><th align="left">Raw response artifact</th><td>{eto_link_html}</td></tr>
+</table>
+
+{eto_preview_html}
+
+{notes_html}
+""".strip()
+
+
+def run_report(irrigation_summary: Optional[Dict[str, Any]] = None) -> None:
     print("\n[AgriVision] Generating HTML report...")
 
     OUTPUT_DIR.mkdir(parents=True, exist_ok=True)
@@ -289,6 +333,8 @@ def run_report() -> None:
 
     grid_rows = _load_grid_cells()
     grid_table_html = _render_grid_table(index_title=index_title, rows=grid_rows)
+
+    irrigation_html = _render_irrigation_section(irrigation_summary)
 
     generated_at = datetime.utcnow().strftime("%Y-%m-%d %H:%M UTC")
 
@@ -346,10 +392,7 @@ def run_report() -> None:
   {methodology_html}
 
   <h2>Outputs</h2>
-  <p>
-    The following products were generated as part of this run.
-  </p>
-
+  <p>The following products were generated as part of this run.</p>
   <ul>
     {artifacts_list_html}
   </ul>
@@ -369,6 +412,8 @@ def run_report() -> None:
 
   <h3>Grid Cells Detail</h3>
   {grid_table_html}
+
+  {irrigation_html}
 
 </body>
 </html>
