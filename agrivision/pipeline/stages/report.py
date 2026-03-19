@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-agrivision.pipeline.report
+agrivision.pipeline.stages.report
 
 Generate the final HTML report for AgriVision.
 
@@ -23,7 +23,7 @@ from json import JSONDecodeError
 from pathlib import Path
 from typing import Any, Dict, List, Optional
 
-from agrivision.utils.settings import get_project_root, load_config
+from agrivision.config.settings import get_project_root, load_config
 
 
 def _get_report_settings() -> dict[str, Path]:

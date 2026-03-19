@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-agrivision.pipeline.grid
+agrivision.pipeline.stages.grid
 
 Create a grid over the vegetation index raster (ndvi.tif), classify each cell, and export:
 
@@ -34,7 +34,7 @@ import matplotlib.pyplot as plt
 import numpy as np
 import rasterio
 
-from agrivision.utils.settings import get_project_root, load_config
+from agrivision.config.settings import get_project_root, load_config
 
 COLOR_BY_CLASS = {
     "poor": "red",
@@ -84,7 +84,7 @@ def load_index_identity(ndvi_meta_json: Path) -> Tuple[str, str, str]:
     Returns:
       (index_name, index_mode, source_dataset)
 
-    Derived from output/ndvi/metadata.json written by agrivision.pipeline.ndvi.
+    Derived from output/ndvi/metadata.json written by agrivision.pipeline.stages.vegetation_index.
     """
     if ndvi_meta_json.exists():
         try:

@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-agrivision.weather.client
+agrivision.services.weather.client
 
 Client for the OpenAgri WeatherService.
 
@@ -29,7 +29,7 @@ from typing import Any, Dict, List, Optional
 
 import requests
 
-from agrivision.utils.settings import get_project_root, load_config
+from agrivision.config.settings import get_project_root, load_config
 
 
 def _get_weather_settings() -> dict:
@@ -330,6 +330,6 @@ def _format_current_weather(cw: CurrentWeather) -> str:
 
 
 if __name__ == "__main__":
-    # Allow quick testing with: python -m agrivision.weather.client
+    # Allow quick testing with: python -m agrivision.services.weather.client
     cw = fetch_current_weather()
     print(_format_current_weather(cw))

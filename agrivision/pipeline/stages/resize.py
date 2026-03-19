@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-agrivision.pipeline.resize
+agrivision.pipeline.stages.resize
 
 Resize original images before ODM.
 
@@ -25,7 +25,7 @@ from pathlib import Path
 
 from PIL import Image
 
-from agrivision.utils.settings import get_project_root, load_config
+from agrivision.config.settings import get_project_root, load_config
 
 IMAGE_EXTS = {".jpg", ".jpeg", ".png", ".tif", ".tiff"}
 

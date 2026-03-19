@@ -1,7 +1,7 @@
 import warnings
 from pathlib import Path
 
-from agrivision.utils import settings
+from agrivision.config import settings
 
 
 def write_test_config(path: Path) -> None:

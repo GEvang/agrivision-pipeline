@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-agrivision.pipeline.odm
+agrivision.pipeline.stages.odm
 
 Run OpenDroneMap (ODM) via Docker to generate orthophotos from drone
 images.
@@ -47,7 +47,7 @@ import shutil
 import subprocess
 from pathlib import Path
 
-from agrivision.utils.settings import get_project_root, load_config
+from agrivision.config.settings import get_project_root, load_config
 
 # We use the same project name ("project") inside each odm_project_* root
 PROJECT_NAME = "project"

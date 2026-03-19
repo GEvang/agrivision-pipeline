@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-agrivision.irrigation.client
+agrivision.services.irrigation.client
 
 Client for the OpenAgri Irrigation Management Service (IRM).
 
@@ -36,7 +36,7 @@ from typing import Any, Dict, List
 
 import requests
 
-from agrivision.utils.settings import get_project_root, load_config
+from agrivision.config.settings import get_project_root, load_config
 
 # ---------------------------------------------------------------------------
 # Models (minimal; keep raw payload for compatibility)

@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-agrivision.irrigation.bootstrap
+agrivision.services.irrigation.bootstrap
 
 Bootstraps OpenAgri Irrigation Management Service auth + parcels + ETo (official workflow).
 
@@ -37,7 +37,7 @@ from datetime import date, timedelta
 from pathlib import Path
 from typing import Any, Dict, List, Optional, Tuple
 
-from agrivision.utils.settings import get_project_root, get_settings
+from agrivision.config.settings import get_project_root, get_settings
 
 
 def _get_bootstrap_paths() -> dict[str, Path]:

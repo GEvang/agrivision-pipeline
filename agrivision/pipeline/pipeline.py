@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-agrivision.pipeline.controller
+agrivision.pipeline.pipeline
 
 Main pipeline orchestrator.
 
@@ -10,13 +10,13 @@ ETo settings (location_id / days_back) are read from config.yaml by the irrigati
 
 from pathlib import Path
 
-from agrivision.irrigation.bootstrap import ensure_irrigation_auth_parcel_and_eto
-from agrivision.pipeline.grid import run_grid_report
-from agrivision.pipeline.ndvi import run_ndvi
-from agrivision.pipeline.odm import run_odm_mapir, run_odm_rgb
-from agrivision.pipeline.report import run_report
-from agrivision.pipeline.resize import run_resize
-from agrivision.utils.settings import get_project_root, load_config
+from agrivision.services.irrigation.bootstrap import ensure_irrigation_auth_parcel_and_eto
+from agrivision.pipeline.stages.grid import run_grid_report
+from agrivision.pipeline.stages.vegetation_index import run_ndvi
+from agrivision.pipeline.stages.odm import run_odm_mapir, run_odm_rgb
+from agrivision.pipeline.stages.report import run_report
+from agrivision.pipeline.stages.resize import run_resize
+from agrivision.config.settings import get_project_root, load_config
 
 VALID_EXTS = (".jpg", ".jpeg", ".png", ".tif", ".tiff")
 

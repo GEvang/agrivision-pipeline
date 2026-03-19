@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-agrivision.pipeline.ndvi
+agrivision.pipeline.stages.vegetation_index
 
 Compute a vegetation index from an orthophoto and save:
 
@@ -27,7 +27,7 @@ import matplotlib.pyplot as plt
 import numpy as np
 import rasterio
 
-from agrivision.utils.settings import get_project_root, load_config
+from agrivision.config.settings import get_project_root, load_config
 
 
 def _get_ndvi_settings() -> dict[str, Any]:
