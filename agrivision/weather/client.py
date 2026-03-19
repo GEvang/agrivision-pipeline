@@ -31,18 +31,19 @@ import requests
 
 from agrivision.utils.settings import get_project_root, load_config
 
-CONFIG = load_config()
-PROJECT_ROOT = get_project_root()
 
-WEATHER_CFG = CONFIG["weather"]
-BASE_URL: str = WEATHER_CFG.get("base_url", "http://127.0.0.1:8010")
-USERNAME: str = WEATHER_CFG.get("username", "root")
-PASSWORD: str = WEATHER_CFG.get("password", "root")
-
-LOCATION_CFG = CONFIG["location"]
-LAT: float = float(LOCATION_CFG["lat"])
-LON: float = float(LOCATION_CFG["lon"])
-LOCATION_NAME: str = LOCATION_CFG.get("name", "Unknown location")
+def _get_weather_settings() -> dict:
+    """
+    Resolve weather client settings at call time instead of import time.
+    """
+    config = load_config()
+    weather_cfg = config.get("weather", {})
+    return {
+        "base_url": weather_cfg.get("base_url", ""),
+        "username": weather_cfg.get("username", ""),
+        "password": weather_cfg.get("password", ""),
+        "openweather_api_key": weather_cfg.get("openweather_api_key", ""),
+    }
 
 
 # ---------------------------------------------------------------------------
@@ -114,11 +115,16 @@ def get_token() -> str:
     Endpoint:
         POST /api/v1/auth/token
     """
-    url = f"{BASE_URL}/api/v1/auth/token"
+    resolved = _get_weather_settings()
+    base_url = resolved["base_url"]
+    username = resolved["username"]
+    password = resolved["password"]
+
+    url = f"{base_url}/api/v1/auth/token"
     data = {
         "grant_type": "",
-        "username": USERNAME,
-        "password": PASSWORD,
+        "username": username,
+        "password": password,
         "scope": "",
         "client_id": "",
         "client_secret": "",
@@ -135,20 +141,20 @@ def get_token() -> str:
     return payload["jwt_token"]
 
 
-def _start_weather_service_if_needed() -> None:
+def _start_weather_service_if_needed(base_url: str) -> None:
     """
     Check if the WeatherService is reachable; if not, try to start it via
     `docker compose` in the OpenAgri-WeatherService folder.
     """
     # Quick connectivity check
     try:
-        ping_url = f"{BASE_URL}/"
+        ping_url = f"{base_url}/"
         requests.get(ping_url, timeout=2)
         return  # service is reachable, nothing to do
     except requests.RequestException:
         pass  # not reachable → try to start it
 
-    svc_dir = PROJECT_ROOT / "OpenAgri-WeatherService"
+    svc_dir = get_project_root() / "OpenAgri-WeatherService"
     if not svc_dir.exists():
         print(f"[Weather] OpenAgri-WeatherService folder not found at {svc_dir}, cannot auto-start.")
         return
@@ -173,15 +179,24 @@ def fetch_current_weather(token: str | None = None) -> CurrentWeather:
     Endpoint:
         GET /api/data/weather?lat={lat}&lon={lon}
     """
+    resolved = _get_weather_settings()
+    base_url = resolved["base_url"]
+
+
+    config = load_config()
+    location_cfg = config.get("location", {})
+    lat = float(location_cfg.get("lat", 0.0))
+    lon = float(location_cfg.get("lon", 0.0))
+    location_name = location_cfg.get("name", "Unknown location")
 
     # Ensure service is up (or at least try to start it)
-    _start_weather_service_if_needed()
+    _start_weather_service_if_needed(base_url)
 
     if token is None:
         token = get_token()
 
-    url = f"{BASE_URL}/api/data/weather"
-    params = {"lat": LAT, "lon": LON}
+    url = f"{base_url}/api/data/weather"
+    params = {"lat": lat, "lon": lon}
     headers = {"Authorization": f"Bearer {token}"}
 
     resp = requests.get(url, params=params, headers=headers, timeout=10)
@@ -207,7 +222,7 @@ def fetch_current_weather(token: str | None = None) -> CurrentWeather:
         description = weather_list[0].get("description")
 
     return CurrentWeather(
-        location_name=LOCATION_NAME,
+        location_name=location_name,
         timestamp=ts,
         temperature=temp,
         humidity=humidity,
@@ -229,14 +244,23 @@ def fetch_forecast5(token: Optional[str] = None) -> List[ForecastPoint]:
     schema differences: if the WeatherService changes field names slightly,
     we still keep the raw item so we can inspect it later.
     """
+    resolved = _get_weather_settings()
+    base_url = resolved["base_url"]
+
+
+    config = load_config()
+    location_cfg = config.get("location", {})
+    lat = float(location_cfg.get("lat", 0.0))
+    lon = float(location_cfg.get("lon", 0.0))
+
     # Ensure service is up (or at least try to start it)
-    _start_weather_service_if_needed()
+    _start_weather_service_if_needed(base_url)
 
     if token is None:
         token = get_token()
 
-    url = f"{BASE_URL}/api/data/forecast5"
-    params = {"lat": LAT, "lon": LON}
+    url = f"{base_url}/api/data/forecast5"
+    params = {"lat": lat, "lon": lon}
     headers = {"Authorization": f"Bearer {token}"}
 
     resp = requests.get(url, params=params, headers=headers, timeout=15)

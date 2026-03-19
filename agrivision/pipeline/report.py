@@ -25,27 +25,41 @@ from typing import Any, Dict, List, Optional
 
 from agrivision.utils.settings import get_project_root, load_config
 
-CONFIG = load_config()
-PROJECT_ROOT = get_project_root()
 
-OUTPUT_DIR = PROJECT_ROOT / CONFIG["paths"]["output_root"]
-REPORT_PATH = OUTPUT_DIR / "report_latest.html"
+def _get_report_settings() -> dict[str, Path]:
+    config = load_config()
+    project_root = get_project_root()
 
-NDVI_DIR = PROJECT_ROOT / CONFIG["paths"]["ndvi_output"]
+    output_dir = project_root / config["paths"]["output_root"]
+    report_path = output_dir / "report_latest.html"
 
-NDVI_META_PATH = NDVI_DIR / "metadata.json"
-GRID_META_PATH = NDVI_DIR / "grid_metadata.json"
+    ndvi_dir = project_root / config["paths"]["ndvi_output"]
+    ndvi_meta_path = ndvi_dir / "metadata.json"
+    grid_meta_path = ndvi_dir / "grid_metadata.json"
 
-NDVI_TIF = NDVI_DIR / "ndvi.tif"
-NDVI_COLOR_PNG = NDVI_DIR / "ndvi_color.png"
-GRID_OVERLAY_PNG = NDVI_DIR / "ndvi_grid_overlay.png"
-GRID_CELLS_CSV = NDVI_DIR / "ndvi_grid_cells.csv"
-GRID_CATEGORIES_CSV = NDVI_DIR / "ndvi_grid_categories.csv"
+    ndvi_tif = ndvi_dir / "ndvi.tif"
+    ndvi_color_png = ndvi_dir / "ndvi_color.png"
+    grid_overlay_png = ndvi_dir / "ndvi_grid_overlay.png"
+    grid_cells_csv = ndvi_dir / "ndvi_grid_cells.csv"
+    grid_categories_csv = ndvi_dir / "ndvi_grid_categories.csv"
+
+    return {
+        "output_dir": output_dir,
+        "report_path": report_path,
+        "ndvi_dir": ndvi_dir,
+        "ndvi_meta_path": ndvi_meta_path,
+        "grid_meta_path": grid_meta_path,
+        "ndvi_tif": ndvi_tif,
+        "ndvi_color_png": ndvi_color_png,
+        "grid_overlay_png": grid_overlay_png,
+        "grid_cells_csv": grid_cells_csv,
+        "grid_categories_csv": grid_categories_csv,
+    }
 
 
-def _rel_to_report(abs_path: Path) -> str:
+def _rel_to_report(abs_path: Path, output_dir: Path) -> str:
     try:
-        rel = abs_path.relative_to(OUTPUT_DIR)
+        rel = abs_path.relative_to(output_dir)
         return rel.as_posix()
     except ValueError:
         return abs_path.name
@@ -147,28 +161,28 @@ def _render_grid_metadata_section(grid_meta: dict) -> str:
 """.strip()
 
 
-def _render_artifact_link(label: str, path: Path) -> str:
+def _render_artifact_link(label: str, path: Path, output_dir: Path) -> str:
     if path.exists():
-        href = _rel_to_report(path)
+        href = _rel_to_report(path, output_dir)
         return f'<li><strong>{_safe(label)}:</strong> <a href="{_safe(href)}">{_safe(href)}</a></li>'
     return f"<li><strong>{_safe(label)}:</strong> <em>Not found</em></li>"
 
 
-def _render_image_if_exists(title: str, path: Path) -> str:
+def _render_image_if_exists(title: str, path: Path, output_dir: Path) -> str:
     if not path.exists():
         return f"<p><em>{_safe(title)} not found.</em></p>"
-    src = _rel_to_report(path)
+    src = _rel_to_report(path, output_dir)
     return f"""
 <h3>{_safe(title)}</h3>
 <img src="{_safe(src)}" alt="{_safe(title)}" style="max-width: 100%; height: auto; border: 1px solid #ddd;" />
 """.strip()
 
 
-def _load_grid_cells() -> List[Dict[str, str]]:
-    if not GRID_CELLS_CSV.exists():
+def _load_grid_cells(grid_cells_csv: Path) -> List[Dict[str, str]]:
+    if not grid_cells_csv.exists():
         return []
     rows: List[Dict[str, str]] = []
-    with GRID_CELLS_CSV.open("r", newline="", encoding="utf-8") as f:
+    with grid_cells_csv.open("r", newline="", encoding="utf-8") as f:
         reader = csv.DictReader(f)
         for r in reader:
             rows.append(r)
@@ -199,7 +213,7 @@ def _render_grid_table(index_title: str, rows: List[Dict[str, str]]) -> str:
 </tr>
 """.strip()
         )
-        
+
     body_html = "\n".join(body)
     return f"""
 <div style="max-height: 420px; overflow-y: auto; border: 1px solid #ddd; padding: 0; margin-top: 10px;">
@@ -228,7 +242,7 @@ def _render_grid_table(index_title: str, rows: List[Dict[str, str]]) -> str:
 """.strip()
 
 
-def _render_irrigation_section(irrigation_summary: Optional[Dict[str, Any]]) -> str:
+def _render_irrigation_section(irrigation_summary: Optional[Dict[str, Any]], output_dir: Path) -> str:
     if not irrigation_summary:
         return (
             "<h2>Irrigation Service Integration</h2>"
@@ -269,7 +283,7 @@ def _render_irrigation_section(irrigation_summary: Optional[Dict[str, Any]]) -> 
     try:
         eto_path = Path(eto_artifact_path)
         if eto_path.exists():
-            href = _rel_to_report(eto_path)
+            href = _rel_to_report(eto_path, output_dir)
             eto_link_html = f'<a href="{_safe(href)}">{_safe(href)}</a>'
         else:
             eto_link_html = "<em>Not found</em>"
@@ -322,31 +336,42 @@ def _render_irrigation_section(irrigation_summary: Optional[Dict[str, Any]]) -> 
 def run_report(irrigation_summary: Optional[Dict[str, Any]] = None) -> None:
     print("\n[AgriVision] Generating HTML report...")
 
-    OUTPUT_DIR.mkdir(parents=True, exist_ok=True)
+    resolved = _get_report_settings()
+    output_dir = resolved["output_dir"]
+    report_path = resolved["report_path"]
+    ndvi_meta_path = resolved["ndvi_meta_path"]
+    grid_meta_path = resolved["grid_meta_path"]
+    ndvi_tif = resolved["ndvi_tif"]
+    ndvi_color_png = resolved["ndvi_color_png"]
+    grid_overlay_png = resolved["grid_overlay_png"]
+    grid_cells_csv = resolved["grid_cells_csv"]
+    grid_categories_csv = resolved["grid_categories_csv"]
 
-    ndvi_meta = _load_json(NDVI_META_PATH)
-    grid_meta = _load_json(GRID_META_PATH)
+    output_dir.mkdir(parents=True, exist_ok=True)
+
+    ndvi_meta = _load_json(ndvi_meta_path)
+    grid_meta = _load_json(grid_meta_path)
 
     index_title = _get_index_title(ndvi_meta, grid_meta)
     methodology_html = _render_methodology_section(ndvi_meta)
     grid_meta_html = _render_grid_metadata_section(grid_meta)
 
-    grid_rows = _load_grid_cells()
+    grid_rows = _load_grid_cells(grid_cells_csv)
     grid_table_html = _render_grid_table(index_title=index_title, rows=grid_rows)
 
-    irrigation_html = _render_irrigation_section(irrigation_summary)
+    irrigation_html = _render_irrigation_section(irrigation_summary, output_dir)
 
     generated_at = datetime.utcnow().strftime("%Y-%m-%d %H:%M UTC")
 
     artifacts_list_html = "\n".join(
         [
-            _render_artifact_link(f"{index_title} Map (PNG)", NDVI_COLOR_PNG),
-            _render_artifact_link(f"{index_title} GeoTIFF", NDVI_TIF),
-            _render_artifact_link("Grid Overlay (PNG)", GRID_OVERLAY_PNG),
-            _render_artifact_link("Grid Cells (CSV)", GRID_CELLS_CSV),
-            _render_artifact_link("Grid Categories (CSV)", GRID_CATEGORIES_CSV),
-            _render_artifact_link("Index Run Metadata (JSON)", NDVI_META_PATH),
-            _render_artifact_link("Grid Run Metadata (JSON)", GRID_META_PATH),
+            _render_artifact_link(f"{index_title} Map (PNG)", ndvi_color_png, output_dir),
+            _render_artifact_link(f"{index_title} GeoTIFF", ndvi_tif, output_dir),
+            _render_artifact_link("Grid Overlay (PNG)", grid_overlay_png, output_dir),
+            _render_artifact_link("Grid Cells (CSV)", grid_cells_csv, output_dir),
+            _render_artifact_link("Grid Categories (CSV)", grid_categories_csv, output_dir),
+            _render_artifact_link("Index Run Metadata (JSON)", ndvi_meta_path, output_dir),
+            _render_artifact_link("Grid Run Metadata (JSON)", grid_meta_path, output_dir),
         ]
     )
 
@@ -398,7 +423,7 @@ def run_report(irrigation_summary: Optional[Dict[str, Any]] = None) -> None:
   </ul>
 
   <h2>{_safe(index_title)} Visualization</h2>
-  {_render_image_if_exists(f"{index_title} Map", NDVI_COLOR_PNG)}
+  {_render_image_if_exists(f"{index_title} Map", ndvi_color_png, output_dir)}
 
   <h2>Grid-Based Analysis</h2>
   <p>
@@ -408,7 +433,7 @@ def run_report(irrigation_summary: Optional[Dict[str, Any]] = None) -> None:
 
   {grid_meta_html}
 
-  {_render_image_if_exists("Grid Overlay", GRID_OVERLAY_PNG)}
+  {_render_image_if_exists("Grid Overlay", grid_overlay_png, output_dir)}
 
   <h3>Grid Cells Detail</h3>
   {grid_table_html}
@@ -419,8 +444,8 @@ def run_report(irrigation_summary: Optional[Dict[str, Any]] = None) -> None:
 </html>
 """
 
-    REPORT_PATH.write_text(html_doc, encoding="utf-8")
-    print(f"[AgriVision] Report written to: {REPORT_PATH}")
+    report_path.write_text(html_doc, encoding="utf-8")
+    print(f"[AgriVision] Report written to: {report_path}")
 
 
 if __name__ == "__main__":

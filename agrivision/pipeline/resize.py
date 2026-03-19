@@ -27,23 +27,29 @@ from PIL import Image
 
 from agrivision.utils.settings import get_project_root, load_config
 
-CONFIG = load_config()
-PROJECT_ROOT = get_project_root()
-
-# RGB paths (current pipeline uses these)
-IMAGES_FULL_RGB = PROJECT_ROOT / CONFIG["paths"]["images_full"]
-IMAGES_RESIZED_RGB = PROJECT_ROOT / CONFIG["paths"]["images_resized"]
-
-# MAPIR paths (reserved for MAPIR-based NDVI; wired in future steps)
-IMAGES_FULL_MAPIR = PROJECT_ROOT / CONFIG["paths"]["images_full_mapir"]
-IMAGES_RESIZED_MAPIR = PROJECT_ROOT / CONFIG["paths"]["images_resized_mapir"]
-
-MAX_LONG_EDGE = CONFIG.get("resize", {}).get("max_long_edge", 3000)
-
 IMAGE_EXTS = {".jpg", ".jpeg", ".png", ".tif", ".tiff"}
 
 
-def _resize_dataset(src_dir: Path, dst_dir: Path, label: str) -> int:
+def _get_resize_settings() -> dict:
+    """
+    Resolve resize-related config at call time instead of import time.
+    """
+    config = load_config()
+    project_root = get_project_root()
+
+    paths_cfg = config.get("paths", {})
+    resize_cfg = config.get("resize", {})
+
+    return {
+        "project_root": project_root,
+        "images_full_rgb": project_root / paths_cfg["images_full"],
+        "images_resized_rgb": project_root / paths_cfg["images_resized"],
+        "images_full_mapir": project_root / paths_cfg["images_full_mapir"],
+        "images_resized_mapir": project_root / paths_cfg["images_resized_mapir"],
+        "max_long_edge": resize_cfg.get("max_long_edge", 3000),
+    }
+
+def _resize_dataset(src_dir: Path, dst_dir: Path, label: str, max_long_edge: int) -> int:
     """
     Resize all images in src_dir into dst_dir for a given dataset label.
 
@@ -69,7 +75,7 @@ def _resize_dataset(src_dir: Path, dst_dir: Path, label: str) -> int:
     print(f"[Resize] {label}: processing {len(image_files)} images...")
     print(f"         Input folder : {src_dir}")
     print(f"         Output folder: {dst_dir}")
-    print(f"         Max long edge: {MAX_LONG_EDGE} px")
+    print(f"         Max long edge: {max_long_edge} px")
 
     for img_path in image_files:
         out_path = dst_dir / img_path.name
@@ -78,13 +84,13 @@ def _resize_dataset(src_dir: Path, dst_dir: Path, label: str) -> int:
             w, h = img.size
             long_edge = max(w, h)
 
-            if long_edge <= MAX_LONG_EDGE:
+            if long_edge <= max_long_edge:
                 print(f"[Resize] {label}: already small → copying {img_path.name}")
                 shutil.copy2(img_path, out_path)
                 processed += 1
                 continue
 
-            scale = MAX_LONG_EDGE / long_edge
+            scale = max_long_edge / long_edge
             new_size = (int(w * scale), int(h * scale))
 
             print(f"[Resize] {label}: resizing {img_path.name} to {new_size}")
@@ -108,30 +114,39 @@ def run_resize() -> None:
 
     If a dataset has no images, it is skipped.
     """
+    settings = _get_resize_settings()
+    max_long_edge = settings["max_long_edge"]
+    images_full_rgb = settings["images_full_rgb"]
+    images_resized_rgb = settings["images_resized_rgb"]
+    images_full_mapir = settings["images_full_mapir"]
+    images_resized_mapir = settings["images_resized_mapir"]
+
     print("\n[AgriVision] Resize step")
-    print(f"  Max long edge : {MAX_LONG_EDGE} px\n")
+    print(f"  Max long edge : {max_long_edge} px\n")
 
     total_processed = 0
 
     # 1) RGB dataset (current main pipeline)
     total_processed += _resize_dataset(
-        src_dir=IMAGES_FULL_RGB,
-        dst_dir=IMAGES_RESIZED_RGB,
+        src_dir=images_full_rgb,
+        dst_dir=images_resized_rgb,
         label="RGB",
+        max_long_edge=max_long_edge,
     )
 
     # 2) MAPIR dataset (for real NDVI, wired in next steps)
     total_processed += _resize_dataset(
-        src_dir=IMAGES_FULL_MAPIR,
-        dst_dir=IMAGES_RESIZED_MAPIR,
+        src_dir=images_full_mapir,
+        dst_dir=images_resized_mapir,
         label="MAPIR",
+        max_long_edge=max_long_edge,
     )
 
     if total_processed == 0:
         print("[AgriVision] WARNING: No images were processed in the resize step.")
         print("  Make sure you have placed images in at least one of:")
-        print(f"    - {IMAGES_FULL_RGB}")
-        print(f"    - {IMAGES_FULL_MAPIR}")
+        print(f"    - {images_full_rgb}")
+        print(f"    - {images_full_mapir}")
     else:
         print(f"[AgriVision] Resize step finished. Total images processed: {total_processed}")
 

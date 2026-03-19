@@ -1,8 +1,6 @@
 import warnings
 from pathlib import Path
 
-import pytest
-
 from agrivision.utils import settings
 
 
@@ -67,9 +65,14 @@ def test_load_config_env_overrides_yaml(monkeypatch, tmp_path):
     assert config["irrigation"]["auth"]["email"] == "env_irrigation@example.com"
     assert config["irrigation"]["auth"]["password"] == "env_irrigation_pass"
 
-def test_load_config_raises_when_config_file_missing(monkeypatch, tmp_path):
+def test_load_config_returns_defaults_when_config_file_missing(monkeypatch, tmp_path):
     missing_config_path = tmp_path / "does_not_exist.yaml"
     monkeypatch.setattr(settings, "_CONFIG_PATH", missing_config_path)
 
-    with pytest.raises(FileNotFoundError, match="Config file not found"):
-        settings.load_config()
+    cfg = settings.load_config()
+
+    assert isinstance(cfg, dict)
+    assert "paths" in cfg
+    assert "ndvi" in cfg
+    assert "weather" in cfg
+    assert "irrigation" in cfg

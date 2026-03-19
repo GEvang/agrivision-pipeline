@@ -37,96 +37,63 @@ from datetime import date, timedelta
 from pathlib import Path
 from typing import Any, Dict, List, Optional, Tuple
 
-PROJECT_ROOT = Path(__file__).resolve().parents[2]
-CONFIG_PATH = PROJECT_ROOT / "config.yaml"
-
-OUTPUT_DIR = PROJECT_ROOT / "output" / "irrigation"
-TOKEN_PATH = OUTPUT_DIR / "auth_token.json"
-PARCEL_PATH = OUTPUT_DIR / "parcel.json"
-ETO_PATH = OUTPUT_DIR / "eto.json"
-
-IRRIGATION_REPO_DIR = PROJECT_ROOT / "OpenAgri-IrrigationManagement"
-IRRIGATION_COMPOSE_FILE = IRRIGATION_REPO_DIR / "compose.yaml"
+from agrivision.utils.settings import get_project_root, get_settings
 
 
-# ----------------------------
-# Config loading (minimal YAML)
-# ----------------------------
-def _read_text(path: Path) -> str:
-    return path.read_text(encoding="utf-8")
+def _get_bootstrap_paths() -> dict[str, Path]:
+    settings = get_settings()
+    project_root = get_project_root()
+    output_root = str(getattr(settings.paths, "output_root", "output") or "output")
+    service_dir = str(getattr(settings.irrigation, "service_dir", "OpenAgri-IrrigationManagement") or "OpenAgri-IrrigationManagement")
 
-
-def _naive_yaml_get(config_text: str, keys: Tuple[str, ...]) -> Optional[str]:
-    lines = config_text.splitlines()
-    stack: list[Tuple[int, str]] = []
-
-    for raw in lines:
-        line = raw.rstrip()
-        if not line or line.lstrip().startswith("#"):
-            continue
-
-        indent = len(line) - len(line.lstrip(" "))
-        if ":" not in line:
-            continue
-
-        k, v = line.lstrip().split(":", 1)
-        k = k.strip()
-        v = v.strip()
-
-        while stack and stack[-1][0] >= indent:
-            stack.pop()
-        stack.append((indent, k))
-
-        if tuple(item[1] for item in stack) == keys:
-            if v.startswith(("'", '"')) and v.endswith(("'", '"')) and len(v) >= 2:
-                v = v[1:-1]
-            return v if v != "" else None
-
-    return None
-
-
-def _load_config() -> Dict[str, Any]:
-    if not CONFIG_PATH.exists():
-        raise FileNotFoundError(f"Missing config.yaml at: {CONFIG_PATH}")
-
-    cfg_text = _read_text(CONFIG_PATH)
-
-    base_url = _naive_yaml_get(cfg_text, ("irrigation", "base_url"))
-    email = _naive_yaml_get(cfg_text, ("irrigation", "auth", "email"))
-    password = _naive_yaml_get(cfg_text, ("irrigation", "auth", "password"))
-    wkt = _naive_yaml_get(cfg_text, ("irrigation", "default_parcel_wkt"))
-
-    eto_location_id = _naive_yaml_get(cfg_text, ("irrigation", "eto", "location_id"))
-    eto_days_back = _naive_yaml_get(cfg_text, ("irrigation", "eto", "days_back"))
-
-    missing: List[str] = []
-    if not base_url:
-        missing.append("irrigation.base_url")
-    if not email:
-        missing.append("irrigation.auth.email")
-    if not password:
-        missing.append("irrigation.auth.password")
-    if not wkt:
-        missing.append("irrigation.default_parcel_wkt")
-
-    if missing:
-        raise ValueError("Missing required config keys in config.yaml: " + ", ".join(missing))
-
-    # Defaults if not provided in config
-    loc_id = int(eto_location_id) if eto_location_id and eto_location_id.isdigit() else 1
-    try:
-        days_back = int(eto_days_back) if eto_days_back is not None else 7
-    except ValueError:
-        days_back = 7
-
+    output_dir = project_root / output_root / "irrigation"
+    token_path = output_dir / "auth_token.json"
+    parcel_path = output_dir / "parcel.json"
+    eto_path = output_dir / "eto.json"
+    irrigation_repo_dir = project_root / service_dir
+    irrigation_compose_file = irrigation_repo_dir / "compose.yaml"
     return {
-        "base_url": base_url.rstrip("/"),
-        "email": email,
-        "password": password,
-        "wkt": wkt,
-        "eto_location_id": loc_id,
-        "eto_days_back": days_back,
+        "project_root": project_root,
+        "output_dir": output_dir,
+        "token_path": token_path,
+        "parcel_path": parcel_path,
+        "eto_path": eto_path,
+        "irrigation_repo_dir": irrigation_repo_dir,
+        "irrigation_compose_file": irrigation_compose_file,
     }
+
+
+def _ensure_output_dir() -> None:
+    paths = _get_bootstrap_paths()
+    paths["output_dir"].mkdir(parents=True, exist_ok=True)
+
+
+def _write_json(path: Path, payload: Dict[str, Any]) -> None:
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text(json.dumps(payload, indent=2), encoding="utf-8")
+
+
+def _write_token_artifact(base_url: str, token_type: str, access_token: str, email: str) -> None:
+    paths = _get_bootstrap_paths()
+    _write_json(
+        paths["token_path"],
+        {
+            "base_url": base_url,
+            "token_type": token_type,
+            "access_token": access_token,
+            "email": email,
+        },
+    )
+
+
+def _write_parcel_artifact(payload: Dict[str, Any]) -> None:
+    paths = _get_bootstrap_paths()
+    _write_json(paths["parcel_path"], payload)
+
+
+def _write_eto_artifact(payload: Dict[str, Any]) -> None:
+    paths = _get_bootstrap_paths()
+    _write_json(paths["eto_path"], payload)
 
 
 # ----------------------------
@@ -229,24 +196,28 @@ def _run_compose_up(verbose: bool = True) -> None:
       1) docker compose (no sudo)
       2) sudo -n docker compose (only works if passwordless sudo is configured)
     """
-    if not IRRIGATION_REPO_DIR.exists():
-        raise FileNotFoundError(f"Irrigation repo not found at: {IRRIGATION_REPO_DIR}")
-    if not IRRIGATION_COMPOSE_FILE.exists():
-        raise FileNotFoundError(f"compose.yaml not found at: {IRRIGATION_COMPOSE_FILE}")
+    paths = _get_bootstrap_paths()
+    irrigation_repo_dir = paths["irrigation_repo_dir"]
+    irrigation_compose_file = paths["irrigation_compose_file"]
+
+    if not irrigation_repo_dir.exists():
+        raise FileNotFoundError(f"Irrigation repo not found at: {irrigation_repo_dir}")
+    if not irrigation_compose_file.exists():
+        raise FileNotFoundError(f"compose.yaml not found at: {irrigation_compose_file}")
 
     cmds = [
-        ["docker", "compose", "-f", str(IRRIGATION_COMPOSE_FILE), "up", "-d"],
-        ["sudo", "-n", "docker", "compose", "-f", str(IRRIGATION_COMPOSE_FILE), "up", "-d"],
+        ["docker", "compose", "-f", str(irrigation_compose_file), "up", "-d"],
+        ["sudo", "-n", "docker", "compose", "-f", str(irrigation_compose_file), "up", "-d"],
     ]
 
     last_err = None
     for cmd in cmds:
         try:
             if verbose:
-                print(f"[Irrigation] Running: {' '.join(cmd)} (cwd={IRRIGATION_REPO_DIR})")
+                print(f"[Irrigation] Running: {' '.join(cmd)} (cwd={irrigation_repo_dir})")
             subprocess.run(
                 cmd,
-                cwd=str(IRRIGATION_REPO_DIR),
+                cwd=str(irrigation_repo_dir),
                 check=True,
                 stdout=subprocess.PIPE,
                 stderr=subprocess.PIPE,
@@ -337,134 +308,48 @@ def fetch_eto_get_calculations(
 
 
 # ----------------------------
-# Public entry used by pipeline
+# Parcel management helper
 # ----------------------------
-def ensure_irrigation_auth_parcel_and_eto(
+def _ensure_parcel_state(
     *,
-    eto_location_id: Optional[int] = None,
-    eto_days_back: Optional[int] = None,
+    base_url: str,
+    token: str,
+    email: str,
+    wkt: str,
     write_artifacts: bool = True,
-    verbose: bool = True,
 ) -> Dict[str, Any]:
     """
-    Config-driven by default.
-    If eto_location_id / eto_days_back are provided explicitly, they override config.yaml.
+    Ensure parcel state exists and return parcel summary for the caller.
+
+    Returns:
+        {
+            "ok": bool,
+            "parcel_count": int,
+            "created_default_parcel": bool,
+            "notes": list[str],
+            "error_summary": dict | None (full response if parcel flow failed)
+        }
     """
-    cfg = _load_config()
-    base_url = cfg["base_url"]
-    email = cfg["email"]
-    password = cfg["password"]
-    wkt = cfg["wkt"]
-
-    effective_location_id = int(eto_location_id) if eto_location_id is not None else int(cfg["eto_location_id"])
-    effective_days_back = int(eto_days_back) if eto_days_back is not None else int(cfg["eto_days_back"])
-
-    OUTPUT_DIR.mkdir(parents=True, exist_ok=True)
-
     notes: List[str] = []
     created_default = False
-
-    if verbose:
-        print("\n[Irrigation] Ensuring Irrigation service + auth + parcels + ETo...")
-
-    try:
-        _ensure_service_up(base_url, seconds=75, verbose=verbose)
-    except Exception as e:
-        return {
-            "enabled": True,
-            "base_url": base_url,
-            "authenticated": False,
-            "email": "",
-            "parcel_count": 0,
-            "created_default_parcel": False,
-            "eto": {"ok": False, "http_status": None, "method": "get_calculations"},
-            "notes": [f"Irrigation service unavailable: {e}"],
-        }
-
-    token: Optional[str] = None
-    if TOKEN_PATH.exists():
-        try:
-            token_obj = json.loads(TOKEN_PATH.read_text(encoding="utf-8"))
-            token = token_obj.get("access_token")
-        except Exception:
-            notes.append("Existing token file unreadable; will re-login.")
-            token = None
-
-    if token:
-        ok, me = _token_valid(base_url, token)
-        if not ok:
-            notes.append("Existing token invalid/expired; re-login required.")
-            token = None
-        else:
-            if verbose:
-                print(f"[Irrigation] ✅ Existing token valid for: {me.get('email', email)}")
-
-    if not token:
-        status, _ = _register_user(base_url, email, password)
-        if not (200 <= status < 300):
-            notes.append(f"Register returned HTTP {status}: continuing (user may already exist).")
-
-        status, login_resp = _login(base_url, email, password)
-        if not (200 <= status < 300):
-            return {
-                "enabled": True,
-                "base_url": base_url,
-                "authenticated": False,
-                "email": "",
-                "parcel_count": 0,
-                "created_default_parcel": False,
-                "eto": {"ok": False, "http_status": None, "method": "get_calculations"},
-                "notes": [f"Irrigation login failed (HTTP {status}): {login_resp}"],
-            }
-
-        token = (login_resp or {}).get("access_token")
-        if not token:
-            return {
-                "enabled": True,
-                "base_url": base_url,
-                "authenticated": False,
-                "email": "",
-                "parcel_count": 0,
-                "created_default_parcel": False,
-                "eto": {"ok": False, "http_status": None, "method": "get_calculations"},
-                "notes": [f"Irrigation login response missing access_token: {login_resp}"],
-            }
-
-        token_type = (login_resp or {}).get("token_type", "bearer")
-
-        if write_artifacts:
-            TOKEN_PATH.write_text(
-                json.dumps({"base_url": base_url, "token_type": token_type, "access_token": token, "email": email}, indent=2),
-                encoding="utf-8",
-            )
-
-        if verbose:
-            print("[Irrigation] ✅ Logged in and token stored")
-
-    ok, me = _token_valid(base_url, token)
-    if not ok:
-        return {
-            "enabled": True,
-            "base_url": base_url,
-            "authenticated": False,
-            "email": "",
-            "parcel_count": 0,
-            "created_default_parcel": False,
-            "eto": {"ok": False, "http_status": None, "method": "get_calculations"},
-            "notes": ["Token validation failed after login."],
-        }
+    paths = _get_bootstrap_paths()
 
     status, locations_resp = _list_locations(base_url, token)
     if not (200 <= status < 300):
+        error_summary = _build_bootstrap_failure_summary(
+            base_url=base_url,
+            authenticated=True,
+            email=email,
+            parcel_count=0,
+            created_default_parcel=False,
+            notes=[f"Failed to list locations (HTTP {status}): {locations_resp}"],
+        )
         return {
-            "enabled": True,
-            "base_url": base_url,
-            "authenticated": True,
-            "email": me.get("email", email),
+            "ok": False,
             "parcel_count": 0,
             "created_default_parcel": False,
-            "eto": {"ok": False, "http_status": None, "method": "get_calculations"},
-            "notes": [f"Failed to list locations (HTTP {status}): {locations_resp}"],
+            "notes": notes,
+            "error_summary": error_summary,
         }
 
     locations_list: List[dict] = []
@@ -478,30 +363,245 @@ def ensure_irrigation_auth_parcel_and_eto(
     if parcel_count == 0:
         status, parcel_resp = _create_default_parcel(base_url, token, wkt)
         if not (200 <= status < 300):
+            error_summary = _build_bootstrap_failure_summary(
+                base_url=base_url,
+                authenticated=True,
+                email=email,
+                parcel_count=0,
+                created_default_parcel=False,
+                notes=[f"Failed to create default parcel (HTTP {status}): {parcel_resp}"],
+            )
             return {
-                "enabled": True,
-                "base_url": base_url,
-                "authenticated": True,
-                "email": me.get("email", email),
+                "ok": False,
                 "parcel_count": 0,
                 "created_default_parcel": False,
-                "eto": {"ok": False, "http_status": None, "method": "get_calculations"},
-                "notes": [f"Failed to create default parcel (HTTP {status}): {parcel_resp}"],
+                "notes": notes,
+                "error_summary": error_summary,
             }
         created_default = True
         if write_artifacts:
-            PARCEL_PATH.write_text(json.dumps(parcel_resp, indent=2), encoding="utf-8")
+            _write_parcel_artifact(parcel_resp)
 
         status, locations_resp = _list_locations(base_url, token)
         if isinstance(locations_resp, dict) and isinstance(locations_resp.get("locations"), list):
             locations_list = locations_resp["locations"]
             parcel_count = len(locations_list)
 
-    if write_artifacts and not PARCEL_PATH.exists():
-        PARCEL_PATH.write_text(
-            json.dumps({"message": "Parcel already existed; no creation performed."}, indent=2),
-            encoding="utf-8",
+    if write_artifacts and not paths["parcel_path"].exists():
+        _write_parcel_artifact({"message": "Parcel already existed; no creation performed."})
+
+    return {
+        "ok": True,
+        "parcel_count": parcel_count,
+        "created_default_parcel": created_default,
+        "notes": notes,
+        "error_summary": None,
+    }
+
+
+# ----------------------------
+# Authentication helper
+# ----------------------------
+def _authenticate_irrigation(
+    base_url: str,
+    email: str,
+    password: str,
+    write_artifacts: bool = True,
+    verbose: bool = True,
+) -> Dict[str, Any]:
+    """
+    Acquire and validate irrigation token.
+
+    Returns:
+        {
+            "ok": bool,
+            "token": str | None,
+            "email": str,
+            "me": dict (user info from _token_valid),
+            "notes": list[str],
+            "error_summary": dict | None (full response if auth failed)
+        }
+    """
+    notes: List[str] = []
+    token: Optional[str] = None
+    paths = _get_bootstrap_paths()
+
+    # Try to use existing token file
+    if paths["token_path"].exists():
+        try:
+            token_obj = json.loads(paths["token_path"].read_text(encoding="utf-8"))
+            token = token_obj.get("access_token")
+        except Exception:
+            notes.append("Existing token file unreadable; will re-login.")
+            token = None
+
+    # Validate existing token if present
+    if token:
+        ok, me = _token_valid(base_url, token)
+        if not ok:
+            notes.append("Existing token invalid/expired; re-login required.")
+            token = None
+        else:
+            if verbose:
+                print(f"[Irrigation] ✅ Existing token valid for: {me.get('email', email)}")
+            return {
+                "ok": True,
+                "token": token,
+                "email": me.get("email", email),
+                "me": me,
+                "notes": notes,
+                "error_summary": None,
+            }
+
+    # Existing token invalid or missing; perform register + login
+    status, _ = _register_user(base_url, email, password)
+    if not (200 <= status < 300):
+        notes.append(f"Register returned HTTP {status}: continuing (user may already exist).")
+
+    status, login_resp = _login(base_url, email, password)
+    if not (200 <= status < 300):
+        error_summary = _build_bootstrap_failure_summary(
+            base_url=base_url,
+            authenticated=False,
+            email="",
+            parcel_count=0,
+            created_default_parcel=False,
+            notes=[f"Irrigation login failed (HTTP {status}): {login_resp}"],
         )
+        return {
+            "ok": False,
+            "token": None,
+            "email": "",
+            "me": {},
+            "notes": notes,
+            "error_summary": error_summary,
+        }
+
+    token = (login_resp or {}).get("access_token")
+    if not token:
+        error_summary = _build_bootstrap_failure_summary(
+            base_url=base_url,
+            authenticated=False,
+            email="",
+            parcel_count=0,
+            created_default_parcel=False,
+            notes=[f"Irrigation login response missing access_token: {login_resp}"],
+        )
+        return {
+            "ok": False,
+            "token": None,
+            "email": "",
+            "me": {},
+            "notes": notes,
+            "error_summary": error_summary,
+        }
+
+    token_type = (login_resp or {}).get("token_type", "bearer")
+
+    if write_artifacts:
+        _write_token_artifact(base_url, token_type, token, email)
+
+    if verbose:
+        print("[Irrigation] ✅ Logged in and token stored")
+
+    # Validate newly acquired token
+    ok, me = _token_valid(base_url, token)
+    if not ok:
+        error_summary = _build_bootstrap_failure_summary(
+            base_url=base_url,
+            authenticated=False,
+            email="",
+            parcel_count=0,
+            created_default_parcel=False,
+            notes=["Token validation failed after login."],
+        )
+        return {
+            "ok": False,
+            "token": None,
+            "email": "",
+            "me": {},
+            "notes": notes,
+            "error_summary": error_summary,
+        }
+
+    return {
+        "ok": True,
+        "token": token,
+        "email": me.get("email", email),
+        "me": me,
+        "notes": notes,
+        "error_summary": None,
+    }
+
+
+def _resolve_bootstrap_config(
+    *,
+    eto_location_id: Optional[int] = None,
+    eto_days_back: Optional[int] = None,
+) -> Dict[str, Any]:
+    """
+    Load and validate irrigation bootstrap config, then resolve effective ETo inputs.
+    """
+    settings = get_settings()
+
+    base_url = str(settings.irrigation.base_url).rstrip("/")
+    email = str(settings.irrigation.auth.email)
+    password = str(settings.irrigation.auth.password)
+    wkt = str(settings.irrigation.default_parcel_wkt)
+
+    missing: List[str] = []
+    if not base_url:
+        missing.append("irrigation.base_url")
+    if not email:
+        missing.append("irrigation.auth.email")
+    if not password:
+        missing.append("irrigation.auth.password")
+    if not wkt:
+        missing.append("irrigation.default_parcel_wkt")
+
+    if missing:
+        raise ValueError("Missing required config keys in config.yaml: " + ", ".join(missing))
+
+    eto_location_id_cfg = settings.irrigation.eto.location_id
+    eto_days_back_cfg = settings.irrigation.eto.days_back
+
+    try:
+        cfg_location_id = int(eto_location_id_cfg)
+    except (TypeError, ValueError):
+        cfg_location_id = 1
+
+    try:
+        cfg_days_back = int(eto_days_back_cfg) if eto_days_back_cfg is not None else 7
+    except (TypeError, ValueError):
+        cfg_days_back = 7
+
+    effective_location_id = int(eto_location_id) if eto_location_id is not None else cfg_location_id
+    effective_days_back = int(eto_days_back) if eto_days_back is not None else cfg_days_back
+
+    return {
+        "base_url": base_url,
+        "email": email,
+        "password": password,
+        "wkt": wkt,
+        "effective_location_id": effective_location_id,
+        "effective_days_back": effective_days_back,
+    }
+
+
+def _fetch_eto_state(
+    *,
+    base_url: str,
+    token: str,
+    effective_location_id: int,
+    effective_days_back: int,
+    write_artifacts: bool = True,
+    verbose: bool = True,
+) -> Dict[str, Any]:
+    """
+    Fetch ETo via get-calculations and return summary components for orchestration.
+    """
+    notes: List[str] = []
+    paths = _get_bootstrap_paths()
 
     to_d = date.today()
     from_d = to_d - timedelta(days=max(1, int(effective_days_back)))
@@ -509,7 +609,10 @@ def ensure_irrigation_auth_parcel_and_eto(
     to_date_str = to_d.isoformat()
 
     if verbose:
-        print(f"[Irrigation] Fetching ETo via get-calculations for location_id={effective_location_id} ({from_date_str} → {to_date_str})...")
+        print(
+            f"[Irrigation] Fetching ETo via get-calculations for location_id={effective_location_id} "
+            f"({from_date_str} → {to_date_str})..."
+        )
 
     eto_status, eto_resp = fetch_eto_get_calculations(
         base_url=base_url,
@@ -535,22 +638,18 @@ def ensure_irrigation_auth_parcel_and_eto(
             eto_count = len(eto_resp["results"])
 
     if write_artifacts:
-        ETO_PATH.write_text(
-            json.dumps(
-                {
-                    "requested": {
-                        "method": "get_calculations",
-                        "location_id": int(effective_location_id),
-                        "from_date": from_date_str,
-                        "to_date": to_date_str,
-                        "formatting": "JSON",
-                    },
-                    "http_status": eto_status,
-                    "response": eto_resp,
+        _write_eto_artifact(
+            {
+                "requested": {
+                    "method": "get_calculations",
+                    "location_id": int(effective_location_id),
+                    "from_date": from_date_str,
+                    "to_date": to_date_str,
+                    "formatting": "JSON",
                 },
-                indent=2,
-            ),
-            encoding="utf-8",
+                "http_status": eto_status,
+                "response": eto_resp,
+            }
         )
 
     if not eto_ok:
@@ -562,13 +661,9 @@ def ensure_irrigation_auth_parcel_and_eto(
         eto_preview = ""
 
     return {
-        "enabled": True,
-        "base_url": base_url,
-        "email": me.get("email", email),
-        "authenticated": True,
-        "parcel_count": parcel_count,
-        "created_default_parcel": created_default,
-        "eto": {
+        "ok": True,
+        "notes": notes,
+        "eto_summary": {
             "method": "get_calculations",
             "location_id": int(effective_location_id),
             "from_date": from_date_str,
@@ -576,11 +671,140 @@ def ensure_irrigation_auth_parcel_and_eto(
             "http_status": eto_status,
             "ok": eto_ok,
             "count": eto_count,
-            "artifact_path": str(ETO_PATH),
+            "artifact_path": str(paths["eto_path"]),
             "preview": eto_preview,
         },
+    }
+
+
+def _build_bootstrap_summary(
+    *,
+    base_url: str,
+    email: str,
+    parcel_count: int,
+    created_default_parcel: bool,
+    eto_summary: Dict[str, Any],
+    notes: List[str],
+) -> Dict[str, Any]:
+    """Build final bootstrap success summary payload."""
+    return {
+        "enabled": True,
+        "base_url": base_url,
+        "email": email,
+        "authenticated": True,
+        "parcel_count": parcel_count,
+        "created_default_parcel": created_default_parcel,
+        "eto": eto_summary,
         "notes": notes,
     }
+
+
+def _build_bootstrap_failure_summary(
+    *,
+    base_url: str,
+    authenticated: bool,
+    email: str,
+    parcel_count: int,
+    created_default_parcel: bool,
+    notes: List[str],
+    eto_http_status: Optional[int] = None,
+) -> Dict[str, Any]:
+    """Build standardized bootstrap failure summary payload."""
+    return {
+        "enabled": True,
+        "base_url": base_url,
+        "authenticated": authenticated,
+        "email": email,
+        "parcel_count": parcel_count,
+        "created_default_parcel": created_default_parcel,
+        "eto": {"ok": False, "http_status": eto_http_status, "method": "get_calculations"},
+        "notes": notes,
+    }
+
+
+# ----------------------------
+# Public entry used by pipeline
+# ----------------------------
+def ensure_irrigation_auth_parcel_and_eto(
+    *,
+    eto_location_id: Optional[int] = None,
+    eto_days_back: Optional[int] = None,
+    write_artifacts: bool = True,
+    verbose: bool = True,
+) -> Dict[str, Any]:
+    """
+    Config-driven by default.
+    If eto_location_id / eto_days_back are provided explicitly, they override config.yaml.
+    """
+    bootstrap_cfg = _resolve_bootstrap_config(
+        eto_location_id=eto_location_id,
+        eto_days_back=eto_days_back,
+    )
+    base_url = bootstrap_cfg["base_url"]
+    email = bootstrap_cfg["email"]
+    password = bootstrap_cfg["password"]
+    wkt = bootstrap_cfg["wkt"]
+    effective_location_id = bootstrap_cfg["effective_location_id"]
+    effective_days_back = bootstrap_cfg["effective_days_back"]
+
+    _ensure_output_dir()
+
+    notes: List[str] = []
+
+    if verbose:
+        print("\n[Irrigation] Ensuring Irrigation service + auth + parcels + ETo...")
+
+    try:
+        _ensure_service_up(base_url, seconds=75, verbose=verbose)
+    except Exception as e:
+        return _build_bootstrap_failure_summary(
+            base_url=base_url,
+            authenticated=False,
+            email="",
+            parcel_count=0,
+            created_default_parcel=False,
+            notes=[f"Irrigation service unavailable: {e}"],
+        )
+
+    auth_result = _authenticate_irrigation(base_url, email, password, write_artifacts=write_artifacts, verbose=verbose)
+    if not auth_result["ok"]:
+        return auth_result["error_summary"]
+
+    token = auth_result["token"]
+    me = auth_result["me"]
+    notes.extend(auth_result["notes"])
+
+    parcel_result = _ensure_parcel_state(
+        base_url=base_url,
+        token=token,
+        email=me.get("email", email),
+        wkt=wkt,
+        write_artifacts=write_artifacts,
+    )
+    if not parcel_result["ok"]:
+        return parcel_result["error_summary"]
+
+    parcel_count = parcel_result["parcel_count"]
+    created_default = parcel_result["created_default_parcel"]
+    notes.extend(parcel_result["notes"])
+    eto_result = _fetch_eto_state(
+        base_url=base_url,
+        token=token,
+        effective_location_id=effective_location_id,
+        effective_days_back=effective_days_back,
+        write_artifacts=write_artifacts,
+        verbose=verbose,
+    )
+    notes.extend(eto_result["notes"])
+
+    return _build_bootstrap_summary(
+        base_url=base_url,
+        email=me.get("email", email),
+        parcel_count=parcel_count,
+        created_default_parcel=created_default,
+        eto_summary=eto_result["eto_summary"],
+        notes=notes,
+    )
 
 
 def main() -> int:

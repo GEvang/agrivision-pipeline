@@ -49,31 +49,30 @@ from pathlib import Path
 
 from agrivision.utils.settings import get_project_root, load_config
 
-CONFIG = load_config()
-PROJECT_ROOT = get_project_root()
-
-# ---------------------------------------------------------------------
-# Paths for RGB dataset
-# ---------------------------------------------------------------------
-IMAGES_FULL_RGB = PROJECT_ROOT / CONFIG["paths"]["images_full"]
-IMAGES_RESIZED_RGB = PROJECT_ROOT / CONFIG["paths"]["images_resized"]
-ODM_PROJECT_ROOT_RGB = PROJECT_ROOT / CONFIG["paths"]["odm_project_root_rgb"]
-
-# ---------------------------------------------------------------------
-# Paths for MAPIR dataset
-# ---------------------------------------------------------------------
-IMAGES_FULL_MAPIR = PROJECT_ROOT / CONFIG["paths"]["images_full_mapir"]
-IMAGES_RESIZED_MAPIR = PROJECT_ROOT / CONFIG["paths"]["images_resized_mapir"]
-ODM_PROJECT_ROOT_MAPIR = PROJECT_ROOT / CONFIG["paths"]["odm_project_root_mapir"]
-
-# Common ODM settings
-ODM_DOCKER_IMAGE = CONFIG["orthophoto"]["odm_docker_image"]
-ORTHO_RESOLUTION_CM = CONFIG["orthophoto"]["orthophoto_resolution_cm"]
-
 # We use the same project name ("project") inside each odm_project_* root
 PROJECT_NAME = "project"
 
 VALID_EXTS = (".jpg", ".jpeg", ".png", ".tif", ".tiff")
+
+
+def _get_odm_settings() -> dict[str, object]:
+    """Resolve ODM config and path settings at runtime."""
+    config = load_config()
+    project_root = get_project_root()
+    paths = config["paths"]
+    orthophoto = config["orthophoto"]
+
+    return {
+        "project_root": project_root,
+        "images_full_rgb": project_root / paths["images_full"],
+        "images_resized_rgb": project_root / paths["images_resized"],
+        "odm_project_root_rgb": project_root / paths["odm_project_root_rgb"],
+        "images_full_mapir": project_root / paths["images_full_mapir"],
+        "images_resized_mapir": project_root / paths["images_resized_mapir"],
+        "odm_project_root_mapir": project_root / paths["odm_project_root_mapir"],
+        "odm_docker_image": orthophoto["odm_docker_image"],
+        "ortho_resolution_cm": orthophoto["orthophoto_resolution_cm"],
+    }
 
 
 def _folder_has_images(folder: Path) -> bool:
@@ -159,7 +158,9 @@ def _prepare_odm_project(src_images_dir: Path, project_root: Path, label: str) -
     return project_dir
 
 
-def _run_odm_docker(project_root: Path, label: str) -> None:
+def _run_odm_docker(
+    project_root: Path, label: str, odm_docker_image: str, ortho_resolution_cm: int
+) -> None:
     """
     Execute the ODM Docker container for the project located under project_root.
     """
@@ -175,12 +176,12 @@ def _run_odm_docker(project_root: Path, label: str) -> None:
         f"{uid}:{gid}",
         "-v",
         f"{project_root}:/datasets",
-        ODM_DOCKER_IMAGE,
+        odm_docker_image,
         "--project-path",
         "/datasets",
         PROJECT_NAME,
         "--orthophoto-resolution",
-        str(ORTHO_RESOLUTION_CM),
+        str(ortho_resolution_cm),
         "--skip-3dmodel",
         "--skip-report",
     ]
@@ -188,7 +189,7 @@ def _run_odm_docker(project_root: Path, label: str) -> None:
     print(f"\n[ODM-{label}] Executing ODM command:")
     print(" ", " ".join(cmd), "\n")
 
-    result = subprocess.run(cmd, cwd=PROJECT_ROOT)
+    result = subprocess.run(cmd, cwd=project_root.parent)
 
     if result.returncode != 0:
         raise RuntimeError(f"ODM-{label} failed with exit code {result.returncode}")
@@ -215,20 +216,32 @@ def run_odm_rgb() -> None:
       - data/odm_project_rgb/project
     """
     print("\n[ODM-RGB] Starting ODM photogrammetry for RGB dataset...")
+    settings = _get_odm_settings()
+
+    images_full_rgb = settings["images_full_rgb"]
+    images_resized_rgb = settings["images_resized_rgb"]
+    odm_project_root_rgb = settings["odm_project_root_rgb"]
+    odm_docker_image = settings["odm_docker_image"]
+    ortho_resolution_cm = settings["ortho_resolution_cm"]
 
     input_folder = _choose_input_folder(
         label="RGB",
-        full_dir=IMAGES_FULL_RGB,
-        resized_dir=IMAGES_RESIZED_RGB,
+        full_dir=images_full_rgb,
+        resized_dir=images_resized_rgb,
     )
 
     _prepare_odm_project(
         src_images_dir=input_folder,
-        project_root=ODM_PROJECT_ROOT_RGB,
+        project_root=odm_project_root_rgb,
         label="RGB",
     )
 
-    _run_odm_docker(project_root=ODM_PROJECT_ROOT_RGB, label="RGB")
+    _run_odm_docker(
+        project_root=odm_project_root_rgb,
+        label="RGB",
+        odm_docker_image=odm_docker_image,
+        ortho_resolution_cm=ortho_resolution_cm,
+    )
 
 
 def run_odm_mapir() -> None:
@@ -249,20 +262,32 @@ def run_odm_mapir() -> None:
       are produced alongside RGB orthophotos.
     """
     print("\n[ODM-MAPIR] Starting ODM photogrammetry for MAPIR dataset...")
+    settings = _get_odm_settings()
+
+    images_full_mapir = settings["images_full_mapir"]
+    images_resized_mapir = settings["images_resized_mapir"]
+    odm_project_root_mapir = settings["odm_project_root_mapir"]
+    odm_docker_image = settings["odm_docker_image"]
+    ortho_resolution_cm = settings["ortho_resolution_cm"]
 
     input_folder = _choose_input_folder(
         label="MAPIR",
-        full_dir=IMAGES_FULL_MAPIR,
-        resized_dir=IMAGES_RESIZED_MAPIR,
+        full_dir=images_full_mapir,
+        resized_dir=images_resized_mapir,
     )
 
     _prepare_odm_project(
         src_images_dir=input_folder,
-        project_root=ODM_PROJECT_ROOT_MAPIR,
+        project_root=odm_project_root_mapir,
         label="MAPIR",
     )
 
-    _run_odm_docker(project_root=ODM_PROJECT_ROOT_MAPIR, label="MAPIR")
+    _run_odm_docker(
+        project_root=odm_project_root_mapir,
+        label="MAPIR",
+        odm_docker_image=odm_docker_image,
+        ortho_resolution_cm=ortho_resolution_cm,
+    )
 
 
 def run_odm() -> None:

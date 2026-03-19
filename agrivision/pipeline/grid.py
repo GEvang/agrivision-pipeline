@@ -28,31 +28,13 @@ import json
 import string
 from datetime import datetime
 from pathlib import Path
-from typing import Dict, List, Optional, Tuple
+from typing import Dict, List, Optional, Tuple, cast
 
 import matplotlib.pyplot as plt
 import numpy as np
 import rasterio
 
 from agrivision.utils.settings import get_project_root, load_config
-
-CONFIG = load_config()
-PROJECT_ROOT = get_project_root()
-
-NDVI_DIR = PROJECT_ROOT / CONFIG["paths"]["ndvi_output"]
-NDVI_TIF = NDVI_DIR / "ndvi.tif"
-NDVI_META_JSON = NDVI_DIR / "metadata.json"
-
-GRID_PNG = NDVI_DIR / "ndvi_grid_overlay.png"
-GRID_TABLE_CSV = NDVI_DIR / "ndvi_grid_cells.csv"
-GRID_CATEGORIES_CSV = NDVI_DIR / "ndvi_grid_categories.csv"
-GRID_META_JSON = NDVI_DIR / "grid_metadata.json"
-
-# Grid + thresholds from config.yaml
-GRID_ROWS = int(CONFIG["ndvi"]["grid_rows"])
-GRID_COLS = int(CONFIG["ndvi"]["grid_cols"])
-POOR_MAX_CFG = float(CONFIG["ndvi"]["poor_max"])
-MEDIUM_MAX_CFG = float(CONFIG["ndvi"]["medium_max"])
 
 COLOR_BY_CLASS = {
     "poor": "red",
@@ -62,19 +44,51 @@ COLOR_BY_CLASS = {
 }
 
 
+def _get_grid_settings() -> dict[str, object]:
+    config = load_config()
+    project_root = get_project_root()
+
+    ndvi_dir = project_root / config["paths"]["ndvi_output"]
+    ndvi_tif = ndvi_dir / "ndvi.tif"
+    ndvi_meta_json = ndvi_dir / "metadata.json"
+    grid_png = ndvi_dir / "ndvi_grid_overlay.png"
+    grid_table_csv = ndvi_dir / "ndvi_grid_cells.csv"
+    grid_categories_csv = ndvi_dir / "ndvi_grid_categories.csv"
+    grid_meta_json = ndvi_dir / "grid_metadata.json"
+
+    grid_rows = int(config["ndvi"]["grid_rows"])
+    grid_cols = int(config["ndvi"]["grid_cols"])
+    poor_max_cfg = float(config["ndvi"]["poor_max"])
+    medium_max_cfg = float(config["ndvi"]["medium_max"])
+
+    return {
+        "ndvi_dir": ndvi_dir,
+        "ndvi_tif": ndvi_tif,
+        "ndvi_meta_json": ndvi_meta_json,
+        "grid_png": grid_png,
+        "grid_table_csv": grid_table_csv,
+        "grid_categories_csv": grid_categories_csv,
+        "grid_meta_json": grid_meta_json,
+        "grid_rows": grid_rows,
+        "grid_cols": grid_cols,
+        "poor_max_cfg": poor_max_cfg,
+        "medium_max_cfg": medium_max_cfg,
+    }
+
+
 # ---------------------------------------------------------------------
 # Index metadata helpers
 # ---------------------------------------------------------------------
-def load_index_identity() -> Tuple[str, str, str]:
+def load_index_identity(ndvi_meta_json: Path) -> Tuple[str, str, str]:
     """
     Returns:
       (index_name, index_mode, source_dataset)
 
     Derived from output/ndvi/metadata.json written by agrivision.pipeline.ndvi.
     """
-    if NDVI_META_JSON.exists():
+    if ndvi_meta_json.exists():
         try:
-            with NDVI_META_JSON.open("r", encoding="utf-8") as f:
+            with ndvi_meta_json.open("r", encoding="utf-8") as f:
                 meta = json.load(f)
             idx = meta.get("index", {}) or {}
             src = meta.get("source", {}) or {}
@@ -113,22 +127,22 @@ def classify_value_absolute(value: Optional[float], poor_max: float, medium_max:
 
 
 def make_grid(
-    arr: np.ndarray, classifier
+    arr: np.ndarray, classifier, grid_rows: int, grid_cols: int
 ) -> Tuple[List[Dict[str, object]], np.ndarray, np.ndarray]:
     """
-    Split the array into GRID_ROWS x GRID_COLS cells and classify each.
+    Split the array into grid_rows x grid_cols cells and classify each.
 
     classifier is a function(mean_value) -> class_name
     """
     h, w = arr.shape
 
-    row_edges = np.linspace(0, h, GRID_ROWS + 1, dtype=int)
-    col_edges = np.linspace(0, w, GRID_COLS + 1, dtype=int)
+    row_edges = np.linspace(0, h, grid_rows + 1, dtype=int)
+    col_edges = np.linspace(0, w, grid_cols + 1, dtype=int)
 
     cells: List[Dict[str, object]] = []
 
-    for r in range(GRID_ROWS):
-        for c in range(GRID_COLS):
+    for r in range(grid_rows):
+        for c in range(grid_cols):
             r0, r1 = row_edges[r], row_edges[r + 1]
             c0, c1 = col_edges[c], col_edges[c + 1]
 
@@ -330,6 +344,10 @@ def save_grid_metadata(
     classification_mode: str,
     poor_max_used: float,
     medium_max_used: float,
+    grid_rows: int,
+    grid_cols: int,
+    poor_max_cfg: float,
+    medium_max_cfg: float,
 ) -> None:
     out_path.parent.mkdir(parents=True, exist_ok=True)
 
@@ -339,8 +357,8 @@ def save_grid_metadata(
         "index_mode": index_mode,
         "source_dataset": source_dataset,
         "grid": {
-            "rows": GRID_ROWS,
-            "cols": GRID_COLS,
+            "rows": grid_rows,
+            "cols": grid_cols,
         },
         "classification_mode": classification_mode,  # "fixed" or "percentile_fallback"
         "thresholds_used": {
@@ -348,8 +366,8 @@ def save_grid_metadata(
             "medium_max": float(medium_max_used),
         },
         "thresholds_configured": {
-            "poor_max": float(POOR_MAX_CFG),
-            "medium_max": float(MEDIUM_MAX_CFG),
+            "poor_max": float(poor_max_cfg),
+            "medium_max": float(medium_max_cfg),
         },
     }
 
@@ -368,35 +386,47 @@ def run_grid_report() -> None:
     Includes a dynamic fallback: if all cells are the same class using
     the configured absolute thresholds, recompute thresholds from percentiles.
     """
+    resolved = _get_grid_settings()
+    ndvi_tif = cast(Path, resolved["ndvi_tif"])
+    ndvi_meta_json = cast(Path, resolved["ndvi_meta_json"])
+    grid_png = cast(Path, resolved["grid_png"])
+    grid_table_csv = cast(Path, resolved["grid_table_csv"])
+    grid_categories_csv = cast(Path, resolved["grid_categories_csv"])
+    grid_meta_json = cast(Path, resolved["grid_meta_json"])
+    grid_rows = cast(int, resolved["grid_rows"])
+    grid_cols = cast(int, resolved["grid_cols"])
+    poor_max_cfg = cast(float, resolved["poor_max_cfg"])
+    medium_max_cfg = cast(float, resolved["medium_max_cfg"])
+
     print("[AgriVision] Grid report")
-    print(f"  Raster source: {NDVI_TIF}")
-    print(f"  Grid: {GRID_ROWS} rows x {GRID_COLS} cols")
+    print(f"  Raster source: {ndvi_tif}")
+    print(f"  Grid: {grid_rows} rows x {grid_cols} cols")
 
-    if not NDVI_TIF.exists():
-        raise FileNotFoundError(f"Index file not found: {NDVI_TIF}")
+    if not ndvi_tif.exists():
+        raise FileNotFoundError(f"Index file not found: {ndvi_tif}")
 
-    index_name, index_mode, source_dataset = load_index_identity()
+    index_name, index_mode, source_dataset = load_index_identity(ndvi_meta_json)
 
-    with rasterio.open(NDVI_TIF) as src:
+    with rasterio.open(ndvi_tif) as src:
         arr = src.read(1).astype("float32")
 
     arr[~np.isfinite(arr)] = np.nan
 
     # First pass: absolute thresholds from config
     print("[Grid] First pass classification with configured thresholds:")
-    print(f"       POOR_MAX={POOR_MAX_CFG}, MEDIUM_MAX={MEDIUM_MAX_CFG}")
+    print(f"       POOR_MAX={poor_max_cfg}, MEDIUM_MAX={medium_max_cfg}")
 
     def abs_classifier(v: Optional[float]) -> str:
-        return classify_value_absolute(v, POOR_MAX_CFG, MEDIUM_MAX_CFG)
+        return classify_value_absolute(v, poor_max_cfg, medium_max_cfg)
 
-    cells, row_edges, col_edges = make_grid(arr, abs_classifier)
+    cells, row_edges, col_edges = make_grid(arr, abs_classifier, grid_rows, grid_cols)
 
     classes = {c["class"] for c in cells if c["mean_value"] is not None}
     print(f"[Grid] Classes found: {classes}")
 
     classification_mode = "fixed"
-    poor_used = POOR_MAX_CFG
-    medium_used = MEDIUM_MAX_CFG
+    poor_used = poor_max_cfg
+    medium_used = medium_max_cfg
 
     # Dynamic fallback if everything becomes one class (excluding no_data-only cases)
     if len(classes) <= 1 and classes and "no_data" not in classes:
@@ -419,32 +449,36 @@ def run_grid_report() -> None:
         def dyn_classifier(v: Optional[float]) -> str:
             return classify_value_absolute(v, poor_used, medium_used)
 
-        cells, row_edges, col_edges = make_grid(arr, dyn_classifier)
+        cells, row_edges, col_edges = make_grid(arr, dyn_classifier, grid_rows, grid_cols)
 
-    save_grid_overlay(arr, cells, row_edges, col_edges, GRID_PNG)
-    save_cell_table_csv(cells, GRID_TABLE_CSV, index_name=index_name, index_mode=index_mode)
+    save_grid_overlay(arr, cells, row_edges, col_edges, grid_png)
+    save_cell_table_csv(cells, grid_table_csv, index_name=index_name, index_mode=index_mode)
     save_categories_csv(
-        GRID_CATEGORIES_CSV,
+        grid_categories_csv,
         poor_max=poor_used,
         medium_max=medium_used,
         index_name=index_name,
         index_mode=index_mode,
     )
     save_grid_metadata(
-        GRID_META_JSON,
+        grid_meta_json,
         index_name=index_name,
         index_mode=index_mode,
         source_dataset=source_dataset,
         classification_mode=classification_mode,
         poor_max_used=poor_used,
         medium_max_used=medium_used,
+        grid_rows=grid_rows,
+        grid_cols=grid_cols,
+        poor_max_cfg=poor_max_cfg,
+        medium_max_cfg=medium_max_cfg,
     )
 
     print("\n[AgriVision] Grid report complete.")
-    print(f"  Overlay image : {GRID_PNG}")
-    print(f"  Cell table    : {GRID_TABLE_CSV}")
-    print(f"  Categories    : {GRID_CATEGORIES_CSV}")
-    print(f"  Grid metadata : {GRID_META_JSON}\n")
+    print(f"  Overlay image : {grid_png}")
+    print(f"  Cell table    : {grid_table_csv}")
+    print(f"  Categories    : {grid_categories_csv}")
+    print(f"  Grid metadata : {grid_meta_json}\n")
 
 
 if __name__ == "__main__":

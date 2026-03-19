@@ -14,7 +14,8 @@ Protected endpoints (🔒 in Swagger) include:
   - /api/v1/dataset/...
 
 This client:
-  - Reads settings from config.yaml (irrigation.base_url, username, password)
+    - Reads settings from config.yaml at runtime
+        (irrigation.base_url, irrigation.auth.email, irrigation.auth.password)
   - Obtains access token via /api/v1/login/access-token
   - Caches the access token in memory
   - Uses Authorization: Bearer <token> for protected calls
@@ -29,34 +30,13 @@ import os
 import subprocess
 import time
 from dataclasses import dataclass
-from datetime import date, datetime
+from datetime import date, datetime, timedelta
 from pathlib import Path
 from typing import Any, Dict, List
 
 import requests
 
 from agrivision.utils.settings import get_project_root, load_config
-
-CONFIG = load_config()
-PROJECT_ROOT = get_project_root()
-
-IRR_CFG = CONFIG.get("irrigation", {}) or {}
-
-BASE_URL: str = str(IRR_CFG.get("base_url", "http://127.0.0.1:8005")).rstrip("/")
-TIMEOUT_SECONDS: int = int(IRR_CFG.get("timeout_seconds", 20))
-
-USERNAME: str | None = IRR_CFG.get("username")
-PASSWORD: str | None = IRR_CFG.get("password")
-
-# Optional override: if you already have a token, you can supply it:
-STATIC_TOKEN: str | None = IRR_CFG.get("token") or os.getenv("IRRIGATION_TOKEN") or None
-
-# Optional: where the vendored service lives, for best-effort auto-start
-IRRIGATION_SERVICE_DIRNAME = str(IRR_CFG.get("service_dir", "OpenAgri-IrrigationManagement"))
-
-# Optional default parcel polygon for smoke tests
-DEFAULT_PARCEL_WKT: str | None = IRR_CFG.get("default_parcel_wkt")
-
 
 # ---------------------------------------------------------------------------
 # Models (minimal; keep raw payload for compatibility)
@@ -96,17 +76,47 @@ _TOKEN_CACHE: str | None = None
 _TOKEN_OBTAINED_AT_UTC: datetime | None = None
 
 
+def _get_irrigation_settings() -> dict[str, Any]:
+    config = load_config()
+    irrigation_cfg = config.get("irrigation", {}) or {}
+    auth_cfg = irrigation_cfg.get("auth", {}) or {}
+
+    timeout_raw = irrigation_cfg.get("timeout_seconds", 20)
+    try:
+        timeout_seconds = int(timeout_raw)
+    except (TypeError, ValueError):
+        timeout_seconds = 20
+
+    base_url = str(irrigation_cfg.get("base_url") or "").rstrip("/")
+    static_token = irrigation_cfg.get("token") or os.getenv("IRRIGATION_TOKEN") or None
+
+    return {
+        "project_root": get_project_root(),
+        "base_url": base_url,
+        "timeout_seconds": timeout_seconds,
+        "email": auth_cfg.get("email"),
+        "password": auth_cfg.get("password"),
+        "static_token": static_token,
+        "service_dirname": irrigation_cfg.get("service_dir") or "OpenAgri-IrrigationManagement",
+        "default_parcel_wkt": irrigation_cfg.get("default_parcel_wkt"),
+    }
+
+
 def _service_dir() -> Path:
-    return PROJECT_ROOT / IRRIGATION_SERVICE_DIRNAME
+    settings = _get_irrigation_settings()
+    return Path(settings["project_root"]) / str(settings["service_dirname"])
 
 
 def _start_irrigation_service_if_needed() -> None:
     """
-    Best-effort: if BASE_URL isn't reachable, attempt docker compose up -d
+    Best-effort: if base_url isn't reachable, attempt docker compose up -d
     from the vendored service directory.
     """
+    settings = _get_irrigation_settings()
+    base_url = str(settings["base_url"])
+
     try:
-        requests.get(f"{BASE_URL}/docs", timeout=2)
+        requests.get(f"{base_url}/docs", timeout=2)
         return
     except requests.RequestException:
         pass
@@ -114,13 +124,13 @@ def _start_irrigation_service_if_needed() -> None:
     svc_dir = _service_dir()
     if not svc_dir.exists():
         print(
-            f"[Irrigation] Service not reachable at {BASE_URL}, and folder not found:\n"
+            f"[Irrigation] Service not reachable at {base_url}, and folder not found:\n"
             f"            {svc_dir}\n"
             "Cannot auto-start irrigation service."
         )
         return
 
-    print(f"[Irrigation] Service not reachable at {BASE_URL}. Trying docker compose up -d in {svc_dir} ...")
+    print(f"[Irrigation] Service not reachable at {base_url}. Trying docker compose up -d in {svc_dir} ...")
     try:
         subprocess.run(["docker", "compose", "up", "-d"], cwd=str(svc_dir), check=False)
         time.sleep(5)
@@ -161,28 +171,35 @@ def get_access_token(force_refresh: bool = False) -> str:
     """
     global _TOKEN_CACHE, _TOKEN_OBTAINED_AT_UTC
 
-    if STATIC_TOKEN and not force_refresh:
-        return STATIC_TOKEN
+    settings = _get_irrigation_settings()
+    static_token = settings["static_token"]
+    email = settings["email"]
+    password = settings["password"]
+    base_url = str(settings["base_url"])
+    timeout_seconds = int(settings["timeout_seconds"])
+
+    if static_token and not force_refresh:
+        return str(static_token)
 
     if _TOKEN_CACHE and not force_refresh:
         return _TOKEN_CACHE
 
-    if not USERNAME or not PASSWORD:
+    if not email or not password:
         raise RuntimeError(
             "\n[Irrigation] Missing credentials.\n"
             "This IRM deployment requires auth. Provide either:\n"
             "  - env var IRRIGATION_TOKEN='...'\n"
             "  - or config.yaml -> irrigation.token: '...'\n"
-            "  - or config.yaml -> irrigation.username + irrigation.password\n"
+            "  - or config.yaml -> irrigation.auth.email + irrigation.auth.password\n"
         )
 
     _start_irrigation_service_if_needed()
 
-    url = f"{BASE_URL}/api/v1/login/access-token"
+    url = f"{base_url}/api/v1/login/access-token"
     form = {
         "grant_type": "",
-        "username": USERNAME,
-        "password": PASSWORD,
+        "username": email,
+        "password": password,
         "scope": "",
         "client_id": "",
         "client_secret": "",
@@ -192,7 +209,7 @@ def get_access_token(force_refresh: bool = False) -> str:
         url,
         data=form,
         headers={"Content-Type": "application/x-www-form-urlencoded"},
-        timeout=TIMEOUT_SECONDS,
+        timeout=timeout_seconds,
     )
     if resp.status_code != 200:
         payload = _json_or_text(resp)
@@ -222,19 +239,24 @@ def _request(method: str, path: str, *, json_body: Any = None, params: Dict[str,
     """
     Authenticated request helper. Automatically obtains token and adds headers.
     """
+    settings = _get_irrigation_settings()
+    base_url = str(settings["base_url"])
+    timeout_seconds = int(settings["timeout_seconds"])
+    static_token = settings["static_token"]
+
     token = get_access_token()
-    url = f"{BASE_URL}{path}"
+    url = f"{base_url}{path}"
     resp = requests.request(
         method,
         url,
         json=json_body,
         params=params,
         headers=_auth_headers(token),
-        timeout=TIMEOUT_SECONDS,
+        timeout=timeout_seconds,
     )
 
     # If token expired mid-run, refresh once and retry
-    if resp.status_code in (401, 403) and not STATIC_TOKEN:
+    if resp.status_code in (401, 403) and not static_token:
         token = get_access_token(force_refresh=True)
         resp = requests.request(
             method,
@@ -242,7 +264,7 @@ def _request(method: str, path: str, *, json_body: Any = None, params: Dict[str,
             json=json_body,
             params=params,
             headers=_auth_headers(token),
-            timeout=TIMEOUT_SECONDS,
+            timeout=timeout_seconds,
         )
 
     return resp
@@ -351,7 +373,8 @@ def _print_locations(locs: List[Location]) -> None:
 
 
 if __name__ == "__main__":
-    print(f"[Irrigation] BASE_URL = {BASE_URL}")
+    settings = _get_irrigation_settings()
+    print(f"[Irrigation] BASE_URL = {settings['base_url']}")
 
     # Force a login so failures are obvious
     tok = get_access_token()
@@ -360,15 +383,15 @@ if __name__ == "__main__":
     locs = list_locations()
     _print_locations(locs)
 
-    if DEFAULT_PARCEL_WKT:
+    if settings["default_parcel_wkt"]:
         print("[Irrigation] default_parcel_wkt is set; creating location from WKT...")
-        loc = create_location_from_wkt(DEFAULT_PARCEL_WKT)
+        loc = create_location_from_wkt(str(settings["default_parcel_wkt"]))
         print(f"[Irrigation] Created location id={loc.id}")
 
     if locs:
         # Small default window: last 7 days
         today = date.today()
-        from_d = today.replace(day=max(1, today.day - 7))
+        from_d = today - timedelta(days=7)
         to_d = today
 
         print(f"[Irrigation] Fetching ETo for location {locs[0].id} from {from_d} to {to_d} ...")

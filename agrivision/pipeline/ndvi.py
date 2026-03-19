@@ -29,32 +29,28 @@ import rasterio
 
 from agrivision.utils.settings import get_project_root, load_config
 
-CONFIG = load_config()
-PROJECT_ROOT = get_project_root()
 
-# Paths to orthophotos
-ORTHO_RGB = (
-    PROJECT_ROOT / CONFIG["paths"]["odm_project_root_rgb"]
-    / "project/odm_orthophoto/odm_orthophoto.tif"
-)
+def _get_ndvi_settings() -> dict[str, Any]:
+    config = load_config()
+    project_root = get_project_root()
+    paths = config["paths"]
+    ndvi_config = config["ndvi"]
 
-ORTHO_MAPIR = (
-    PROJECT_ROOT / CONFIG["paths"]["odm_project_root_mapir"]
-    / "project/odm_orthophoto/odm_orthophoto.tif"
-)
+    out_dir = project_root / paths["ndvi_output"]
 
-# Output folder
-OUT_DIR = PROJECT_ROOT / CONFIG["paths"]["ndvi_output"]
-OUT_TIF = OUT_DIR / "ndvi.tif"
-OUT_PNG = OUT_DIR / "ndvi_color.png"
-OUT_META = OUT_DIR / "metadata.json"
-
-# Thresholds (used by grid/report)
-POOR_MAX = float(CONFIG["ndvi"]["poor_max"])
-MEDIUM_MAX = float(CONFIG["ndvi"]["medium_max"])
-
-MAPIR_PROFILE: Dict[str, Any] = CONFIG["ndvi"]["mapir_profile"]
-RGB_PROFILE: Dict[str, Any] = CONFIG["ndvi"]["rgb_profile"]
+    return {
+        "project_root": project_root,
+        "ortho_rgb": project_root / paths["odm_project_root_rgb"] / "project/odm_orthophoto/odm_orthophoto.tif",
+        "ortho_mapir": project_root / paths["odm_project_root_mapir"] / "project/odm_orthophoto/odm_orthophoto.tif",
+        "out_dir": out_dir,
+        "out_tif": out_dir / "ndvi.tif",
+        "out_png": out_dir / "ndvi_color.png",
+        "out_meta": out_dir / "metadata.json",
+        "poor_max": float(ndvi_config["poor_max"]),
+        "medium_max": float(ndvi_config["medium_max"]),
+        "mapir_profile": ndvi_config["mapir_profile"],
+        "rgb_profile": ndvi_config["rgb_profile"],
+    }
 
 
 # ---------------------------------------------------------------------
@@ -64,24 +60,29 @@ def _exists(p: Path) -> bool:
     return p.exists()
 
 
-def choose_source() -> Tuple[Path, str, Dict[str, Any]]:
+def choose_source(
+    ortho_mapir: Path,
+    ortho_rgb: Path,
+    mapir_profile: Dict[str, Any],
+    rgb_profile: Dict[str, Any],
+) -> Tuple[Path, str, Dict[str, Any]]:
     """
     Choose which orthophoto to compute from.
 
     Returns:
       (path, label, profile_dict)
     """
-    if _exists(ORTHO_MAPIR):
-        return ORTHO_MAPIR, "MAPIR", MAPIR_PROFILE
+    if _exists(ortho_mapir):
+        return ortho_mapir, "MAPIR", mapir_profile
 
-    if _exists(ORTHO_RGB):
-        return ORTHO_RGB, "RGB", RGB_PROFILE
+    if _exists(ortho_rgb):
+        return ortho_rgb, "RGB", rgb_profile
 
     raise RuntimeError(
         "\n[ERROR] No orthophoto found for vegetation index computation.\n"
         f"Expected at least one of:\n"
-        f"  - MAPIR: {ORTHO_MAPIR}\n"
-        f"  - RGB  : {ORTHO_RGB}\n"
+        f"  - MAPIR: {ortho_mapir}\n"
+        f"  - RGB  : {ortho_rgb}\n"
         "Run ODM before running this step.\n"
     )
 
@@ -180,8 +181,13 @@ def compute_index(
 # ---------------------------------------------------------------------
 # Output writers
 # ---------------------------------------------------------------------
-def save_geotiff(src: rasterio.io.DatasetReader, arr: np.ndarray, out_path: Path) -> None:
-    OUT_DIR.mkdir(parents=True, exist_ok=True)
+def save_geotiff(
+    src: rasterio.io.DatasetReader,
+    arr: np.ndarray,
+    out_path: Path,
+    out_dir: Path,
+) -> None:
+    out_dir.mkdir(parents=True, exist_ok=True)
 
     profile = src.profile.copy()
     profile.update(
@@ -196,8 +202,8 @@ def save_geotiff(src: rasterio.io.DatasetReader, arr: np.ndarray, out_path: Path
     print(f"[VI] GeoTIFF saved: {out_path}")
 
 
-def save_png(arr: np.ndarray, out_path: Path, title: str) -> None:
-    OUT_DIR.mkdir(parents=True, exist_ok=True)
+def save_png(arr: np.ndarray, out_path: Path, title: str, out_dir: Path) -> None:
+    out_dir.mkdir(parents=True, exist_ok=True)
 
     valid = np.isfinite(arr)
     if not np.any(valid):
@@ -237,18 +243,35 @@ def run_ndvi() -> None:
     Compute vegetation index from MAPIR or RGB orthophoto (auto-selected),
     write outputs, and emit metadata.json for traceability.
     """
-    print("\n[AgriVision] Vegetation index computation starting...")
-    print(f"  thresholds: poor_max={POOR_MAX}, medium_max={MEDIUM_MAX}")
+    settings = _get_ndvi_settings()
+    ortho_rgb = settings["ortho_rgb"]
+    ortho_mapir = settings["ortho_mapir"]
+    out_dir = settings["out_dir"]
+    out_tif = settings["out_tif"]
+    out_png = settings["out_png"]
+    out_meta = settings["out_meta"]
+    poor_max = settings["poor_max"]
+    medium_max = settings["medium_max"]
+    mapir_profile = settings["mapir_profile"]
+    rgb_profile = settings["rgb_profile"]
 
-    src_path, label, profile = choose_source()
+    print("\n[AgriVision] Vegetation index computation starting...")
+    print(f"  thresholds: poor_max={poor_max}, medium_max={medium_max}")
+
+    src_path, label, profile = choose_source(
+        ortho_mapir,
+        ortho_rgb,
+        mapir_profile,
+        rgb_profile,
+    )
     print(f"[VI] Source orthophoto: {src_path} ({label})")
 
-    OUT_DIR.mkdir(parents=True, exist_ok=True)
+    out_dir.mkdir(parents=True, exist_ok=True)
 
     with rasterio.open(src_path) as src:
         idx, idx_meta = compute_index(src, label, profile)
-        save_geotiff(src, idx, OUT_TIF)
-        save_png(idx, OUT_PNG, title=idx_meta["index_name"])
+        save_geotiff(src, idx, out_tif, out_dir)
+        save_png(idx, out_png, title=idx_meta["index_name"], out_dir=out_dir)
 
         meta = {
             "generated_at_utc": datetime.utcnow().replace(microsecond=0).isoformat() + "Z",
@@ -259,13 +282,13 @@ def run_ndvi() -> None:
             },
             "index": idx_meta,
             "classification_thresholds": {
-                "poor_max": POOR_MAX,
-                "medium_max": MEDIUM_MAX,
+                "poor_max": poor_max,
+                "medium_max": medium_max,
             },
             "artifacts": {
-                "geotiff": str(OUT_TIF),
-                "png": str(OUT_PNG),
-                "metadata": str(OUT_META),
+                "geotiff": str(out_tif),
+                "png": str(out_png),
+                "metadata": str(out_meta),
             },
             "notes": [
                 "If index_mode is 'nir_green', this is a GNDVI-like vegetation index (not true NDVI).",
@@ -273,7 +296,7 @@ def run_ndvi() -> None:
             ],
         }
 
-    save_metadata(meta, OUT_META)
+    save_metadata(meta, out_meta)
     print("[AgriVision] Vegetation index computation completed.")
 
 
