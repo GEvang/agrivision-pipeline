@@ -63,6 +63,14 @@ data/odm_project/
 output/ndvi/
 output/ndvi_*/
 
+# Weather outputs
+output/weather/current_weather.json
+output/weather/forecast5.json
+output/weather/forecast5.jsonld
+output/weather/spray_forecast.jsonld
+output/weather/thi.json
+output/weather/thi.jsonld
+
 # Irrigation outputs
 output/irrigation/auth_token.json
 output/irrigation/eto.json
@@ -106,14 +114,4 @@ docker-compose.override.yml
 !data/.gitkeep
 !output/.gitkeep
 
-output/irrigation/auth_token.json
-output/irrigation/eto.json
-OpenAgri-IrrigationManagement/
-output/irrigation/eto.json
-output/irrigation/auth_token.json
-output/weather/current_weather.json
-output/weather/forecast5.json
-output/weather/forecast5.jsonld
-output/weather/spray_forecast.jsonld
-output/weather/thi.json
-output/weather/thi.jsonld
+
