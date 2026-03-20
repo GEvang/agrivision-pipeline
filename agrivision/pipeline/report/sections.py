@@ -1,12 +1,187 @@
-"""High-level report sections for methodology, grid metadata, and irrigation."""
+"""High-level report sections for weather, methodology, grid metadata, and irrigation."""
 
 from __future__ import annotations
 
+import json
 from pathlib import Path
 from typing import Any, Dict, Optional
 
 from agrivision.pipeline.report.assets import rel_to_report
 from agrivision.pipeline.report.html import safe_html
+
+
+def _render_json_preview(title: str, payload: Any) -> str:
+    if not payload:
+        return f"<p><em>{safe_html(title)} not available for this run.</em></p>"
+    preview = json.dumps(payload, indent=2, ensure_ascii=False)
+    if len(preview) > 2500:
+        preview = preview[:2500] + "\n..."
+    return (
+        f"<h4>{safe_html(title)}</h4>"
+        "<pre style='white-space: pre-wrap; max-height: 260px; overflow:auto; border:1px solid #ddd; padding:10px;'>"
+        f"{safe_html(preview)}</pre>"
+    )
+
+
+def _render_artifact_link_row(label: str, artifact_path: str, output_dir: Path) -> str:
+    if not artifact_path:
+        return f"<tr><th align='left'>{safe_html(label)}</th><td><em>Not available</em></td></tr>"
+    try:
+        path = Path(artifact_path)
+        if path.exists():
+            href = rel_to_report(path, output_dir)
+            link_html = f'<a href="{safe_html(href)}">{safe_html(href)}</a>'
+        else:
+            link_html = "<em>Not found</em>"
+    except Exception:
+        link_html = "<em>Not available</em>"
+    return f"<tr><th align='left'>{safe_html(label)}</th><td>{link_html}</td></tr>"
+
+
+def render_weather_section(
+    weather_summary: Optional[Dict[str, Any]],
+    output_dir: Path,
+) -> str:
+    if not weather_summary:
+        return (
+            "<h2>OpenAgri Weather Service</h2>"
+            "<p><em>No weather integration data provided for this run.</em></p>"
+        )
+
+    enabled = bool(weather_summary.get("enabled", True))
+    location_name = weather_summary.get("location_name", "Unknown location")
+    current = weather_summary.get("current_weather", {}) or {}
+    forecast_points = weather_summary.get("forecast5_points", []) or []
+    thi = weather_summary.get("thi", {}) or {}
+    thi_jsonld = weather_summary.get("thi_jsonld", {}) or {}
+    forecast5_jsonld = weather_summary.get("forecast5_jsonld", {}) or {}
+    uav = weather_summary.get("uav_flight_forecast", {}) or {}
+    spray = weather_summary.get("spray_forecast", {}) or {}
+    spray_jsonld = weather_summary.get("spray_forecast_jsonld", {}) or {}
+    historical_daily = weather_summary.get("historical_daily", {}) or {}
+    historical_hourly = weather_summary.get("historical_hourly", {}) or {}
+    notes = weather_summary.get("notes", []) or []
+
+    status_label = "OK" if enabled else "Unavailable"
+    status_color = "#2a5d34" if enabled else "#a13a3a"
+
+    current_time = current.get("timestamp", "N/A")
+    current_temp = current.get("temperature", "N/A")
+    current_humidity = current.get("humidity", "N/A")
+    current_wind = current.get("wind_speed", "N/A")
+    current_pressure = current.get("pressure", "N/A")
+    current_desc = current.get("description", "N/A")
+
+    thi_data = thi.get("data", thi) if isinstance(thi, dict) else thi
+    uav_data = uav.get("data", uav) if isinstance(uav, dict) else uav
+    spray_data = spray.get("data", spray) if isinstance(spray, dict) else spray
+    hist_daily_data = historical_daily.get("data", historical_daily) if isinstance(historical_daily, dict) else historical_daily
+    hist_hourly_data = historical_hourly.get("data", historical_hourly) if isinstance(historical_hourly, dict) else historical_hourly
+
+    forecast_rows = []
+    for item in forecast_points[:8]:
+        forecast_rows.append(
+            "<tr>"
+            f"<td>{safe_html(item.get('timestamp', 'N/A'))}</td>"
+            f"<td>{safe_html(item.get('measurement_type', item.get('data_type', 'N/A')))}</td>"
+            f"<td>{safe_html(item.get('value', 'N/A'))}</td>"
+            f"<td>{safe_html(item.get('source', 'N/A'))}</td>"
+            "</tr>"
+        )
+    if not forecast_rows:
+        forecast_rows.append("<tr><td colspan='4'><em>No forecast points available.</em></td></tr>")
+
+    notes_html = ""
+    if isinstance(notes, list) and notes:
+        notes_html = "<ul>" + "".join(f"<li>{safe_html(note)}</li>" for note in notes) + "</ul>"
+
+    artifact_rows = "".join(
+        [
+            _render_artifact_link_row("Current weather JSON", weather_summary.get("current_weather_artifact", ""), output_dir),
+            _render_artifact_link_row("Forecast JSON", weather_summary.get("forecast_json_artifact", ""), output_dir),
+            _render_artifact_link_row("Forecast JSON-LD", weather_summary.get("forecast_jsonld_artifact", ""), output_dir),
+            _render_artifact_link_row("THI JSON", weather_summary.get("thi_artifact", ""), output_dir),
+            _render_artifact_link_row("THI JSON-LD", weather_summary.get("thi_jsonld_artifact", ""), output_dir),
+            _render_artifact_link_row("UAV flight forecast JSON", weather_summary.get("uav_artifact", ""), output_dir),
+            _render_artifact_link_row("Spray forecast JSON", weather_summary.get("spray_artifact", ""), output_dir),
+            _render_artifact_link_row("Spray forecast JSON-LD", weather_summary.get("spray_jsonld_artifact", ""), output_dir),
+            _render_artifact_link_row("Historical daily JSON", weather_summary.get("historical_daily_artifact", ""), output_dir),
+            _render_artifact_link_row("Historical hourly JSON", weather_summary.get("historical_hourly_artifact", ""), output_dir),
+        ]
+    )
+
+    return f"""
+<h2>OpenAgri Weather Service</h2>
+<p>
+  This run includes current weather conditions, 5-day forecasts, JSON-LD/OCSM outputs,
+  agricultural indicators, UAV flight forecasts, spray condition forecasts, and historical weather values.
+</p>
+
+<table border="1" cellpadding="6" cellspacing="0">
+  <tr><th align="left">Status</th><td><span style="color:{status_color}; font-weight:bold;">{safe_html(status_label)}</span></td></tr>
+  <tr><th align="left">Location</th><td>{safe_html(location_name)}</td></tr>
+  <tr><th align="left">Report history range</th><td>{safe_html(weather_summary.get('history_start_date', 'N/A'))} → {safe_html(weather_summary.get('history_end_date', 'N/A'))}</td></tr>
+  <tr><th align="left">UAV model</th><td>{safe_html(weather_summary.get('uav_model', 'N/A'))}</td></tr>
+</table>
+
+<h3>Current Weather Conditions</h3>
+<table border="1" cellpadding="6" cellspacing="0">
+  <tr><th align="left">Observed at</th><td>{safe_html(current_time)}</td></tr>
+  <tr><th align="left">Temperature</th><td>{safe_html(current_temp)} °C</td></tr>
+  <tr><th align="left">Humidity</th><td>{safe_html(current_humidity)} %</td></tr>
+  <tr><th align="left">Wind speed</th><td>{safe_html(current_wind)} m/s</td></tr>
+  <tr><th align="left">Pressure</th><td>{safe_html(current_pressure)} hPa</td></tr>
+  <tr><th align="left">Sky conditions</th><td>{safe_html(current_desc)}</td></tr>
+</table>
+
+<h3>5-Day Forecast Preview</h3>
+<table border="1" cellpadding="6" cellspacing="0">
+  <thead>
+    <tr>
+      <th>Timestamp</th>
+      <th>Measure</th>
+      <th>Value</th>
+      <th>Source</th>
+    </tr>
+  </thead>
+  <tbody>
+    {''.join(forecast_rows)}
+  </tbody>
+</table>
+
+<h3>Agricultural Indicators (THI)</h3>
+<div class="subtle-card">
+  {_render_json_preview('THI JSON', thi_data)}
+  {_render_json_preview('THI JSON-LD / OCSM', thi_jsonld)}
+</div>
+
+<h3>UAV Flight Forecast</h3>
+<div class="subtle-card">
+  {_render_json_preview('UAV flight forecast', uav_data)}
+</div>
+
+<h3>Spray Condition Forecast</h3>
+<div class="subtle-card">
+  {_render_json_preview('Spray forecast JSON', spray_data)}
+  {_render_json_preview('Spray forecast JSON-LD / OCSM', spray_jsonld)}
+</div>
+
+<h3>Historical Weather API</h3>
+<div class="subtle-card">
+  {_render_json_preview('Historical daily values', hist_daily_data)}
+  {_render_json_preview('Historical hourly values', hist_hourly_data)}
+</div>
+
+<h3>Weather Artifacts</h3>
+<table border="1" cellpadding="6" cellspacing="0">
+  {artifact_rows}
+</table>
+
+<h3>Forecast JSON-LD / OCSM Preview</h3>
+{_render_json_preview('Forecast JSON-LD / OCSM', forecast5_jsonld)}
+
+{notes_html}
+""".strip()
 
 
 def render_methodology_section(meta: dict) -> str:
@@ -45,7 +220,6 @@ def render_methodology_section(meta: dict) -> str:
 """.strip()
 
 
-
 def render_grid_metadata_section(grid_meta: dict) -> str:
     if not grid_meta:
         return (
@@ -80,7 +254,6 @@ def render_grid_metadata_section(grid_meta: dict) -> str:
   <tr><th align="left">Grid metadata generated at (UTC)</th><td>{safe_html(generated_at)}</td></tr>
 </table>
 """.strip()
-
 
 
 def render_irrigation_section(

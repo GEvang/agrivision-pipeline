@@ -40,6 +40,7 @@ def render_image_if_exists(title: str, path: Path, output_dir: Path) -> str:
 def build_report_html(
     generated_at: str,
     index_title: str,
+    weather_html: str,
     methodology_html: str,
     artifacts_list_html: str,
     ndvi_color_html: str,
@@ -80,12 +81,21 @@ def build_report_html(
     a:hover {{
       text-decoration: underline;
     }}
+    .subtle-card {{
+      border: 1px solid #ddd;
+      border-radius: 6px;
+      padding: 12px;
+      margin: 12px 0;
+      background: #fafafa;
+    }}
   </style>
 </head>
 <body>
 
   <h1>AgriVision Vegetation Analysis Report</h1>
   <p><em>Generated at {generated_at}</em></p>
+
+  {weather_html}
 
   {methodology_html}
 

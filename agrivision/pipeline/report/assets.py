@@ -19,10 +19,12 @@ def get_report_settings() -> dict[str, Path]:
     report_path = output_dir / "report_latest.html"
 
     ndvi_dir = project_root / config["paths"]["ndvi_output"]
+    weather_dir = output_dir / "weather"
     return {
         "output_dir": output_dir,
         "report_path": report_path,
         "ndvi_dir": ndvi_dir,
+        "weather_dir": weather_dir,
         "ndvi_meta_path": ndvi_dir / "metadata.json",
         "grid_meta_path": ndvi_dir / "grid_metadata.json",
         "ndvi_tif": ndvi_dir / "ndvi.tif",

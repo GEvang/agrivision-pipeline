@@ -22,11 +22,15 @@ from agrivision.pipeline.report.sections import (
     render_grid_metadata_section,
     render_irrigation_section,
     render_methodology_section,
+    render_weather_section,
 )
 from agrivision.pipeline.report.tables import render_grid_table
 
 
-def run_report(irrigation_summary: Optional[Dict[str, Any]] = None) -> None:
+def run_report(
+    irrigation_summary: Optional[Dict[str, Any]] = None,
+    weather_summary: Optional[Dict[str, Any]] = None,
+) -> None:
     print("\n[AgriVision] Generating HTML report...")
 
     resolved = get_report_settings()
@@ -46,6 +50,7 @@ def run_report(irrigation_summary: Optional[Dict[str, Any]] = None) -> None:
     grid_meta = load_json(grid_meta_path)
 
     index_title = get_index_title(ndvi_meta, grid_meta)
+    weather_html = render_weather_section(weather_summary, output_dir)
     methodology_html = render_methodology_section(ndvi_meta)
     grid_meta_html = render_grid_metadata_section(grid_meta)
 
@@ -70,6 +75,7 @@ def run_report(irrigation_summary: Optional[Dict[str, Any]] = None) -> None:
     html_doc = build_report_html(
         generated_at=generated_at,
         index_title=index_title,
+        weather_html=weather_html,
         methodology_html=methodology_html,
         artifacts_list_html=artifacts_list_html,
         ndvi_color_html=render_image_if_exists(index_title + " Map", ndvi_color_png, output_dir),
