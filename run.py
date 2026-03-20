@@ -12,7 +12,6 @@ from pathlib import Path
 from agrivision.app.cli import main, parse_args
 
 
-
 def load_local_env() -> None:
     env_path = Path(__file__).resolve().parent / ".env"
 
