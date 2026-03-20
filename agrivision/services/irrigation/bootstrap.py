@@ -28,8 +28,6 @@ Artifacts written:
 from __future__ import annotations
 
 import json
-import subprocess
-import time
 import urllib.error
 import urllib.parse
 import urllib.request
@@ -38,6 +36,11 @@ from pathlib import Path
 from typing import Any, Dict, List, Optional, Tuple
 
 from agrivision.config.settings import get_project_root, get_settings
+from agrivision.services.irrigation.runtime import (
+    ensure_repo_and_env,
+    service_is_up,
+    start_service_if_needed,
+)
 
 
 def _get_bootstrap_paths() -> dict[str, Path]:
@@ -181,11 +184,7 @@ def _http_form(
 # Service up / self-heal
 # ----------------------------
 def _is_service_up(base_url: str) -> bool:
-    try:
-        status, _ = _http_json("GET", f"{base_url}/api/v1/openapi.json", timeout=6)
-        return 200 <= status < 300
-    except Exception:
-        return False
+    return service_is_up(base_url)
 
 
 def _run_compose_up(verbose: bool = True) -> None:
@@ -196,60 +195,25 @@ def _run_compose_up(verbose: bool = True) -> None:
       1) docker compose (no sudo)
       2) sudo -n docker compose (only works if passwordless sudo is configured)
     """
-    paths = _get_bootstrap_paths()
-    irrigation_repo_dir = paths["irrigation_repo_dir"]
-    irrigation_compose_file = paths["irrigation_compose_file"]
-
-    if not irrigation_repo_dir.exists():
-        raise FileNotFoundError(f"Irrigation repo not found at: {irrigation_repo_dir}")
-    if not irrigation_compose_file.exists():
-        raise FileNotFoundError(f"compose.yaml not found at: {irrigation_compose_file}")
-
-    cmds = [
-        ["docker", "compose", "-f", str(irrigation_compose_file), "up", "-d"],
-        ["sudo", "-n", "docker", "compose", "-f", str(irrigation_compose_file), "up", "-d"],
-    ]
-
-    last_err = None
-    for cmd in cmds:
-        try:
-            if verbose:
-                print(f"[Irrigation] Running: {' '.join(cmd)} (cwd={irrigation_repo_dir})")
-            subprocess.run(
-                cmd,
-                cwd=str(irrigation_repo_dir),
-                check=True,
-                stdout=subprocess.PIPE,
-                stderr=subprocess.PIPE,
-                text=True,
-            )
-            return
-        except Exception as e:
-            last_err = str(e)
-
-    raise RuntimeError(f"Failed to start irrigation via docker compose. Last error: {last_err}")
+    irrigation_repo_dir, irrigation_compose_file = ensure_repo_and_env()
+    if verbose:
+        print(
+            f"[Irrigation] Running docker compose up from {irrigation_compose_file} "
+            f"(cwd={irrigation_repo_dir})"
+        )
+    start_service_if_needed(verbose=verbose)
 
 
 def _ensure_service_up(base_url: str, seconds: int = 75, verbose: bool = True) -> None:
+    del seconds
     if _is_service_up(base_url):
         if verbose:
             print("[Irrigation] ✅ Service is already reachable")
         return
 
     if verbose:
-        print("[Irrigation] ⚠️ Service not reachable. Attempting to start via Docker Compose...")
-
-    _run_compose_up(verbose=verbose)
-
-    deadline = time.time() + seconds
-    while time.time() < deadline:
-        if _is_service_up(base_url):
-            if verbose:
-                print("[Irrigation] ✅ Service is reachable after startup")
-            return
-        time.sleep(2)
-
-    raise RuntimeError("Service did not become reachable after docker compose up")
+        print("[Irrigation] ⚠️ Service not reachable. Attempting to self-heal...")
+    start_service_if_needed(verbose=verbose)
 
 
 # ----------------------------
