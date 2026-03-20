@@ -1,6 +1,0 @@
-{
-  "base_url": "http://127.0.0.1:8004",
-  "token_type": "bearer",
-  "access_token": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJleHAiOjE3NzM4NDQxOTYsInN1YiI6IjEifQ.jlaLyft-V5930MdhAb9l9dr7vuzvark8qqvyCyVueZc",
-  "email": "dummy@email.com"
-}
