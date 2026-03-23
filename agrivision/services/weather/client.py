@@ -17,14 +17,11 @@ import requests
 from agrivision.config.settings import get_settings, load_config
 from agrivision.services.runtime import (
     ServiceBootstrapError,
+    ServiceRuntimeState,
     base_env_values,
-    clone_repo_if_missing,
-    compose_up,
-    detect_compose_file,
-    ensure_env_file,
     project_service_dir,
-    update_env_file,
-    wait_for_any_url,
+    reconcile_service_runtime,
+    summarize_env_changes,
 )
 
 WEATHER_REPO_URL = "https://github.com/agstack/OpenAgri-WeatherService.git"
@@ -118,38 +115,46 @@ def _weather_env_values() -> dict[str, str]:
     return values
 
 
-def ensure_weather_repo_and_env() -> tuple[Path, Path, Path]:
-    repo_dir = _service_dir()
-    clone_repo_if_missing(repo_dir, WEATHER_REPO_URL)
-    env_path = ensure_env_file(repo_dir)
-    update_env_file(env_path, _weather_env_values())
-    compose_file = detect_compose_file(
-        repo_dir,
-        [
+def ensure_weather_repo_and_env(timeout_seconds: int = 90) -> ServiceRuntimeState:
+    base_url = _get_weather_settings()["base_url"].rstrip("/")
+    health_urls = [f"{base_url}/docs", f"{base_url}/openapi.json", f"{base_url}/"]
+    return reconcile_service_runtime(
+        repo_dir=_service_dir(),
+        repo_url=WEATHER_REPO_URL,
+        env_values=_weather_env_values(),
+        compose_candidates=[
             "docker-compose-x86_64.yml",
             "docker-compose-arm64.yml",
             "docker-compose.yml",
             "docker-compose.yaml",
         ],
+        readiness_urls=health_urls,
+        timeout_seconds=timeout_seconds,
     )
-    return repo_dir, env_path, compose_file
+
+
+def _validate_weather_runtime(token: str) -> None:
+    location = _get_location_params()
+    base_url = str(_get_weather_settings()["base_url"]).rstrip("/")
+    response = requests.get(
+        f"{base_url}/api/data/weather/",
+        params={"lat": location["lat"], "lon": location["lon"]},
+        headers={"Authorization": f"Bearer {token}"},
+        timeout=15,
+    )
+    if response.status_code >= 400:
+        detail = response.text.strip() or response.reason
+        raise ServiceBootstrapError(
+            "Weather service data endpoint is reachable but unhealthy. "
+            f"GET /api/data/weather/ returned HTTP {response.status_code}: {detail}"
+        )
 
 
 def _ensure_weather_service_available(timeout_seconds: int = 90) -> None:
-    base_url = _get_weather_settings()["base_url"].rstrip("/")
-    health_urls = [f"{base_url}/docs", f"{base_url}/openapi.json", f"{base_url}/"]
-    for url in health_urls:
-        try:
-            response = requests.get(url, timeout=3)
-            if response.status_code < 500:
-                return
-        except requests.RequestException:
-            pass
-
-    repo_dir, _, compose_file = ensure_weather_repo_and_env()
-    compose_up(compose_file, repo_dir)
-    if not wait_for_any_url(health_urls, timeout_seconds=timeout_seconds):
-        raise ServiceBootstrapError(f"Weather service did not become reachable at {base_url}")
+    state = ensure_weather_repo_and_env(timeout_seconds=timeout_seconds)
+    if state.env_sync.changed:
+        for line in summarize_env_changes(_weather_env_values(), state.env_sync):
+            print(f"[Weather] {line}")
 
 
 def _require_weather_credentials() -> None:
@@ -186,7 +191,10 @@ def get_token() -> str:
     )
     resp.raise_for_status()
     payload = resp.json()
-    return payload.get("jwt_token") or payload.get("access_token") or ""
+    token = payload.get("jwt_token") or payload.get("access_token") or ""
+    if not token:
+        raise RuntimeError("Weather auth response did not include jwt_token/access_token.")
+    return token
 
 
 def _authorized_get(
@@ -474,8 +482,9 @@ def collect_weather_summary(
 
     try:
         token = get_token()
+        _validate_weather_runtime(token)
     except Exception as exc:
-        notes.append(f"Weather authentication failed: {exc}")
+        notes.append(f"Weather authentication/runtime validation failed: {exc}")
         summary["enabled"] = False
         return summary
 

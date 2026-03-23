@@ -100,6 +100,7 @@ def main() -> None:
             print("DRY-RUN would run: bash install_agrivision.sh")
         else:
             run_installer()
+            print("[Done] Reinstall finished. Re-activate the virtual environment with: source venv/bin/activate")
 
 
 if __name__ == "__main__":

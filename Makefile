@@ -1,6 +1,6 @@
 PYTHON ?= python
 
-.PHONY: install install-dev lint format test smoke-config run
+.PHONY: install install-dev lint format test smoke-config run verify-phase5
 
 install:
 	$(PYTHON) -m pip install -r requirements.txt
@@ -19,7 +19,11 @@ test:
 	$(PYTHON) -m pytest tests
 
 smoke-config:
-	$(PYTHON) -c "import run; run.load_local_env(); from agrivision.utils.settings import load_config; load_config(); print('config smoke check passed')"
+	$(PYTHON) -c "from agrivision.config.settings import load_config; load_config(); print('config smoke check passed')"
+
+verify-phase5:
+	$(PYTHON) -m pytest tests
+	$(PYTHON) -m ruff check .
 
 run:
 	$(PYTHON) run.py

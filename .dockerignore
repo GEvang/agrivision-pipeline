@@ -1,0 +1,13 @@
+venv/
+__pycache__/
+.pytest_cache/
+.ruff_cache/
+.mypy_cache/
+.git/
+OpenAgri-IrrigationManagement/
+OpenAgri-WeatherService/
+output/
+data/
+*.pyc
+*.pyo
+*.egg-info/

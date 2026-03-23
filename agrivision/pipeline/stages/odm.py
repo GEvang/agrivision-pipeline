@@ -55,6 +55,51 @@ PROJECT_NAME = "project"
 VALID_EXTS = (".jpg", ".jpeg", ".png", ".tif", ".tiff")
 
 
+def _require_docker_cli() -> None:
+    if shutil.which("docker") is not None:
+        return
+    raise RuntimeError(
+        "Docker CLI is required for ODM but was not found in PATH. "
+        "Install Docker on the host for local runs, or mount /var/run/docker.sock "
+        "and include the docker CLI in the AgriVision app container for container runs."
+    )
+
+
+def _host_project_root() -> Path | None:
+    host_root = os.getenv("HOST_PROJECT_ROOT", "").strip()
+    if not host_root:
+        return None
+    return Path(host_root).expanduser().resolve()
+
+
+def _container_project_root() -> Path | None:
+    container_root = os.getenv("APP_CONTAINER_PROJECT_ROOT", "").strip()
+    if not container_root:
+        return None
+    return Path(container_root).resolve()
+
+
+def _resolve_odm_bind_source(project_root: Path) -> Path:
+    host_root = _host_project_root()
+    container_root = _container_project_root()
+    resolved_project_root = project_root.resolve()
+
+    if host_root and container_root:
+        try:
+            relative = resolved_project_root.relative_to(container_root)
+        except ValueError:
+            pass
+        else:
+            return (host_root / relative).resolve()
+
+    return resolved_project_root
+
+
+def _docker_run_prefix() -> list[str]:
+    _require_docker_cli()
+    return ["docker", "run", "--rm"]
+
+
 def _get_odm_settings() -> dict[str, object]:
     """Resolve ODM config and path settings at runtime."""
     config = load_config()
@@ -166,16 +211,14 @@ def _run_odm_docker(
     """
     uid = os.getuid()
     gid = os.getgid()
+    bind_source = _resolve_odm_bind_source(project_root)
 
     cmd = [
-        "docker",
-        "run",
-        "-ti",
-        "--rm",
+        *_docker_run_prefix(),
         "-u",
         f"{uid}:{gid}",
         "-v",
-        f"{project_root}:/datasets",
+        f"{bind_source}:/datasets",
         odm_docker_image,
         "--project-path",
         "/datasets",
@@ -192,7 +235,10 @@ def _run_odm_docker(
     result = subprocess.run(cmd, cwd=project_root.parent)
 
     if result.returncode != 0:
-        raise RuntimeError(f"ODM-{label} failed with exit code {result.returncode}")
+        raise RuntimeError(
+            f"ODM-{label} failed with exit code {result.returncode}. "
+            f"Docker bind source was {bind_source}."
+        )
 
     print(f"[ODM-{label}] ODM processing finished.")
     print(

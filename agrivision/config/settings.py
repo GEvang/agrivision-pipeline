@@ -9,7 +9,7 @@ from typing import Any, Mapping
 import yaml
 
 _PROJECT_ROOT = Path(__file__).resolve().parents[2]
-_CONFIG_PATH = _PROJECT_ROOT / "config.yaml"
+_CONFIG_PATH = Path(os.getenv("AGRIVISION_CONFIG_PATH", str(_PROJECT_ROOT / "config.yaml")))
 
 
 DEFAULT_CONFIG: dict[str, Any] = {
@@ -173,12 +173,20 @@ class AppSettings:
     
 
 def get_project_root() -> Path:
-    """Return the repository root resolved relative to this module."""
+    """Return the active project root.
+
+    When AGRIVISION_CONFIG_PATH points at a config file inside a bind-mounted
+    workspace (for example /workspace/config.yaml in Docker), the config file's
+    parent directory becomes the runtime project root. Otherwise we fall back to
+    the repository root resolved from this module.
+    """
+    if _CONFIG_PATH.name == "config.yaml":
+        return _CONFIG_PATH.resolve().parent
     return _PROJECT_ROOT
 
 
 def get_config_path() -> Path:
-    """Return the default config path (<project_root>/config.yaml)."""
+    """Return the active config path, allowing AGRIVISION_CONFIG_PATH overrides."""
     return _CONFIG_PATH
 
 

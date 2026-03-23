@@ -41,6 +41,8 @@ exclude = [
   "agrivision_pipeline.egg-info",
   "OpenAgri-IrrigationManagement",
   "OpenAgri-WeatherService",
+  "output",
+  "data",
 ]
 
 [tool.ruff.lint]
