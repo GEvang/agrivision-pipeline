@@ -1,186 +1,105 @@
 #!/usr/bin/env python3
-"""
-SMART CLEANUP TOOL FOR AGRIVISION ADS
--------------------------------------
+"""Reset the repository to an install-ready state for debugging."""
 
-Features:
-- Dry-run mode (--dry-run)
-- Interactive mode (--interactive)
-- Detects obsolete directories (old ODM, old image structure)
-- Removes empty / corrupted project folders
-- Cleans up orphan files outside expected structure
-
-Usage:
-    python cleanup.py
-    python cleanup.py --dry-run
-    python cleanup.py --interactive
-"""
+from __future__ import annotations
 
 import argparse
 import shutil
+import subprocess
 from pathlib import Path
 
 PROJECT_ROOT = Path(__file__).resolve().parent
 
-# -------------------------------------------------------------------------
-# NEW folder structure (protected)
-# -------------------------------------------------------------------------
-PROTECTED = {
-    PROJECT_ROOT / "agrivision",
+RESET_TARGETS = [
+    PROJECT_ROOT / "venv",
+    PROJECT_ROOT / "build",
+    PROJECT_ROOT / "dist",
+    PROJECT_ROOT / "agrivision_pipeline.egg-info",
+    PROJECT_ROOT / ".pytest_cache",
+    PROJECT_ROOT / ".coverage",
+    PROJECT_ROOT / ".ruff_cache",
     PROJECT_ROOT / "OpenAgri-WeatherService",
-    PROJECT_ROOT / "config.yaml",
-    PROJECT_ROOT / "requirements.txt",
-    PROJECT_ROOT / "run.py",
-    PROJECT_ROOT / "install_agrivision.sh",
-    PROJECT_ROOT / "bootstrap.sh",
-    PROJECT_ROOT / "cleanup.py",
+    PROJECT_ROOT / "OpenAgri-IrrigationManagement",
     PROJECT_ROOT / "output",
-    PROJECT_ROOT / "output/ndvi",
-    PROJECT_ROOT / "output/runs",
+    PROJECT_ROOT / "data/odm_project_rgb",
+    PROJECT_ROOT / "data/odm_project_mapir",
+    PROJECT_ROOT / "data/images_resized",
+]
+
+REMOVE_GLOBS = [
+    "**/__pycache__",
+    "**/*.pyc",
+    "**/*.pyo",
+]
+
+RECREATE_DIRS = [
     PROJECT_ROOT / "data/images_full/rgb",
     PROJECT_ROOT / "data/images_full/mapir",
     PROJECT_ROOT / "data/images_resized/rgb",
     PROJECT_ROOT / "data/images_resized/mapir",
     PROJECT_ROOT / "data/odm_project_rgb",
     PROJECT_ROOT / "data/odm_project_mapir",
-}
-
-VALID_ODM_STRUCTURE = {"images", "odm_orthophoto", "opensfm", "mve"}
-
-
-# -------------------------------------------------------------------------
-# Utility functions
-# -------------------------------------------------------------------------
-def ask(prompt: str) -> bool:
-    """Prompt user in interactive mode."""
-    resp = input(f"{prompt} [y/N]: ").strip().lower()
-    return resp in ("y", "yes")
+    PROJECT_ROOT / "output/ndvi",
+    PROJECT_ROOT / "output/runs",
+    PROJECT_ROOT / "output/irrigation",
+    PROJECT_ROOT / "output/weather",
+]
 
 
-def safe_delete(path: Path, dry: bool, interactive: bool):
-    """Delete a path unless it's protected."""
-    if path in PROTECTED:
+def _delete_path(path: Path, dry_run: bool) -> None:
+    if not path.exists():
         return
-
-    # If inside a protected root, skip parent but allow level-below cleanup
-    for protected in PROTECTED:
-        if protected in path.parents:
-            # allow deleting old subfolders IN protected dirs
-            break
-
-    if interactive:
-        if not ask(f"Delete {path}?"):
-            print(f"SKIPPED: {path}")
-            return
-
-    print(("DELETE:" if not dry else "DRY-RUN DELETE:") + f" {path}")
-    if not dry:
+    print(f"{'DRY-RUN ' if dry_run else ''}DELETE {path}")
+    if dry_run:
+        return
+    if path.is_dir() and not path.is_symlink():
         shutil.rmtree(path, ignore_errors=True)
+    else:
+        path.unlink(missing_ok=True)
 
 
-def folder_is_empty(folder: Path) -> bool:
-    """Check if a folder exists but has no files inside."""
-    try:
-        next(folder.iterdir())
-        return False
-    except StopIteration:
-        return True
-    except FileNotFoundError:
-        return True
+def reset_install_state(dry_run: bool) -> None:
+    for target in RESET_TARGETS:
+        _delete_path(target, dry_run)
+    for pattern in REMOVE_GLOBS:
+        for path in PROJECT_ROOT.glob(pattern):
+            _delete_path(path, dry_run)
+    if dry_run:
+        return
+    for path in RECREATE_DIRS:
+        path.mkdir(parents=True, exist_ok=True)
 
 
-def is_obsolete_odm_project(folder: Path) -> bool:
-    """
-    Determine whether an ODM project is incomplete/obsolete:
-      - project/ folder exists but contains NO odm_orthophoto
-      - or folder does not contain a proper ODM structure
-    """
-    if not folder.is_dir():
-        return False
-
-    project = folder / "project"
-    if not project.exists():
-        return False  # not even an ODM project structure
-
-    orthophoto = project / "odm_orthophoto" / "odm_orthophoto.tif"
-    if orthophoto.exists():
-        return False  # this project is valid (keep)
-
-    # If `project` exists but no orthophoto → likely incomplete → remove
-    return True
+def run_installer() -> None:
+    subprocess.run(["bash", "install_agrivision.sh"], cwd=str(PROJECT_ROOT), check=True)
 
 
-def find_obsolete_items():
-    """Find folders that are candidates for deletion."""
-    obsolete = []
-
-    # 1. Remove old ODM root
-    old_odm = PROJECT_ROOT / "data/odm_project"
-    if old_odm.exists():
-        obsolete.append(old_odm)
-
-    # 2. Remove old single image folders (if misstructured)
-    old_full = PROJECT_ROOT / "data/images_full"
-    old_resized = PROJECT_ROOT / "data/images_resized"
-
-    # If these contain files directly or wrong structure
-    if old_full.exists() and not (old_full / "rgb").exists():
-        obsolete.append(old_full)
-    if old_resized.exists() and not (old_resized / "rgb").exists():
-        obsolete.append(old_resized)
-
-    # 3. Remove folders ending in *_old or *_backup
-    for f in (PROJECT_ROOT / "data").rglob("*"):
-        if not f.is_dir():
-            continue
-        name = f.name.lower()
-        if name.endswith("_old") or name.endswith("_backup"):
-            obsolete.append(f)
-
-    # 4. Remove incomplete ODM projects
-    for odm_folder in (PROJECT_ROOT / "data").glob("odm_project_*"):
-        if odm_folder in PROTECTED:
-            continue
-        if is_obsolete_odm_project(odm_folder):
-            obsolete.append(odm_folder)
-
-    # 5. Remove empty folders
-    for f in (PROJECT_ROOT / "data").rglob("*"):
-        if f.is_dir() and folder_is_empty(f) and f not in PROTECTED:
-            obsolete.append(f)
-
-    return list(set(obsolete))  # unique list
-
-
-# -------------------------------------------------------------------------
-# MAIN
-# -------------------------------------------------------------------------
-def main():
-    parser = argparse.ArgumentParser(description="Smart cleanup for AgriVision ADS")
-    parser.add_argument("--dry-run", action="store_true", help="Show what would be deleted without deleting")
-    parser.add_argument("--interactive", action="store_true", help="Ask confirmation before each delete")
+def main() -> None:
+    parser = argparse.ArgumentParser(description="Reset AgriVision to an install-ready state.")
+    parser.add_argument("--dry-run", action="store_true", help="Show what would be deleted.")
+    parser.add_argument(
+        "--reset-install",
+        action="store_true",
+        help="Delete generated files, cloned service repos, caches, outputs, and local build artifacts.",
+    )
+    parser.add_argument(
+        "--reinstall",
+        action="store_true",
+        help="Run install_agrivision.sh after the reset completes.",
+    )
     args = parser.parse_args()
 
-    dry = args.dry_run
-    interactive = args.interactive
+    if not args.reset_install and not args.reinstall:
+        parser.error("Use --reset-install, optionally with --reinstall.")
 
-    print("\n========== AGRIVISION SMART CLEANUP ==========\n")
-    print(f"DRY-RUN: {dry}")
-    print(f"INTERACTIVE: {interactive}")
-    print("\nScanning for obsolete items...\n")
+    if args.reset_install:
+        reset_install_state(args.dry_run)
 
-    obsolete_items = find_obsolete_items()
-
-    if not obsolete_items:
-        print("Nothing to clean. Your project structure looks good!")
-        return
-
-    print(f"Found {len(obsolete_items)} obsolete items.\n")
-
-    for item in obsolete_items:
-        safe_delete(item, dry=dry, interactive=interactive)
-
-    print("\nCleanup complete.\n")
+    if args.reinstall:
+        if args.dry_run:
+            print("DRY-RUN would run: bash install_agrivision.sh")
+        else:
+            run_installer()
 
 
 if __name__ == "__main__":

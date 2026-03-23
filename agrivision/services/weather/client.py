@@ -2,57 +2,43 @@
 """
 agrivision.services.weather.client
 
-Client for the OpenAgri WeatherService.
-
-Uses settings from config.yaml:
-
-weather:
-  base_url: "http://127.0.0.1:8010"
-  username: "root"
-  password: "root"
-  openweather_api_key: "..."
-
-Provides simple functions to fetch:
-  - auth token
-  - current weather
-  - 5-day forecast
-  - 5-day forecast JSON-LD (OCSM)
-  - THI and THI JSON-LD
-  - UAV flight forecasts
-  - spray condition forecasts
-  - historical daily/hourly values
-
-Self-healing runtime behavior:
-  - clone OpenAgri-WeatherService if missing
-  - create/update its .env from env.example
-  - inject required Docker Compose env values, including the OpenWeather key
-  - start the stack with docker compose when the service is unreachable
+Client + bootstrap helpers for the OpenAgri WeatherService.
 """
 
 from __future__ import annotations
 
-import os
 from dataclasses import dataclass
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
-from typing import Any, Dict, List, Optional
+from typing import Any
 
 import requests
 
-from agrivision.config.settings import get_project_root, load_config
+from agrivision.config.settings import get_settings, load_config
 from agrivision.services.runtime import (
+    ServiceBootstrapError,
+    base_env_values,
     clone_repo_if_missing,
     compose_up,
+    detect_compose_file,
     ensure_env_file,
-    find_existing_file,
-    parse_port_from_base_url,
-    upsert_env_values,
-    wait_for_http,
+    project_service_dir,
+    update_env_file,
+    wait_for_any_url,
 )
 
 WEATHER_REPO_URL = "https://github.com/agstack/OpenAgri-WeatherService.git"
-WEATHER_COMPOSE_CANDIDATES = ["docker-compose-x86_64.yml", "docker-compose-arm64.yml"]
-WEATHER_ENV_TEMPLATES = ["env.example", ".env.example"]
+
+
+def _get_weather_settings() -> dict[str, Any]:
+    config = load_config()
+    weather_cfg = config.get("weather", {})
+    return {
+        "base_url": weather_cfg.get("base_url", ""),
+        "username": weather_cfg.get("username", ""),
+        "password": weather_cfg.get("password", ""),
+        "openweather_api_key": weather_cfg.get("openweather_api_key", ""),
+    }
 
 
 @dataclass
@@ -64,41 +50,17 @@ class CurrentWeather:
     pressure: float | None
     wind_speed: float | None
     description: str | None
-    raw: Dict[str, Any]
+    raw: dict[str, Any]
 
 
 @dataclass
 class ForecastPoint:
-    """Single forecast point from /api/data/forecast5."""
-
     timestamp: datetime | None
     value: float | None
     data_type: str | None
     measurement_type: str | None
     source: str | None
-    raw: Dict[str, Any]
-
-
-def _get_weather_settings() -> dict[str, Any]:
-    config = load_config()
-    weather_cfg = config.get("weather", {}) or {}
-    return {
-        "base_url": str(weather_cfg.get("base_url", "") or ""),
-        "username": str(weather_cfg.get("username") or os.getenv("WEATHER_USERNAME") or ""),
-        "password": str(weather_cfg.get("password") or os.getenv("WEATHER_PASSWORD") or ""),
-        "openweather_api_key": str(weather_cfg.get("openweather_api_key") or os.getenv("WEATHER_SRV_OPENWEATHERMAP_API_KEY") or ""),
-        "service_dir": str(weather_cfg.get("service_dir", "OpenAgri-WeatherService") or "OpenAgri-WeatherService"),
-    }
-
-
-def _get_location_params() -> dict[str, Any]:
-    config = load_config()
-    location_cfg = config.get("location", {}) or {}
-    return {
-        "lat": float(location_cfg.get("lat", 0.0) or 0.0),
-        "lon": float(location_cfg.get("lon", 0.0) or 0.0),
-        "location_name": str(location_cfg.get("name", "Unknown location") or "Unknown location"),
-    }
+    raw: dict[str, Any]
 
 
 def _ts_from_unix(ts: int | float | None) -> datetime | None:
@@ -119,81 +81,103 @@ def _ts_from_iso(s: Any) -> datetime | None:
         return None
 
 
-def _weather_service_dir() -> Path:
-    settings = _get_weather_settings()
-    return get_project_root() / str(settings["service_dir"])
+def _get_location_params() -> dict[str, Any]:
+    config = load_config()
+    location_cfg = config.get("location", {})
+    return {
+        "lat": float(location_cfg.get("lat", 0.0)),
+        "lon": float(location_cfg.get("lon", 0.0)),
+        "location_name": location_cfg.get("name", "Unknown location"),
+    }
 
 
-def _weather_runtime_url(base_url: str) -> str:
-    return f"{base_url.rstrip('/')}/docs"
+def _service_dir() -> Path:
+    return project_service_dir("OpenAgri-WeatherService")
 
 
 def _weather_env_values() -> dict[str, str]:
-    settings = _get_weather_settings()
-    base_url = str(settings["base_url"])
-    port = parse_port_from_base_url(base_url, 8010)
-    values = {
-        "TAG": "latest",
-        "DOCKER_REGISTRY": "ghcr.io",
-        "SOURCE_REPO": "openagri-eu/openagri-weatherservice",
-        "WEATHER_SRV_PORT": str(port),
-        "WEATHER_SRV_HOSTNAME": "weathersrv",
-        "WEATHER_SRV_DATABASE_URI": "mongodb://root:root@mongodb:27017",
-        "WEATHER_SRV_DATABASE_NAME": "openagridb",
-        "WEATHER_SRV_MONGO_INITDB_ROOT_USERNAME": "root",
-        "WEATHER_SRV_MONGO_INITDB_ROOT_PASSWORD": "root",
-        "WEATHER_SRV_MONGO_INITDB_DATABASE": "openagridb",
-        "WEATHER_SRV_EXTRA_ALLOWED_HOSTS": "127.0.0.1,localhost",
-    }
-    api_key = str(settings.get("openweather_api_key", "") or "").strip()
-    if api_key:
-        values["WEATHER_SRV_OPENWEATHERMAP_API_KEY"] = api_key
+    settings = get_settings()
+    port = str(settings.weather.base_url.rsplit(":", 1)[-1])
+    values = base_env_values()
+    values.update(
+        {
+            "SOURCE_REPO": "openagri-eu/openagri-weatherservice",
+            "WEATHER_SRV_PORT": port,
+            "WEATHER_SRV_DATABASE_URI": "mongodb://root:root@mongodb:27017",
+            "WEATHER_SRV_DATABASE_NAME": "openagridb",
+            "WEATHER_SRV_MONGO_INITDB_ROOT_USERNAME": "root",
+            "WEATHER_SRV_MONGO_INITDB_ROOT_PASSWORD": "root",
+            "WEATHER_SRV_MONGO_INITDB_DATABASE": "openagridb",
+            "WEATHER_SRV_OPENWEATHERMAP_API_KEY": settings.weather.openweather_api_key or "",
+            "GATEKEEPER_SUPERUSER_USERNAME": settings.weather.username or "root",
+            "GATEKEEPER_SUPERUSER_PASSWORD": settings.weather.password or "root",
+            "WEATHER_SRV_GATEKEEPER_USER": settings.weather.username or "root",
+            "WEATHER_SRV_GATEKEEPER_PASSWORD": settings.weather.password or "root",
+        }
+    )
     return values
 
 
-def _ensure_weather_repo_and_env() -> tuple[Path, Path]:
-    repo_dir = _weather_service_dir()
+def ensure_weather_repo_and_env() -> tuple[Path, Path, Path]:
+    repo_dir = _service_dir()
     clone_repo_if_missing(repo_dir, WEATHER_REPO_URL)
-    env_path = ensure_env_file(repo_dir, WEATHER_ENV_TEMPLATES)
-    upsert_env_values(env_path, _weather_env_values())
-    compose_file = find_existing_file(repo_dir, WEATHER_COMPOSE_CANDIDATES)
-    if compose_file is None:
-        raise FileNotFoundError(
-            f"No WeatherService compose file found in {repo_dir}. "
-            f"Expected one of: {', '.join(WEATHER_COMPOSE_CANDIDATES)}"
-        )
-    return repo_dir, compose_file
+    env_path = ensure_env_file(repo_dir)
+    update_env_file(env_path, _weather_env_values())
+    compose_file = detect_compose_file(
+        repo_dir,
+        [
+            "docker-compose-x86_64.yml",
+            "docker-compose-arm64.yml",
+            "docker-compose.yml",
+            "docker-compose.yaml",
+        ],
+    )
+    return repo_dir, env_path, compose_file
 
 
-def _start_weather_service_if_needed(base_url: str) -> None:
-    if wait_for_http(_weather_runtime_url(base_url), seconds=1, interval=0.2):
-        return
+def _ensure_weather_service_available(timeout_seconds: int = 90) -> None:
+    base_url = _get_weather_settings()["base_url"].rstrip("/")
+    health_urls = [f"{base_url}/docs", f"{base_url}/openapi.json", f"{base_url}/"]
+    for url in health_urls:
+        try:
+            response = requests.get(url, timeout=3)
+            if response.status_code < 500:
+                return
+        except requests.RequestException:
+            pass
 
-    repo_dir, compose_file = _ensure_weather_repo_and_env()
-    print(f"[Weather] Service not reachable. Starting stack from {compose_file} ...")
-    compose_up(repo_dir, compose_file, force_recreate=True)
-    if not wait_for_http(_weather_runtime_url(base_url), seconds=90, interval=2.0):
+    repo_dir, _, compose_file = ensure_weather_repo_and_env()
+    compose_up(compose_file, repo_dir)
+    if not wait_for_any_url(health_urls, timeout_seconds=timeout_seconds):
+        raise ServiceBootstrapError(f"Weather service did not become reachable at {base_url}")
+
+
+def _require_weather_credentials() -> None:
+    resolved = _get_weather_settings()
+    if not resolved["username"] or not resolved["password"]:
         raise RuntimeError(
-            "WeatherService did not become reachable after docker compose up. "
-            "Check docker ps and the WeatherService container logs."
+            "Missing weather credentials. Set weather.username and weather.password in config.yaml or env."
+        )
+
+
+def _require_openweather_key() -> None:
+    if not _get_weather_settings()["openweather_api_key"]:
+        raise RuntimeError(
+            "Missing weather.openweather_api_key. Set it in config.yaml or OPENWEATHER_API_KEY in the environment."
         )
 
 
 def get_token() -> str:
     resolved = _get_weather_settings()
-    base_url = str(resolved["base_url"])
-    username = str(resolved["username"])
-    password = str(resolved["password"])
-
-    _start_weather_service_if_needed(base_url)
-
-    url = f"{base_url.rstrip('/')}/api/v1/auth/token"
+    base_url = str(resolved["base_url"]).rstrip("/")
+    _require_weather_credentials()
+    _ensure_weather_service_available()
+    url = f"{base_url}/api/v1/auth/token"
     data = {
         "grant_type": "password",
-        "username": username,
-        "password": password,
+        "username": resolved["username"],
+        "password": resolved["password"],
     }
-
     resp = requests.post(
         url,
         data=data,
@@ -202,24 +186,21 @@ def get_token() -> str:
     )
     resp.raise_for_status()
     payload = resp.json()
-    return str(payload.get("jwt_token") or payload.get("access_token") or payload["token"])
+    return payload.get("jwt_token") or payload.get("access_token") or ""
 
 
 def _authorized_get(
     endpoint: str,
     *,
     token: str | None = None,
-    params: Dict[str, Any] | None = None,
+    params: dict[str, Any] | None = None,
     timeout: int = 15,
-) -> Dict[str, Any] | List[Any]:
-    resolved = _get_weather_settings()
-    base_url = str(resolved["base_url"])
-    _start_weather_service_if_needed(base_url)
-
+) -> dict[str, Any] | list[Any]:
+    base_url = str(_get_weather_settings()["base_url"]).rstrip("/")
+    _ensure_weather_service_available()
     auth_token = token or get_token()
     headers = {"Authorization": f"Bearer {auth_token}"}
-    url = f"{base_url.rstrip('/')}{endpoint}"
-
+    url = f"{base_url}{endpoint}"
     resp = requests.get(url, params=params or {}, headers=headers, timeout=timeout)
     resp.raise_for_status()
     return resp.json()
@@ -228,73 +209,70 @@ def _authorized_get(
 def _authorized_post(
     endpoint: str,
     *,
-    payload: Dict[str, Any],
+    payload: dict[str, Any],
     token: str | None = None,
     timeout: int = 20,
-) -> Dict[str, Any] | List[Any]:
-    resolved = _get_weather_settings()
-    base_url = str(resolved["base_url"])
-    _start_weather_service_if_needed(base_url)
-
+) -> dict[str, Any] | list[Any]:
+    base_url = str(_get_weather_settings()["base_url"]).rstrip("/")
+    _ensure_weather_service_available()
     auth_token = token or get_token()
-    headers = {
-        "Authorization": f"Bearer {auth_token}",
-        "Content-Type": "application/json",
-    }
-    url = f"{base_url.rstrip('/')}{endpoint}"
-
+    headers = {"Authorization": f"Bearer {auth_token}", "Content-Type": "application/json"}
+    url = f"{base_url}{endpoint}"
     resp = requests.post(url, json=payload, headers=headers, timeout=timeout)
     resp.raise_for_status()
     return resp.json()
 
 
-def _unwrap_payload(payload: Dict[str, Any] | List[Any]) -> Dict[str, Any] | List[Any]:
+def _unwrap_payload(payload: dict[str, Any] | list[Any]) -> dict[str, Any] | list[Any]:
     if isinstance(payload, dict):
         return payload.get("data", payload.get("results", payload))
     return payload
 
 
-def _coerce_list_payload(payload: Dict[str, Any] | List[Any]) -> List[Any]:
+def _coerce_list_payload(payload: dict[str, Any] | list[Any]) -> list[Any]:
     items = _unwrap_payload(payload)
     return items if isinstance(items, list) else []
 
 
 def fetch_current_weather(token: str | None = None) -> CurrentWeather:
+    _require_openweather_key()
     location = _get_location_params()
     payload = _authorized_get(
-        "/api/data/weather/",
+        "/api/data/weather",
         token=token,
         params={"lat": location["lat"], "lon": location["lon"]},
-        timeout=15,
+        timeout=10,
     )
     data = _unwrap_payload(payload)
     if not isinstance(data, dict):
         data = {}
-
-    ts = _ts_from_unix(data.get("dt"))
+    ts = _ts_from_unix(data.get("dt")) or _ts_from_iso(data.get("timestamp"))
     main = data.get("main", {}) if isinstance(data.get("main"), dict) else {}
+    temp = data.get("temperature", main.get("temp"))
+    humidity = data.get("humidity", main.get("humidity"))
+    pressure = data.get("pressure", main.get("pressure"))
     wind = data.get("wind", {}) if isinstance(data.get("wind"), dict) else {}
-    weather_list = data.get("weather", []) if isinstance(data.get("weather"), list) else []
-
-    description = None
-    if weather_list:
+    wind_speed = data.get("wind_speed", wind.get("speed"))
+    weather_list = data.get("weather", [])
+    description = data.get("conditions") or data.get("description")
+    if description is None and isinstance(weather_list, list) and weather_list:
         first = weather_list[0]
         if isinstance(first, dict):
             description = first.get("description")
-
     return CurrentWeather(
         location_name=location["location_name"],
         timestamp=ts,
-        temperature=main.get("temp"),
-        humidity=main.get("humidity"),
-        pressure=main.get("pressure"),
-        wind_speed=wind.get("speed"),
+        temperature=temp,
+        humidity=humidity,
+        pressure=pressure,
+        wind_speed=wind_speed,
         description=description,
         raw=data,
     )
 
 
-def fetch_forecast5(token: Optional[str] = None) -> List[ForecastPoint]:
+def fetch_forecast5(token: str | None = None) -> list[ForecastPoint]:
+    _require_openweather_key()
     location = _get_location_params()
     payload = _authorized_get(
         "/api/data/forecast5",
@@ -303,8 +281,7 @@ def fetch_forecast5(token: Optional[str] = None) -> List[ForecastPoint]:
         timeout=15,
     )
     items = _coerce_list_payload(payload)
-
-    points: List[ForecastPoint] = []
+    points: list[ForecastPoint] = []
     for item in items:
         if not isinstance(item, dict):
             continue
@@ -328,7 +305,8 @@ def fetch_forecast5(token: Optional[str] = None) -> List[ForecastPoint]:
     return points
 
 
-def fetch_forecast5_jsonld(token: Optional[str] = None) -> Dict[str, Any]:
+def fetch_forecast5_jsonld(token: str | None = None) -> dict[str, Any]:
+    _require_openweather_key()
     location = _get_location_params()
     payload = _authorized_get(
         "/api/linkeddata/forecast5",
@@ -339,7 +317,8 @@ def fetch_forecast5_jsonld(token: Optional[str] = None) -> Dict[str, Any]:
     return payload if isinstance(payload, dict) else {"data": payload}
 
 
-def fetch_thi(token: Optional[str] = None) -> Dict[str, Any]:
+def fetch_thi(token: str | None = None) -> dict[str, Any]:
+    _require_openweather_key()
     location = _get_location_params()
     payload = _authorized_get(
         "/api/data/thi",
@@ -350,7 +329,8 @@ def fetch_thi(token: Optional[str] = None) -> Dict[str, Any]:
     return payload if isinstance(payload, dict) else {"data": payload}
 
 
-def fetch_thi_jsonld(token: Optional[str] = None) -> Dict[str, Any]:
+def fetch_thi_jsonld(token: str | None = None) -> dict[str, Any]:
+    _require_openweather_key()
     location = _get_location_params()
     payload = _authorized_get(
         "/api/linkeddata/thi",
@@ -364,10 +344,11 @@ def fetch_thi_jsonld(token: Optional[str] = None) -> Dict[str, Any]:
 def fetch_uav_flight_forecast5(
     uav_model: str,
     status_filter: str | None = None,
-    token: Optional[str] = None,
-) -> Dict[str, Any]:
+    token: str | None = None,
+) -> dict[str, Any]:
+    _require_openweather_key()
     location = _get_location_params()
-    params: Dict[str, Any] = {"lat": location["lat"], "lon": location["lon"]}
+    params: dict[str, Any] = {"lat": location["lat"], "lon": location["lon"]}
     endpoint = f"/api/data/flight_forecast5/{uav_model}"
     if status_filter:
         endpoint = "/api/data/flight_forecast5"
@@ -377,7 +358,8 @@ def fetch_uav_flight_forecast5(
     return payload if isinstance(payload, dict) else {"data": payload}
 
 
-def fetch_spray_forecast(token: Optional[str] = None) -> Dict[str, Any]:
+def fetch_spray_forecast(token: str | None = None) -> dict[str, Any]:
+    _require_openweather_key()
     location = _get_location_params()
     payload = _authorized_get(
         "/api/data/spray_forecast",
@@ -388,7 +370,8 @@ def fetch_spray_forecast(token: Optional[str] = None) -> Dict[str, Any]:
     return payload if isinstance(payload, dict) else {"data": payload}
 
 
-def fetch_spray_forecast_jsonld(token: Optional[str] = None) -> Dict[str, Any]:
+def fetch_spray_forecast_jsonld(token: str | None = None) -> dict[str, Any]:
+    _require_openweather_key()
     location = _get_location_params()
     payload = _authorized_get(
         "/api/linkeddata/spray_forecast",
@@ -402,8 +385,9 @@ def fetch_spray_forecast_jsonld(token: Optional[str] = None) -> Dict[str, Any]:
 def fetch_history_daily(
     start_date: str,
     end_date: str,
-    token: Optional[str] = None,
-) -> Dict[str, Any]:
+    token: str | None = None,
+) -> dict[str, Any]:
+    _require_openweather_key()
     location = _get_location_params()
     payload = _authorized_post(
         "/api/v1/history/daily",
@@ -422,8 +406,9 @@ def fetch_history_daily(
 def fetch_history_hourly(
     start_date: str,
     end_date: str,
-    token: Optional[str] = None,
-) -> Dict[str, Any]:
+    token: str | None = None,
+) -> dict[str, Any]:
+    _require_openweather_key()
     location = _get_location_params()
     payload = _authorized_post(
         "/api/v1/history/hourly",
@@ -439,19 +424,19 @@ def fetch_history_hourly(
     return payload if isinstance(payload, dict) else {"data": payload}
 
 
-def _forecast_points_preview(points: List[ForecastPoint], limit: int = 8) -> List[Dict[str, Any]]:
-    preview: List[Dict[str, Any]] = []
-    for point in points[:limit]:
-        preview.append(
-            {
-                "timestamp": point.timestamp.isoformat() if point.timestamp else None,
-                "value": point.value,
-                "data_type": point.data_type,
-                "measurement_type": point.measurement_type,
-                "source": point.source,
-            }
-        )
-    return preview
+def _forecast_points_preview(
+    points: list[ForecastPoint], limit: int = 8
+) -> list[dict[str, Any]]:
+    return [
+        {
+            "timestamp": point.timestamp.isoformat() if point.timestamp else None,
+            "value": point.value,
+            "data_type": point.data_type,
+            "measurement_type": point.measurement_type,
+            "source": point.source,
+        }
+        for point in points[:limit]
+    ]
 
 
 def collect_weather_summary(
@@ -459,16 +444,15 @@ def collect_weather_summary(
     status_filter: str | None = None,
     history_start_date: str | None = None,
     history_end_date: str | None = None,
-) -> Dict[str, Any]:
-    notes: List[str] = []
+) -> dict[str, Any]:
+    notes: list[str] = []
     location = _get_location_params()
     now = datetime.now(UTC)
-
     if history_start_date is None or history_end_date is None:
         history_end_date = now.date().isoformat()
         history_start_date = (now.date() - timedelta(days=3)).isoformat()
 
-    summary: Dict[str, Any] = {
+    summary: dict[str, Any] = {
         "enabled": True,
         "location_name": location["location_name"],
         "current_weather": {},
@@ -552,38 +536,28 @@ def collect_weather_summary(
 
     try:
         summary["historical_daily"] = fetch_history_daily(
-            start_date=history_start_date,
-            end_date=history_end_date,
+            history_start_date,
+            history_end_date,
             token=token,
         )
     except Exception as exc:
-        notes.append(f"Historical daily weather fetch failed: {exc}")
+        notes.append(f"Historical daily fetch failed: {exc}")
 
     try:
         summary["historical_hourly"] = fetch_history_hourly(
-            start_date=history_start_date,
-            end_date=history_end_date,
+            history_start_date,
+            history_end_date,
             token=token,
         )
     except Exception as exc:
-        notes.append(f"Historical hourly weather fetch failed: {exc}")
+        notes.append(f"Historical hourly fetch failed: {exc}")
 
     return summary
 
 
-def _format_current_weather(cw: CurrentWeather) -> str:
-    ts_str = cw.timestamp.strftime("%Y-%m-%d %H:%M") if cw.timestamp else "N/A"
-    return (
-        f"Location   : {cw.location_name}\n"
-        f"Time       : {ts_str}\n"
-        f"Temp       : {cw.temperature} °C\n"
-        f"Humidity   : {cw.humidity} %\n"
-        f"Pressure   : {cw.pressure} hPa\n"
-        f"Wind speed : {cw.wind_speed} m/s\n"
-        f"Condition  : {cw.description}\n"
-    )
-
-
 if __name__ == "__main__":
-    cw = fetch_current_weather()
-    print(_format_current_weather(cw))
+    try:
+        cw = fetch_current_weather()
+        print(cw.raw)
+    except Exception as exc:
+        print(f"Weather client check failed: {exc}")

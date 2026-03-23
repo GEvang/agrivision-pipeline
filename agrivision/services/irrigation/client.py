@@ -4,26 +4,43 @@ agrivision.services.irrigation.client
 
 Client for the OpenAgri Irrigation Management Service (IRM).
 
-This client now self-heals the local IRM dependency by:
-  - cloning OpenAgri-IrrigationManagement if missing
-  - creating/updating its .env with sane defaults
-  - starting docker compose when the service is unreachable
+This deployment requires authentication:
+  - POST /api/v1/login/access-token   (application/x-www-form-urlencoded)
+  - returns an OAuth2-compatible token pair (access_token, refresh_token)
+
+Protected endpoints (🔒 in Swagger) include:
+  - /api/v1/location/...
+  - /api/v1/eto/...
+  - /api/v1/dataset/...
+
+This client:
+    - Reads settings from config.yaml at runtime
+        (irrigation.base_url, irrigation.auth.email, irrigation.auth.password)
+  - Obtains access token via /api/v1/login/access-token
+  - Caches the access token in memory
+  - Uses Authorization: Bearer <token> for protected calls
+
+Swagger shows ETo endpoint as:
+  GET /api/v1/eto/get-calculations/{location_id}/from/{from_date}/to/{to_date}
 """
 
 from __future__ import annotations
 
 import os
+import subprocess
+import time
 from dataclasses import dataclass
 from datetime import date, datetime, timedelta
+from pathlib import Path
 from typing import Any, Dict, List
 
 import requests
 
-from agrivision.services.irrigation.runtime import (
-    get_irrigation_settings,
-    start_service_if_needed,
-)
+from agrivision.config.settings import get_project_root, load_config
 
+# ---------------------------------------------------------------------------
+# Models (minimal; keep raw payload for compatibility)
+# ---------------------------------------------------------------------------
 
 @dataclass
 class Location:
@@ -51,8 +68,74 @@ class SoilAnalysisResult:
     raw: Dict[str, Any]
 
 
+# ---------------------------------------------------------------------------
+# Internal helpers
+# ---------------------------------------------------------------------------
+
 _TOKEN_CACHE: str | None = None
 _TOKEN_OBTAINED_AT_UTC: datetime | None = None
+
+
+def _get_irrigation_settings() -> dict[str, Any]:
+    config = load_config()
+    irrigation_cfg = config.get("irrigation", {}) or {}
+    auth_cfg = irrigation_cfg.get("auth", {}) or {}
+
+    timeout_raw = irrigation_cfg.get("timeout_seconds", 20)
+    try:
+        timeout_seconds = int(timeout_raw)
+    except (TypeError, ValueError):
+        timeout_seconds = 20
+
+    base_url = str(irrigation_cfg.get("base_url") or "").rstrip("/")
+    static_token = irrigation_cfg.get("token") or os.getenv("IRRIGATION_TOKEN") or None
+
+    return {
+        "project_root": get_project_root(),
+        "base_url": base_url,
+        "timeout_seconds": timeout_seconds,
+        "email": auth_cfg.get("email"),
+        "password": auth_cfg.get("password"),
+        "static_token": static_token,
+        "service_dirname": irrigation_cfg.get("service_dir") or "OpenAgri-IrrigationManagement",
+        "default_parcel_wkt": irrigation_cfg.get("default_parcel_wkt"),
+    }
+
+
+def _service_dir() -> Path:
+    settings = _get_irrigation_settings()
+    return Path(settings["project_root"]) / str(settings["service_dirname"])
+
+
+def _start_irrigation_service_if_needed() -> None:
+    """
+    Best-effort: if base_url isn't reachable, attempt docker compose up -d
+    from the vendored service directory.
+    """
+    settings = _get_irrigation_settings()
+    base_url = str(settings["base_url"])
+
+    try:
+        requests.get(f"{base_url}/docs", timeout=2)
+        return
+    except requests.RequestException:
+        pass
+
+    svc_dir = _service_dir()
+    if not svc_dir.exists():
+        print(
+            f"[Irrigation] Service not reachable at {base_url}, and folder not found:\n"
+            f"            {svc_dir}\n"
+            "Cannot auto-start irrigation service."
+        )
+        return
+
+    print(f"[Irrigation] Service not reachable at {base_url}. Trying docker compose up -d in {svc_dir} ...")
+    try:
+        subprocess.run(["docker", "compose", "up", "-d"], cwd=str(svc_dir), check=False)
+        time.sleep(5)
+    except Exception as e:
+        print(f"[Irrigation] Failed to start irrigation service via docker compose: {e}")
 
 
 def _json_or_text(resp: requests.Response) -> Dict[str, Any]:
@@ -76,10 +159,20 @@ def _auth_headers(token: str) -> Dict[str, str]:
 
 
 def get_access_token(force_refresh: bool = False) -> str:
+    """
+    Obtain and cache the access token.
+
+    Priority:
+      1) STATIC_TOKEN / IRRIGATION_TOKEN env var / config irrigation.token
+      2) Cached token from earlier login
+      3) Login via POST /api/v1/login/access-token with form fields
+
+    If you want to rely only on login, do not set irrigation.token / IRRIGATION_TOKEN.
+    """
     global _TOKEN_CACHE, _TOKEN_OBTAINED_AT_UTC
 
-    settings = get_irrigation_settings()
-    static_token = settings["token"] or os.getenv("IRRIGATION_TOKEN") or None
+    settings = _get_irrigation_settings()
+    static_token = settings["static_token"]
     email = settings["email"]
     password = settings["password"]
     base_url = str(settings["base_url"])
@@ -87,22 +180,24 @@ def get_access_token(force_refresh: bool = False) -> str:
 
     if static_token and not force_refresh:
         return str(static_token)
+
     if _TOKEN_CACHE and not force_refresh:
         return _TOKEN_CACHE
 
     if not email or not password:
         raise RuntimeError(
             "\n[Irrigation] Missing credentials.\n"
-            "Provide either:\n"
+            "This IRM deployment requires auth. Provide either:\n"
             "  - env var IRRIGATION_TOKEN='...'\n"
             "  - or config.yaml -> irrigation.token: '...'\n"
             "  - or config.yaml -> irrigation.auth.email + irrigation.auth.password\n"
         )
 
-    start_service_if_needed(verbose=True)
+    _start_irrigation_service_if_needed()
 
     url = f"{base_url}/api/v1/login/access-token"
     form = {
+        "grant_type": "password",
         "username": email,
         "password": password,
     }
@@ -124,6 +219,7 @@ def get_access_token(force_refresh: bool = False) -> str:
 
     payload = resp.json() if resp.headers.get("content-type", "").startswith("application/json") else {}
     access = payload.get("access_token") or payload.get("token") or payload.get("jwt_token")
+
     if not access:
         raise RuntimeError(
             "\n[Irrigation] Login succeeded but no access_token found in response.\n"
@@ -132,14 +228,18 @@ def get_access_token(force_refresh: bool = False) -> str:
 
     _TOKEN_CACHE = str(access)
     _TOKEN_OBTAINED_AT_UTC = datetime.utcnow()
+
     return _TOKEN_CACHE
 
 
 def _request(method: str, path: str, *, json_body: Any = None, params: Dict[str, Any] | None = None) -> requests.Response:
-    settings = get_irrigation_settings()
+    """
+    Authenticated request helper. Automatically obtains token and adds headers.
+    """
+    settings = _get_irrigation_settings()
     base_url = str(settings["base_url"])
     timeout_seconds = int(settings["timeout_seconds"])
-    static_token = settings["token"] or os.getenv("IRRIGATION_TOKEN") or None
+    static_token = settings["static_token"]
 
     token = get_access_token()
     url = f"{base_url}{path}"
@@ -152,6 +252,7 @@ def _request(method: str, path: str, *, json_body: Any = None, params: Dict[str,
         timeout=timeout_seconds,
     )
 
+    # If token expired mid-run, refresh once and retry
     if resp.status_code in (401, 403) and not static_token:
         token = get_access_token(force_refresh=True)
         resp = requests.request(
@@ -166,7 +267,14 @@ def _request(method: str, path: str, *, json_body: Any = None, params: Dict[str,
     return resp
 
 
+# ---------------------------------------------------------------------------
+# Public API: Locations
+# ---------------------------------------------------------------------------
+
 def list_locations() -> List[Location]:
+    """
+    GET /api/v1/location/
+    """
     resp = _request("GET", "/api/v1/location/")
     resp.raise_for_status()
     payload = _json_or_text(resp)
@@ -177,6 +285,7 @@ def list_locations() -> List[Location]:
 
     if isinstance(items, dict):
         return [Location(id=_extract_id(items), raw=items)]
+
     if not isinstance(items, list):
         return []
 
@@ -190,13 +299,24 @@ def list_locations() -> List[Location]:
 
 
 def create_location_from_wkt(wkt_polygon: str) -> Location:
+    """
+    POST /api/v1/location/parcel-wkt/
+    Body: {"coordinates": "<WKT POLYGON>"}
+    """
     resp = _request("POST", "/api/v1/location/parcel-wkt/", json_body={"coordinates": wkt_polygon})
     resp.raise_for_status()
     payload = _json_or_text(resp)
     return Location(id=_extract_id(payload), raw=payload)
 
 
+# ---------------------------------------------------------------------------
+# Public API: ETo
+# ---------------------------------------------------------------------------
+
 def get_eto_calculations(location_id: Any, from_date: date, to_date: date) -> EtoResult:
+    """
+    GET /api/v1/eto/get-calculations/{location_id}/from/{from_date}/to/{to_date}
+    """
     path = f"/api/v1/eto/get-calculations/{location_id}/from/{from_date.isoformat()}/to/{to_date.isoformat()}/"
     resp = _request("GET", path)
     resp.raise_for_status()
@@ -204,7 +324,15 @@ def get_eto_calculations(location_id: Any, from_date: date, to_date: date) -> Et
     return EtoResult(location_id=location_id, from_date=from_date, to_date=to_date, raw=payload)
 
 
+# ---------------------------------------------------------------------------
+# Public API: Soil moisture dataset + analysis
+# ---------------------------------------------------------------------------
+
 def upload_dataset(payload: Dict[str, Any]) -> DatasetCreateResult:
+    """
+    POST /api/v1/dataset/
+    Payload schema depends on IRM; pass what Swagger expects.
+    """
     resp = _request("POST", "/api/v1/dataset/", json_body=payload)
     resp.raise_for_status()
     out = _json_or_text(resp)
@@ -231,6 +359,10 @@ def get_soil_analysis(dataset_id: Any) -> SoilAnalysisResult:
     return SoilAnalysisResult(dataset_id=dataset_id, raw=payload)
 
 
+# ---------------------------------------------------------------------------
+# CLI smoke test
+# ---------------------------------------------------------------------------
+
 def _print_locations(locs: List[Location]) -> None:
     print(f"[Irrigation] Locations returned: {len(locs)}")
     for i, loc in enumerate(locs[:10], start=1):
@@ -238,20 +370,27 @@ def _print_locations(locs: List[Location]) -> None:
 
 
 if __name__ == "__main__":
-    settings = get_irrigation_settings()
+    settings = _get_irrigation_settings()
     print(f"[Irrigation] BASE_URL = {settings['base_url']}")
+
+    # Force a login so failures are obvious
     tok = get_access_token()
     print("[Irrigation] Access token acquired (length):", len(tok))
+
     locs = list_locations()
     _print_locations(locs)
+
     if settings["default_parcel_wkt"]:
         print("[Irrigation] default_parcel_wkt is set; creating location from WKT...")
         loc = create_location_from_wkt(str(settings["default_parcel_wkt"]))
         print(f"[Irrigation] Created location id={loc.id}")
+
     if locs:
+        # Small default window: last 7 days
         today = date.today()
         from_d = today - timedelta(days=7)
         to_d = today
+
         print(f"[Irrigation] Fetching ETo for location {locs[0].id} from {from_d} to {to_d} ...")
         eto = get_eto_calculations(locs[0].id, from_d, to_d)
         print("[Irrigation] ETo response keys:", list(eto.raw.keys())[:20])

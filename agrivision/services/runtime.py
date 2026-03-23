@@ -1,116 +1,140 @@
 from __future__ import annotations
 
-import re
+import os
+import shutil
 import subprocess
 import time
 from pathlib import Path
 from typing import Iterable, Mapping
-from urllib.parse import urlparse
 
 import requests
 
-
-def parse_port_from_base_url(base_url: str, default: int) -> int:
-    try:
-        parsed = urlparse(base_url)
-        if parsed.port is not None:
-            return int(parsed.port)
-    except Exception:
-        pass
-    return default
+from agrivision.config.settings import get_project_root
 
 
-def clone_repo_if_missing(repo_dir: Path, clone_url: str) -> bool:
+class ServiceBootstrapError(RuntimeError):
+    """Raised when an external service cannot be prepared or started."""
+
+
+def project_service_dir(dirname: str) -> Path:
+    return get_project_root() / dirname
+
+
+def clone_repo_if_missing(repo_dir: Path, repo_url: str) -> None:
     if repo_dir.exists():
-        return False
+        return
     repo_dir.parent.mkdir(parents=True, exist_ok=True)
-    subprocess.run(["git", "clone", clone_url, str(repo_dir)], check=True)
-    return True
+    subprocess.run(["git", "clone", repo_url, str(repo_dir)], check=True)
 
 
-def find_existing_file(directory: Path, candidates: Iterable[str]) -> Path | None:
-    for name in candidates:
-        candidate = directory / name
-        if candidate.exists():
-            return candidate
-    return None
-
-
-def ensure_env_file(repo_dir: Path, template_candidates: Iterable[str]) -> Path:
+def ensure_env_file(repo_dir: Path) -> Path:
     env_path = repo_dir / ".env"
     if env_path.exists():
         return env_path
-
-    template = find_existing_file(repo_dir, template_candidates)
-    if template is not None:
-        env_path.write_text(template.read_text(encoding="utf-8"), encoding="utf-8")
-    else:
-        env_path.write_text("", encoding="utf-8")
+    for candidate in ("env.example", ".env.example"):
+        template = repo_dir / candidate
+        if template.exists():
+            shutil.copyfile(template, env_path)
+            return env_path
+    env_path.write_text("", encoding="utf-8")
     return env_path
 
 
-def upsert_env_values(env_path: Path, values: Mapping[str, str]) -> None:
+def update_env_file(env_path: Path, values: Mapping[str, str]) -> None:
     existing: dict[str, str] = {}
+    lines: list[str] = []
     if env_path.exists():
-        for line in env_path.read_text(encoding="utf-8").splitlines():
-            stripped = line.strip()
-            if not stripped or stripped.startswith("#") or "=" not in stripped:
+        lines = env_path.read_text(encoding="utf-8").splitlines()
+        for line in lines:
+            if not line or line.lstrip().startswith("#") or "=" not in line:
                 continue
-            key, value = stripped.split("=", 1)
+            key, value = line.split("=", 1)
             existing[key] = value
 
+    merged = dict(existing)
     for key, value in values.items():
-        existing[key] = value
+        if value is not None:
+            merged[key] = value
 
-    lines = [f"{key}={value}" for key, value in sorted(existing.items())]
-    env_path.write_text("\n".join(lines) + "\n", encoding="utf-8")
+    seen: set[str] = set()
+    out_lines: list[str] = []
+    for line in lines:
+        if not line or line.lstrip().startswith("#") or "=" not in line:
+            out_lines.append(line)
+            continue
+        key, _ = line.split("=", 1)
+        if key in merged:
+            out_lines.append(f"{key}={merged[key]}")
+            seen.add(key)
+        else:
+            out_lines.append(line)
+
+    for key, value in merged.items():
+        if key not in seen:
+            out_lines.append(f"{key}={value}")
+
+    env_path.write_text("\n".join(out_lines).rstrip() + "\n", encoding="utf-8")
 
 
-def compose_up(repo_dir: Path, compose_file: Path, force_recreate: bool = True) -> None:
-    base_cmd = ["docker", "compose", "-f", str(compose_file), "up", "-d"]
-    if force_recreate:
-        base_cmd.append("--force-recreate")
+def detect_compose_file(repo_dir: Path, candidates: Iterable[str] | None = None) -> Path:
+    names = list(
+        candidates
+        or [
+            "docker-compose-x86_64.yml",
+            "docker-compose-arm64.yml",
+            "docker-compose.yml",
+            "docker-compose.yaml",
+            "compose.yml",
+            "compose.yaml",
+        ]
+    )
+    for name in names:
+        path = repo_dir / name
+        if path.exists():
+            return path
+    raise ServiceBootstrapError(
+        f"No compose file found in {repo_dir}. Tried: {', '.join(names)}"
+    )
 
-    cmds = [base_cmd, ["sudo", "-n", *base_cmd]]
-    last_error: str | None = None
-    for cmd in cmds:
+
+def _run_compose_command(compose_file: Path, repo_dir: Path, args: list[str]) -> None:
+    commands = [
+        ["docker", "compose", "-f", str(compose_file), *args],
+        ["sudo", "-n", "docker", "compose", "-f", str(compose_file), *args],
+    ]
+    last_error: Exception | None = None
+    for cmd in commands:
         try:
-            subprocess.run(
-                cmd,
-                cwd=str(repo_dir),
-                check=True,
-                stdout=subprocess.PIPE,
-                stderr=subprocess.PIPE,
-                text=True,
-            )
+            subprocess.run(cmd, cwd=str(repo_dir), check=True)
             return
-        except Exception as exc:
-            last_error = str(exc)
-    raise RuntimeError(f"docker compose up failed: {last_error}")
+        except Exception as exc:  # pragma: no cover
+            last_error = exc
+    raise ServiceBootstrapError(
+        f"Failed to run docker compose for {compose_file}: {last_error}"
+    )
 
 
-def http_ok(url: str, timeout: int = 3) -> bool:
-    try:
-        response = requests.get(url, timeout=timeout)
-        return 200 <= response.status_code < 500
-    except requests.RequestException:
-        return False
+def compose_up(compose_file: Path, repo_dir: Path) -> None:
+    _run_compose_command(compose_file, repo_dir, ["up", "-d"])
 
 
-def wait_for_http(url: str, seconds: int = 75, interval: float = 2.0) -> bool:
-    deadline = time.time() + seconds
+def wait_for_any_url(urls: Iterable[str], timeout_seconds: int = 90) -> bool:
+    deadline = time.time() + timeout_seconds
+    url_list = list(urls)
     while time.time() < deadline:
-        if http_ok(url):
-            return True
-        time.sleep(interval)
+        for url in url_list:
+            try:
+                response = requests.get(url, timeout=3)
+                if response.status_code < 500:
+                    return True
+            except requests.RequestException:
+                pass
+        time.sleep(2)
     return False
 
 
-def replace_or_append_line(text: str, key: str, value: str) -> str:
-    pattern = re.compile(rf"^(?P<key>{re.escape(key)})=.*$", re.MULTILINE)
-    line = f"{key}={value}"
-    if pattern.search(text):
-        return pattern.sub(line, text)
-    if text and not text.endswith("\n"):
-        text += "\n"
-    return text + line + "\n"
+def base_env_values() -> dict[str, str]:
+    return {
+        "DOCKER_REGISTRY": os.getenv("DOCKER_REGISTRY", "ghcr.io"),
+        "TAG": os.getenv("TAG", "latest"),
+    }

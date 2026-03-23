@@ -1,117 +1,69 @@
-############################################
-# Python
-############################################
+# -----------------------------
+# Python / virtual environments
+# -----------------------------
 __pycache__/
 *.py[cod]
 *.pyo
 *.pyd
-*.so
-.Python
-.pytest_cache/
-.mypy_cache/
-
-############################################
-# Virtual environments
-############################################
+.python-version
+.venv/
 venv/
-.env
-.env.*
-pip-wheel-metadata/
 
-############################################
-# OS / Editor junk
-############################################
+# -----------------------------
+# Build / packaging artifacts
+# -----------------------------
+build/
+dist/
+site/
+*.egg-info/
+pip-wheel-metadata/
+.wheels/
+
+# -----------------------------
+# Test / lint / type-check caches
+# -----------------------------
+.pytest_cache/
+.ruff_cache/
+.mypy_cache/
+.coverage
+.coverage.*
+htmlcov/
+
+# -----------------------------
+# Editor / OS files
+# -----------------------------
+.vscode/
+.idea/
 .DS_Store
 Thumbs.db
-.idea/
-.vscode/
-*.swp
-*.swo
-*.tmp
 
-############################################
-# Logs
-############################################
+# -----------------------------
+# Local environment / secrets
+# -----------------------------
+.env
+.env.*
+*.env
+
+# -----------------------------
+# Runtime data / generated outputs
+# -----------------------------
+/data/
+/output/
+
+# -----------------------------
+# Cloned external service repos
+# -----------------------------
+/OpenAgri-IrrigationManagement/
+/OpenAgri-WeatherService/
+
+# -----------------------------
+# Local package metadata
+# -----------------------------
+/agrivision_pipeline.egg-info/
+
+# -----------------------------
+# Logs / temp files
+# -----------------------------
 *.log
-logs/
-
-############################################
-# External services (vendored / reproducible)
-############################################
-
-# OpenAgri Weather Service (Docker-based, cloned from upstream)
-OpenAgri-WeatherService/
-
-############################################
-# AgriVision – DATA (RAW & PROCESSED)
-############################################
-
-# Raw images (VERY LARGE)
-data/images_full/
-data/images_resized/
-
-# ODM projects (very large, reproducible)
-data/odm_project_rgb/
-data/odm_project_mapir/
-data/odm_project/
-
-############################################
-# AgriVision – OUTPUTS
-############################################
-
-# Vegetation index outputs
-output/ndvi/
-output/ndvi_*/
-
-# Weather outputs
-output/weather/current_weather.json
-output/weather/forecast5.json
-output/weather/forecast5.jsonld
-output/weather/spray_forecast.jsonld
-output/weather/thi.json
-output/weather/thi.jsonld
-
-# Irrigation outputs
-output/irrigation/auth_token.json
-output/irrigation/eto.json
-output/irrigation/parcel.json
-
-# Reports
-output/report*.html
-output/reports/
-
-# Run metadata / weather snapshots
-output/runs/
-
-############################################
-# Temporary / cache folders
-############################################
 tmp/
 temp/
-cache/
-
-############################################
-# Docker
-############################################
-*.pid
-docker-compose.override.yml
-
-############################################
-# Safety: never commit large binaries
-############################################
-*.tif
-*.tiff
-*.jpg
-*.jpeg
-*.png
-*.zip
-*.tar
-*.gz
-
-############################################
-# Exceptions (keep structure)
-############################################
-!data/.gitkeep
-!output/.gitkeep
-
-
