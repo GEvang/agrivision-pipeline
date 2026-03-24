@@ -1,81 +1,71 @@
-# AgriVision Pipeline
+# AgriVision Pipeline + Dashboard
 
-AgriVision is an OpenAgri-aligned drone imagery pipeline for orthophoto generation, vegetation index computation, grid-based field classification, external service enrichment, and farmer-facing HTML reporting.
+AgriVision is an OpenAgri-aligned drone imagery pipeline that now supports two operator entry paths without changing the processing core:
 
-The repository is structured as a reusable operating-system service component rather than a single script bundle. It separates application entrypoints, configuration, domain contracts, pipeline stages, integrations, runtime helpers, and deployment assets so contributors can reason about the system boundary-by-boundary.
+- **CLI mode** for scripted or local execution
+- **FastAPI + Jinja dashboard** for uploads, run tracking, reports, previews, and settings
 
-## What the pipeline does
+The repository remains transport-agnostic at the core. `domain/`, `pipeline/`, `services/`, and `integrations/` still own business logic and integrations. The web layer is a thin adapter under `agrivision/app/`.
 
-Given a project folder with input imagery and configuration, AgriVision can:
+## What is new
 
-1. prepare input imagery for processing;
-2. run or reuse ODM orthophoto generation;
-3. compute vegetation-index artifacts;
-4. classify the field into grid cells;
-5. enrich outputs from weather and irrigation services; and
-6. render an HTML report suitable for operator review.
+The dashboard adds:
 
-## Repository map
+- image dataset upload
+- run checklist / launch form
+- filesystem-backed run history
+- generated report browsing
+- orthophoto preview generation
+- safe settings and credential editing
 
-### Runtime and application layer
+## Hybrid architecture
 
-- `run.py` — stable user-facing launcher kept for backwards compatibility.
-- `agrivision/app/` — CLI parser, operational commands, and command dispatch.
-- `agrivision/runtime/` — environment, Docker, and bootstrap helpers for execution contexts.
-- `deployment/` — canonical deployment assets, container entrypoints, and install scripts.
+### Execution core
 
-### Core processing layer
+- `agrivision/domain/` — shared contracts and models
+- `agrivision/pipeline/` — orchestration, stages, artifacts, reports
+- `agrivision/services/` — runtime helpers, run tracking, previews, settings, reports
+- `agrivision/integrations/` — external boundary adapters
 
-- `agrivision/pipeline/` — orchestrator, state model, stages, artifact I/O, and report rendering.
-- `agrivision/domain/` — typed contracts and shared models used across layers.
-- `agrivision/config/` — config loading, schema splitting, and validated settings.
+### Adapters
 
-### External boundary layer
+- `agrivision/app/cli.py` — CLI entrypoint
+- `agrivision/app/api.py` — FastAPI backend and dashboard routes
+- `agrivision/app/schemas/` — request / response validation models
+- `agrivision/app/web/` — Jinja templates and static assets
 
-- `agrivision/integrations/` — thin adapters and mappers that translate between AgriVision contracts and external systems.
-- `agrivision/services/` — concrete service clients and runtime support code for long-form external interactions.
+### Runtime storage
 
-### Supporting assets
+Dashboard state is filesystem-backed:
 
-- `docs/` — architecture, API/contracts, operator, and developer documentation.
-- `tests/` — unit, integration, and system tests.
-- `.github/workflows/` — CI automation.
-- `requirements.txt` — pinned runtime dependency set for reproducible installs.
+- `data/uploads/<upload_id>/` — uploaded image datasets
+- `runtime/runs/<run_id>/params.json`
+- `runtime/runs/<run_id>/status.json`
+- `runtime/runs/<run_id>/outputs.json`
+- `runtime/runs/<run_id>/run.log`
+- `runtime/runs/<run_id>/previews/`
 
-## Architectural boundary rules
-
-The most important repository boundaries are:
-
-- `app` owns command-line interaction and user-triggered workflows.
-- `pipeline` owns stage orchestration and artifact production.
-- `integrations` owns translation at system boundaries.
-- `services` owns concrete external client behavior and service bootstrapping.
-- `runtime` owns execution-environment concerns such as Docker paths, bootstrap helpers, and environment sync.
-- `deployment` owns install-time and container-time assets only.
-
-This split prevents application code from accumulating deployment logic and keeps external-service coupling out of the core pipeline.
+Each run tracks `run_id`, timestamps, dataset name, selected steps, outputs, errors, and the run log path.
 
 ## Installation
-
-### Local Python install
 
 ```bash
 python -m venv .venv
 source .venv/bin/activate
 pip install --upgrade pip
-pip install -e ".[dev]"
-```
-
-For locked runtime installs, use:
-
-```bash
 pip install -r requirements.txt
 pip install -e ".[dev]"
 ```
 
-## Quick start
+Or install from packaging metadata only:
 
-### Validate the environment
+```bash
+pip install -e ".[dev]"
+```
+
+## CLI usage
+
+### Diagnostics
 
 ```bash
 python run.py --doctor
@@ -85,44 +75,47 @@ python run.py --doctor
 
 ```bash
 python run.py --run-resize
+python run.py --skip-odm
+python run.py --skip-weather
+python run.py --skip-report
 ```
 
-### Useful flags
+### Start the dashboard through the CLI
 
 ```bash
-python run.py --skip-odm
-python run.py --skip-ndvi
-python run.py --cleanup
-python run.py --setup-services
+python run.py --serve-dashboard --host 127.0.0.1 --port 8008
 ```
 
-## Configuration model
+## Dashboard usage
 
-- Root config file: `config.yaml`
-- Example config: `config/config.example.yaml`
-- Edge profile: `config/config.edge.yaml`
-- Developer profile: `config/config.dev.yaml`
-- Environment override entrypoint: `.env`
+You can also start the web UI directly:
 
-Secrets should be injected through environment variables where possible rather than committed into YAML. The settings loader already warns when secret material is read directly from configuration files.
+```bash
+uvicorn agrivision.app.api:app --host 127.0.0.1 --port 8008
+```
 
-## Deployment paths
+Pages:
 
-The canonical container assets live under `deployment/docker/`.
+- `/` — dashboard with recent runs and latest outputs
+- `/runs/new` — upload images and launch a run
+- `/runs/{run_id}` — run detail, logs, artifacts, preview
+- `/reports` — report history
+- `/settings` — non-secret settings, masked credentials, diagnostics
 
-The root-level `Dockerfile`, `docker-compose.yml`, `bootstrap.sh`, and `install_agrivision.sh` are compatibility wrappers kept for convenience and operator ergonomics. They point to the same deployment model and should not be treated as a second independent deployment stack.
+## Settings and credentials
 
-## Documentation guide
+- non-secret configuration remains in `config.yaml`
+- secrets should live in `.env` or environment variables
+- the dashboard masks secret values and never returns full secrets in responses
+- credentials are written through the service layer and are excluded from logs and run status files
 
-- Architecture overview: `docs/architecture/overview.md`
-- Functional boundaries: `docs/architecture/functional-view.md`
-- Information and interoperability view: `docs/architecture/information-view.md`
-- Data flow: `docs/architecture/data-flow.md`
-- Deployment view: `docs/architecture/deployment-view.md`
-- Module boundary clarification: `docs/architecture/module-boundaries.md`
-- API and contract guide: `docs/api/README.md`
-- Operator install/run docs: `docs/operator/`
-- Developer workflow docs: `docs/developer/`
+## Operator flow
+
+1. Upload an image dataset on **New Run**
+2. Choose the uploaded dataset and processing steps
+3. Launch the run
+4. Review run status, logs, report links, and orthophoto preview
+5. Use **Settings** to update base URLs and credentials safely
 
 ## Quality gates
 
@@ -133,12 +126,10 @@ make smoke-config
 python -m pytest --cov=agrivision --cov-report=term-missing
 ```
 
-## OpenAgri alignment highlights
+## Documentation map
 
-This repository has been organized to support OpenAgri-oriented reuse by:
-
-- documenting clear architectural views;
-- surfacing data contracts and integration boundaries;
-- separating core orchestration from deployment mechanics;
-- keeping reproducible pinned dependencies; and
-- providing local, CI, and container execution paths.
+- `docs/api/README.md` — backend endpoints and dashboard contracts
+- `docs/architecture/overview.md` — architecture overview
+- `docs/architecture/module-boundaries.md` — execution vs adapter boundaries
+- `docs/operator/run.md` — CLI and dashboard operator instructions
+- `docs/operator/troubleshooting.md` — operational troubleshooting

@@ -6,6 +6,8 @@ from __future__ import annotations
 import argparse
 import json
 import os
+import subprocess
+import sys
 from pathlib import Path
 
 from agrivision.app.commands.cleanup import cleanup_outputs
@@ -37,6 +39,11 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument('--doctor', action='store_true', help='Print runtime diagnostics and exit.')
     parser.add_argument('--setup-services', action='store_true', help='Prepare sibling OpenAgri services and exit.')
     parser.add_argument('--cleanup', action='store_true', help='Remove generated outputs and exit.')
+    parser.add_argument('--skip-weather', action='store_true', help='Skip weather enrichment during the run.')
+    parser.add_argument('--skip-report', action='store_true', help='Skip report generation during the run.')
+    parser.add_argument('--serve-dashboard', action='store_true', help='Start the FastAPI operator dashboard.')
+    parser.add_argument('--host', default='127.0.0.1', help='Dashboard bind host.')
+    parser.add_argument('--port', type=int, default=8008, help='Dashboard bind port.')
     return parser
 
 
@@ -59,11 +66,16 @@ def main() -> None:
         removed = cleanup_outputs()
         print(json.dumps({'removed': removed}, indent=2))
         return
+    if args.serve_dashboard:
+        subprocess.run([sys.executable, '-m', 'uvicorn', 'agrivision.app.api:app', '--host', args.host, '--port', str(args.port)], check=False)
+        return
 
     run_full_pipeline(
         run_resize_step=args.run_resize,
         skip_odm=args.skip_odm,
         skip_ndvi=args.skip_ndvi,
+        skip_weather=args.skip_weather,
+        skip_report=args.skip_report,
     )
 
 

@@ -1,0 +1,26 @@
+{% extends 'base.html' %}
+{% block content %}
+<section class="panel">
+  <h2>{{ run.run_name or run.dataset_name }}</h2>
+  <p>Status: <strong>{{ run.status }}</strong></p>
+  <p>Created: {{ run.created_at }}</p>
+  <p>Dataset: {{ run.dataset_name }}</p>
+  <p>Field: {{ run.field_name or '-' }}</p>
+  <h3>Parameters</h3>
+  <pre>{{ run.parameters }}</pre>
+  <h3>Selected Steps</h3>
+  <pre>{{ run.selected_steps }}</pre>
+  {% if report.preview_path %}
+  <h3>Orthophoto Preview</h3>
+  <img class="preview" src="/artifacts/{{ run.run_id }}/preview" alt="Orthophoto preview" />
+  {% endif %}
+  <h3>Artifacts</h3>
+  <ul>
+    {% if report.report_path %}<li><a href="/artifacts/{{ run.run_id }}/report">Report</a></li>{% endif %}
+    {% if report.orthophoto_path %}<li><a href="/artifacts/{{ run.run_id }}/orthophoto">Orthophoto</a></li>{% endif %}
+    <li><a href="/artifacts/{{ run.run_id }}/log">Run log</a></li>
+  </ul>
+  <h3>Logs</h3>
+  <pre class="log-box">{{ logs }}</pre>
+</section>
+{% endblock %}

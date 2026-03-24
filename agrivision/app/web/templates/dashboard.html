@@ -1,0 +1,30 @@
+{% extends 'base.html' %}
+{% block content %}
+<section class="panel">
+  <h2>Recent Runs</h2>
+  <div class="stats">
+    {% for key, value in status_summary.items() %}
+    <div class="stat"><strong>{{ value }}</strong><span>{{ key }}</span></div>
+    {% endfor %}
+  </div>
+  <table>
+    <thead><tr><th>Created</th><th>Dataset</th><th>Status</th><th>Open</th></tr></thead>
+    <tbody>
+    {% for run in recent_runs %}
+      <tr><td>{{ run.created_at }}</td><td>{{ run.dataset_name }}</td><td>{{ run.status }}</td><td><a href="/runs/{{ run.run_id }}">View</a></td></tr>
+    {% else %}
+      <tr><td colspan="4">No runs yet.</td></tr>
+    {% endfor %}
+    </tbody>
+  </table>
+</section>
+{% if latest_report %}
+<section class="panel">
+  <h2>Latest Output</h2>
+  <p>Run {{ latest_report.run_id }} — {{ latest_report.status }}</p>
+  {% if latest_report.preview_path %}
+  <img class="preview" src="/artifacts/{{ latest_report.run_id }}/preview" alt="Orthophoto preview" />
+  {% endif %}
+</section>
+{% endif %}
+{% endblock %}

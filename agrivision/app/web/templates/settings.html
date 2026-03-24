@@ -1,0 +1,32 @@
+{% extends 'base.html' %}
+{% block content %}
+<section class="grid two-col">
+  <form class="panel" method="post" action="/ui/settings">
+    <h2>Non-secret Settings</h2>
+    <label>Location name<input type="text" name="location_name" value="{{ non_secret.location_name }}" /></label>
+    <label>Weather base URL<input type="text" name="weather_base_url" value="{{ non_secret.weather_base_url }}" /></label>
+    <label>Irrigation base URL<input type="text" name="irrigation_base_url" value="{{ non_secret.irrigation_base_url }}" /></label>
+    <label>Resize max long edge<input type="number" name="resize_max_long_edge" value="{{ non_secret.resize_max_long_edge }}" /></label>
+    <label>Orthophoto resolution (cm)<input type="number" name="orthophoto_resolution_cm" value="{{ non_secret.orthophoto_resolution_cm }}" /></label>
+    <button type="submit">Save settings</button>
+  </form>
+  <form class="panel" method="post" action="/ui/settings/credentials">
+    <h2>Credentials</h2>
+    <p>Existing values stay masked unless you replace them.</p>
+    <ul>
+      {% for key, value in credentials.items() %}
+      <li><strong>{{ key }}</strong>: {{ value }}</li>
+      {% endfor %}
+    </ul>
+    <label>Weather username<input type="text" name="weather_username" /></label>
+    <label>Weather password<input type="password" name="weather_password" /></label>
+    <label>OpenWeather API key<input type="password" name="openweather_api_key" /></label>
+    <label>Irrigation email<input type="email" name="irrigation_email" /></label>
+    <label>Irrigation password<input type="password" name="irrigation_password" /></label>
+    <label>Irrigation token<input type="password" name="irrigation_token" /></label>
+    <button type="submit">Save credentials</button>
+    <h3>Diagnostics</h3>
+    <pre>{{ diagnostics }}</pre>
+  </form>
+</section>
+{% endblock %}

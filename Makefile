@@ -1,6 +1,6 @@
 PYTHON ?= python
 
-.PHONY: install install-dev lint format test smoke-config run verify-phase5
+.PHONY: install install-dev lint format test smoke-config run serve-dashboard verify-phase5
 
 install:
 	$(PYTHON) -m pip install -r requirements.txt
@@ -27,3 +27,6 @@ verify-phase5:
 
 run:
 	$(PYTHON) run.py
+
+serve-dashboard:
+	$(PYTHON) -m uvicorn agrivision.app.api:app --host 127.0.0.1 --port 8008

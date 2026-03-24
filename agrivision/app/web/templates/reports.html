@@ -1,0 +1,22 @@
+{% extends 'base.html' %}
+{% block content %}
+<section class="panel">
+  <h2>Report History</h2>
+  <table>
+    <thead><tr><th>Created</th><th>Dataset</th><th>Status</th><th>Report</th><th>Preview</th></tr></thead>
+    <tbody>
+      {% for report in reports %}
+      <tr>
+        <td>{{ report.created_at }}</td>
+        <td><a href="/runs/{{ report.run_id }}">{{ report.dataset_name }}</a></td>
+        <td>{{ report.status }}</td>
+        <td>{% if report.report_path %}<a href="/artifacts/{{ report.run_id }}/report">Open</a>{% else %}-{% endif %}</td>
+        <td>{% if report.preview_path %}<a href="/artifacts/{{ report.run_id }}/preview">Preview</a>{% else %}-{% endif %}</td>
+      </tr>
+      {% else %}
+      <tr><td colspan="5">No reports available.</td></tr>
+      {% endfor %}
+    </tbody>
+  </table>
+</section>
+{% endblock %}
