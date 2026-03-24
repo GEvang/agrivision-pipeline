@@ -1,19 +1,25 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+PROJECT_ROOT="$(cd "$SCRIPT_DIR/../.." && pwd)"
+
+export PROJECT_ROOT
+cd "$PROJECT_ROOT"
+
 echo "=============================================="
 echo "        AgriVision ADS Installer"
 echo "=============================================="
-
-PROJECT_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-cd "$PROJECT_ROOT"
-
 echo "[System] Project root: $PROJECT_ROOT"
+
 echo "[System] Updating apt..."
 sudo apt update
 
 echo "[System] Installing base system packages..."
-sudo apt install -y   python3 python3-venv python3-pip   gdal-bin git   ca-certificates curl gnupg
+sudo apt install -y \
+  python3 python3-venv python3-pip \
+  gdal-bin git \
+  ca-certificates curl gnupg lsb-release
 
 if command -v docker >/dev/null 2>&1; then
   echo "[Docker] Docker already installed: $(docker --version)"
@@ -23,7 +29,9 @@ else
   sudo install -m 0755 -d /etc/apt/keyrings
   curl -fsSL https://download.docker.com/linux/ubuntu/gpg | sudo gpg --dearmor -o /etc/apt/keyrings/docker.gpg
   sudo chmod a+r /etc/apt/keyrings/docker.gpg
-  echo     "deb [arch=$(dpkg --print-architecture) signed-by=/etc/apt/keyrings/docker.gpg]     https://download.docker.com/linux/ubuntu $(lsb_release -cs) stable" |     sudo tee /etc/apt/sources.list.d/docker.list >/dev/null
+  echo \
+    "deb [arch=$(dpkg --print-architecture) signed-by=/etc/apt/keyrings/docker.gpg] https://download.docker.com/linux/ubuntu $(lsb_release -cs) stable" |
+    sudo tee /etc/apt/sources.list.d/docker.list >/dev/null
   sudo apt update
   sudo apt install -y docker-ce docker-ce-cli containerd.io docker-buildx-plugin docker-compose-plugin
 fi
@@ -32,28 +40,35 @@ sudo systemctl enable docker
 sudo systemctl start docker
 
 venv_created=0
-if [ ! -d "venv" ]; then
-  python3 -m venv venv
+if [ ! -d "$PROJECT_ROOT/venv" ]; then
+  python3 -m venv "$PROJECT_ROOT/venv"
   venv_created=1
 fi
 
 # shellcheck disable=SC1091
-source venv/bin/activate
+source "$PROJECT_ROOT/venv/bin/activate"
 python -m pip install --upgrade pip setuptools wheel
-python -m pip install -r requirements.txt
-python -m pip install -e ".[dev]"
+python -m pip install -r "$PROJECT_ROOT/requirements.txt"
+python -m pip install -e "$PROJECT_ROOT[dev]"
 
-mkdir -p data/images_full/rgb data/images_full/mapir
-mkdir -p data/images_resized/rgb data/images_resized/mapir
-mkdir -p data/odm_project_rgb data/odm_project_mapir
-mkdir -p output/ndvi output/runs output/irrigation output/weather
+mkdir -p \
+  "$PROJECT_ROOT/data/images_full/rgb" \
+  "$PROJECT_ROOT/data/images_full/mapir" \
+  "$PROJECT_ROOT/data/images_resized/rgb" \
+  "$PROJECT_ROOT/data/images_resized/mapir" \
+  "$PROJECT_ROOT/data/odm_project_rgb" \
+  "$PROJECT_ROOT/data/odm_project_mapir" \
+  "$PROJECT_ROOT/output/ndvi" \
+  "$PROJECT_ROOT/output/runs" \
+  "$PROJECT_ROOT/output/irrigation" \
+  "$PROJECT_ROOT/output/weather"
 
 sudo docker pull opendronemap/odm:latest || true
 
-if [ -f ".env" ]; then
+if [ -f "$PROJECT_ROOT/.env" ]; then
   set -a
   # shellcheck disable=SC1091
-  source .env
+  source "$PROJECT_ROOT/.env"
   set +a
 fi
 

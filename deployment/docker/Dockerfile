@@ -27,15 +27,14 @@ COPY requirements.txt ./requirements.txt
 COPY pyproject.toml ./pyproject.toml
 COPY README.md ./README.md
 COPY LICENSE ./LICENSE
-
-RUN python -m pip install --upgrade pip setuptools wheel \
-    && python -m pip install -r requirements.txt \
-    && python -m pip install -e .
-
 COPY agrivision ./agrivision
 COPY run.py ./run.py
 COPY config.yaml ./config.yaml
 COPY docker-entrypoint.sh ./docker-entrypoint.sh
+
+RUN python -m pip install --upgrade pip setuptools wheel \
+    && python -m pip install -r requirements.txt \
+    && python -m pip install -e .
 
 RUN chmod +x /app/docker-entrypoint.sh \
     && mkdir -p /workspace/data /workspace/output
