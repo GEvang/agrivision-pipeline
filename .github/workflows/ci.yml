@@ -37,12 +37,8 @@ jobs:
       - name: Smoke-check config loading
         run: make smoke-config
 
-      - name: Validate compose files
-        run: |
-          docker compose -f docker-compose.yml config
-          docker compose -f deployment/docker/docker-compose.yml config
+      - name: Validate compose file
+        run: docker compose -f docker-compose.yml config
 
-      - name: Validate Dockerfiles build
-        run: |
-          docker build -f Dockerfile -t agrivision-ci-root .
-          docker build -f deployment/docker/Dockerfile -t agrivision-ci-deployment .
+      - name: Validate Dockerfile build
+        run: docker build -f Dockerfile -t agrivision-ci .

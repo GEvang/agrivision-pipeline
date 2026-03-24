@@ -1,6 +1,6 @@
 # Configuration
 
-`config.yaml` remains the active runtime config.
+`config.yaml` remains the active runtime config for non-secret settings.
 
 Additional variants under `config/` are templates for different operating profiles:
 
@@ -11,7 +11,21 @@ Additional variants under `config/` are templates for different operating profil
 ## Precedence
 
 1. Explicit environment variables
-2. `config.yaml`
-3. Template defaults used when copying from `config/`
+2. `.env`
+3. `config.yaml`
+4. built-in defaults
 
-Secrets such as Weather and Irrigation credentials should live in `.env` or exported environment variables rather than being committed into YAML.
+## Secret handling
+
+Store credentials in `.env` or exported environment variables, not in YAML.
+
+Preferred secret keys:
+
+- `WEATHER_USERNAME`
+- `WEATHER_PASSWORD`
+- `OPENWEATHER_API_KEY`
+- `IRRIGATION_EMAIL`
+- `IRRIGATION_PASSWORD`
+- `IRRIGATION_TOKEN`
+
+Legacy YAML secret values are still accepted for backward compatibility, but they should be migrated out of `config.yaml`.

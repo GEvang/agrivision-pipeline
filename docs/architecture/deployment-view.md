@@ -1,23 +1,18 @@
 # Deployment view
 
-## Canonical deployment assets
+## Canonical operational surface
 
-The canonical deployment bundle lives under `deployment/`.
+AgriVision Pipeline exposes one operator-facing deployment surface at the repository root:
 
-- `deployment/docker/` — Dockerfile, compose file, and entrypoint
-- `deployment/scripts/` — install, bootstrap, and cleanup helpers
-- `deployment/examples/` — sample deployment notes
-
-## Compatibility wrappers
-
-The following root-level files are kept for operator convenience and backwards compatibility:
-
+- `install_agrivision.sh`
+- `run.py`
 - `Dockerfile`
 - `docker-compose.yml`
-- `bootstrap.sh`
-- `install_agrivision.sh`
+- `docker-entrypoint.sh`
 
-They should be understood as wrappers around the same deployment path, not as a separate second deployment architecture.
+## Supporting material
+
+The `deployment/` directory now exists only for supplementary examples or internal helper content. It is not a second installation or runtime path.
 
 ## Runtime contexts
 

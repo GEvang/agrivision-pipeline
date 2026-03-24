@@ -1,30 +1,40 @@
-# Installation
+# Install AgriVision Pipeline
 
-## Local install
+## Canonical operator install path
+
+From a clean checkout:
 
 ```bash
-python -m venv .venv
+git clone https://github.com/GEvang/agrivision-pipeline.git
+cd agrivision-pipeline
+./install_agrivision.sh
 source .venv/bin/activate
-pip install --upgrade pip
-pip install -e ".[dev]"
+python run.py --doctor
 ```
 
-## Container-oriented install
+This is the primary operator installation path.
 
-Canonical deployment assets live in `deployment/docker/`.
+## Secrets and configuration
+
+- Keep non-secret settings in `config.yaml`.
+- Keep secrets in `.env` or exported environment variables.
+- Start from `.env.example` when you need Weather or Irrigation credentials.
 
 ```bash
-docker compose -f deployment/docker/docker-compose.yml config
+cp .env.example .env
 ```
 
-Use the root-level `install_agrivision.sh` wrapper only as a convenience entrypoint; it delegates to `deployment/scripts/install.sh`.
+Examples of secrets managed through `.env`:
 
-## Configuration
+- `WEATHER_USERNAME`
+- `WEATHER_PASSWORD`
+- `OPENWEATHER_API_KEY`
+- `IRRIGATION_EMAIL`
+- `IRRIGATION_PASSWORD`
+- `IRRIGATION_TOKEN`
 
-Copy the example profile and adjust paths and credentials:
+## Data and output locations
 
-```bash
-cp config/config.example.yaml config.yaml
-```
-
-Prefer environment variables or `.env` for secrets.
+- uploaded datasets: `data/uploads/`
+- run state and logs: `runtime/runs/`
+- reports and processing outputs: `output/`

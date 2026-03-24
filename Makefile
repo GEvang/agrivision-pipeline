@@ -29,4 +29,4 @@ run:
 	$(PYTHON) run.py
 
 serve-dashboard:
-	$(PYTHON) -m uvicorn agrivision.app.api:app --host 127.0.0.1 --port 8008
+	$(PYTHON) run.py --serve-dashboard --host 127.0.0.1 --port 8008

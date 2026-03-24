@@ -19,6 +19,22 @@ from agrivision.config.settings import (
 from agrivision.services.runtime import mask_env_value, update_env_file
 
 
+def _remove_nested(mapping: dict[str, Any], path: tuple[str, ...]) -> None:
+    current: Any = mapping
+    parents: list[tuple[dict[str, Any], str]] = []
+    for key in path[:-1]:
+        if not isinstance(current, dict) or key not in current or not isinstance(current[key], dict):
+            return
+        parents.append((current, key))
+        current = current[key]
+    if isinstance(current, dict):
+        current.pop(path[-1], None)
+    for parent, key in reversed(parents):
+        child = parent.get(key)
+        if isinstance(child, dict) and not child:
+            parent.pop(key, None)
+
+
 class SettingsService:
     SECRET_ENV_MAP = {
         'weather_username': 'WEATHER_USERNAME',
@@ -95,6 +111,16 @@ class SettingsService:
     def update_non_secret_settings(self, request: SettingsUpdateRequest) -> dict[str, Any]:
         payload = yaml.safe_load(self.config_path.read_text(encoding='utf-8')) if self.config_path.exists() else {}
         payload = payload or {}
+
+        for path in (
+            ('weather', 'username'),
+            ('weather', 'password'),
+            ('weather', 'openweather_api_key'),
+            ('irrigation', 'auth', 'email'),
+            ('irrigation', 'auth', 'password'),
+            ('irrigation', 'token'),
+        ):
+            _remove_nested(payload, path)
 
         if request.location_name is not None:
             payload.setdefault('location', {})['name'] = request.location_name

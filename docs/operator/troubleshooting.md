@@ -18,7 +18,7 @@ Run `python run.py --cleanup` and repeat the pipeline with the expected stage fl
 
 ### Container path mismatches
 
-Verify `HOST_PROJECT_ROOT` and `APP_CONTAINER_PROJECT_ROOT` in the compose configuration.
+Verify `HOST_PROJECT_ROOT` and `APP_CONTAINER_PROJECT_ROOT` in `docker-compose.yml`.
 
 ### Configuration secrets warning
 

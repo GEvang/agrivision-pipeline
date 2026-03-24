@@ -1,28 +1,36 @@
-# Running AgriVision
+# Run AgriVision Pipeline
 
-## CLI
+## Canonical operator commands
+
+Diagnostics:
 
 ```bash
 python run.py --doctor
-python run.py --run-resize
-python run.py --skip-odm
-python run.py --skip-weather
-python run.py --skip-report
 ```
 
-## Dashboard
+CLI pipeline run:
 
 ```bash
-uvicorn agrivision.app.api:app --host 127.0.0.1 --port 8008
+python run.py
 ```
 
-Then open the dashboard in your browser and use:
+Dashboard run:
 
-1. **New Run** to upload a dataset and select processing steps
-2. **Dashboard** to review recent runs
-3. **Run Detail** to inspect logs, reports, and orthophoto previews
-4. **Settings** to update non-secret config and replace credentials
+```bash
+python run.py --serve-dashboard --host 127.0.0.1 --port 8008
+```
+
+## Dashboard flow
+
+1. Open the dashboard in your browser.
+2. Use **New Run** to upload a dataset.
+3. Select the processing steps for that run.
+4. Launch the run and monitor status.
+5. Review reports, logs, and orthophoto previews.
+6. Use **Settings** for non-secret config and masked credential updates.
 
 ## Notes
 
-The first dashboard version keeps storage lightweight and filesystem-backed. Uploaded datasets are staged into the existing pipeline input location before execution so the current pipeline flow remains intact.
+- `python run.py` remains the primary user-facing command surface.
+- Raw `uvicorn` remains available for development but is not the main operator path.
+- The dashboard continues to use lightweight filesystem-backed storage.

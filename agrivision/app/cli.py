@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""AgriVision ADS CLI."""
+"""AgriVision Pipeline CLI."""
 
 from __future__ import annotations
 
@@ -32,7 +32,7 @@ def load_local_env() -> None:
 
 
 def build_parser() -> argparse.ArgumentParser:
-    parser = argparse.ArgumentParser(description='AgriVision ADS pipeline entry point.')
+    parser = argparse.ArgumentParser(description='AgriVision Pipeline entry point.')
     parser.add_argument('--run-resize', action='store_true', help='Run the image resizing step before ODM.')
     parser.add_argument('--skip-odm', action='store_true', help='Skip the ODM orthophoto generation step.')
     parser.add_argument('--skip-ndvi', action='store_true', help='Skip NDVI computation and reuse existing NDVI outputs.')

@@ -1,18 +1,22 @@
 # Deployment notes
 
-The canonical deployment assets for AgriVision live under `deployment/`.
+## Canonical operational assets
 
-## Canonical paths
+The root-level assets are the supported operator-facing deployment surface:
 
-- `deployment/docker/Dockerfile`
-- `deployment/docker/docker-compose.yml`
-- `deployment/docker/entrypoint.sh`
-- `deployment/scripts/install.sh`
-- `deployment/scripts/bootstrap.sh`
-- `deployment/scripts/cleanup.sh`
+- `install_agrivision.sh`
+- `run.py`
+- `Dockerfile`
+- `docker-compose.yml`
+- `docker-entrypoint.sh`
 
-## Compatibility wrappers
+## Internal deployment material
 
-The root-level `Dockerfile`, `docker-compose.yml`, `bootstrap.sh`, `docker-entrypoint.sh`, and `install_agrivision.sh` are maintained as thin compatibility wrappers so existing operator commands continue to work.
+The remaining `deployment/` directory is for supplementary examples and helper material only. It is not a second canonical deployment path.
 
-When updating deployment behavior, modify the canonical assets first and keep wrappers aligned.
+## Canonical container validation
+
+```bash
+docker compose -f docker-compose.yml config
+docker build -f Dockerfile -t agrivision-pipeline:local .
+```

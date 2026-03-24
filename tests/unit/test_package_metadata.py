@@ -1,7 +1,9 @@
-from importlib import metadata
+from pathlib import Path
+
+import tomllib
 
 
-def test_package_exposes_console_script() -> None:
-    entry_points = metadata.entry_points(group="console_scripts")
-    matches = [ep for ep in entry_points if ep.name == "agrivision"]
-    assert matches, "Expected agrivision console script to be registered."
+def test_package_declares_console_script() -> None:
+    pyproject = tomllib.loads(Path("pyproject.toml").read_text(encoding="utf-8"))
+    scripts = pyproject["project"]["scripts"]
+    assert scripts["agrivision"] == "agrivision.app.cli:main"
