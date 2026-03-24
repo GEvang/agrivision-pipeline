@@ -1,23 +1,30 @@
-# Operator install
+# Installation
 
-## Local host install
-
-From the repository root:
+## Local install
 
 ```bash
-./deployment/scripts/install.sh
-source venv/bin/activate
-python run.py --doctor
+python -m venv .venv
+source .venv/bin/activate
+pip install --upgrade pip
+pip install -e ".[dev]"
 ```
 
-The installer prepares Python, Docker, required folders, ODM image pull, and optional Weather/Irrigation runtime reconciliation.
+## Container-oriented install
 
-## Docker install and run
-
-From the repository root:
+Canonical deployment assets live in `deployment/docker/`.
 
 ```bash
-docker compose -f deployment/docker/docker-compose.yml up --build
+docker compose -f deployment/docker/docker-compose.yml config
 ```
 
-This path mounts the full repository into `/workspace`, uses `config.yaml` as the active config, and passes the host project root through `HOST_PROJECT_ROOT` for local sibling-service bootstrapping.
+Use the root-level `install_agrivision.sh` wrapper only as a convenience entrypoint; it delegates to `deployment/scripts/install.sh`.
+
+## Configuration
+
+Copy the example profile and adjust paths and credentials:
+
+```bash
+cp config/config.example.yaml config.yaml
+```
+
+Prefer environment variables or `.env` for secrets.

@@ -1,21 +1,23 @@
 # Data flow
 
-```text
-Drone images
-  -> Resize (optional)
-  -> ODM orthophoto generation
-  -> Vegetation index generation
-  -> Grid classification and overlay rendering
-  -> Weather enrichment
-  -> Irrigation enrichment
-  -> HTML report
-```
+## End-to-end sequence
 
-## Stage inputs and outputs
+1. load configuration and environment overrides;
+2. resolve project, input, and output paths;
+3. optionally resize source imagery;
+4. run or reuse ODM orthophoto generation;
+5. compute vegetation-index products;
+6. generate grid classifications and summaries;
+7. fetch or map weather and irrigation enrichment data;
+8. write metadata and report assets;
+9. render the HTML report.
 
-- **Resize** reads raw RGB and MAPIR folders and writes normalized image folders.
-- **ODM** reads prepared image folders and writes orthophoto artifacts under `data/odm_project_*`.
-- **Vegetation index** reads orthophotos and writes raster plus metadata under `output/ndvi/`.
-- **Grid** reads NDVI artifacts and writes overlays, tabular summaries, and intermediate metadata.
-- **Weather/Irrigation enrichment** read grid and config context, then write service artifacts under `output/weather/` and `output/irrigation/`.
-- **Report** gathers artifacts from earlier stages and writes `output/report_latest.html`.
+## Control flow notes
+
+- doctor/setup/cleanup commands exit before pipeline execution;
+- stage skipping is controlled by CLI flags and configuration;
+- external-service failures should remain isolated to enrichment paths where possible.
+
+## Artifact boundaries
+
+Inputs and outputs are exchanged between stages through named files and metadata helpers under `agrivision.pipeline.io`. This keeps stage interfaces inspectable and testable.

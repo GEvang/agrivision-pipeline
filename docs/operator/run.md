@@ -1,7 +1,20 @@
-# Operator run
+# Running AgriVision
 
-Typical commands:
+## Verify the environment
 
-- `python run.py --run-resize`
-- `python run.py --skip-odm`
-- `python run.py --doctor`
+```bash
+python run.py --doctor
+```
+
+## Run the pipeline
+
+```bash
+python run.py --run-resize
+```
+
+## Skip selected stages
+
+```bash
+python run.py --skip-odm
+python run.py --skip-ndvi
+```

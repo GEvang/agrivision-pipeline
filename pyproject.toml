@@ -12,7 +12,21 @@ authors = [
   { name = "AgriVision contributors" }
 ]
 license = { file = "LICENSE" }
-dependencies = []
+dependencies = [
+  "affine>=2.4.0",
+  "attrs>=25.4.0",
+  "click>=8.3.1",
+  "matplotlib>=3.10.7",
+  "numpy>=2.3.5",
+  "packaging>=25.0",
+  "pillow>=12.0.0",
+  "PyYAML>=6.0.3",
+  "rasterio>=1.4.3",
+  "requests>=2.32.5",
+]
+
+[project.scripts]
+agrivision = "agrivision.app.cli:main"
 
 [project.optional-dependencies]
 dev = [
@@ -36,6 +50,7 @@ target-version = ["py310"]
 line-length = 88
 target-version = "py310"
 exclude = [
+  ".venv",
   "venv",
   "__pycache__",
   "agrivision_pipeline.egg-info",
