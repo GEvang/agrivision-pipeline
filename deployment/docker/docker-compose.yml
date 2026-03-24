@@ -1,0 +1,23 @@
+services:
+  agrivision:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    image: agrivision-pipeline:phase5
+    container_name: agrivision-pipeline
+    network_mode: host
+    working_dir: /workspace
+    environment:
+      AGRIVISION_CONFIG_PATH: /workspace/config.yaml
+      APP_CONTAINER_PROJECT_ROOT: /workspace
+      HOST_PROJECT_ROOT: ${PWD}
+      WEATHER_USERNAME: ${WEATHER_USERNAME:-}
+      WEATHER_PASSWORD: ${WEATHER_PASSWORD:-}
+      OPENWEATHER_API_KEY: ${OPENWEATHER_API_KEY:-}
+      IRRIGATION_EMAIL: ${IRRIGATION_EMAIL:-}
+      IRRIGATION_PASSWORD: ${IRRIGATION_PASSWORD:-}
+      IRRIGATION_TOKEN: ${IRRIGATION_TOKEN:-}
+    volumes:
+      - .:/workspace
+      - /var/run/docker.sock:/var/run/docker.sock
+    command: ["python", "run.py"]

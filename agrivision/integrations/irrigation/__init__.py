@@ -1,0 +1,1 @@
+"""Irrigation integration adapter package."""
