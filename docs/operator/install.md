@@ -16,9 +16,11 @@ python run.py --doctor
 - installs Python dependencies
 - creates the expected data, output, and runtime directories
 - creates `.env` from `.env.example` when missing
+- standardizes the local virtual environment at `.venv`
 
 ## Configuration
 
 - keep non-secret settings in `config.yaml`
+- create local secrets with `cp .env.example .env` and then fill the required values
 - keep secrets in `.env` or exported environment variables
 - never commit real credentials into `config.yaml` or `.env`

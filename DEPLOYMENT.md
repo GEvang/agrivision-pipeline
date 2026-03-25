@@ -6,6 +6,7 @@ The root-level operational assets are the only supported deployment surface:
 - `Dockerfile`
 - `docker-compose.yml`
 - `docker-entrypoint.sh`
+- `.env.example`
 
 ## Root Docker flow
 
@@ -15,4 +16,4 @@ docker compose build
 docker compose up
 ```
 
-For local operator use, prefer the installer and `python run.py` commands documented in the README.
+For local operator use, prefer the installer and `python run.py` commands documented in the README. Activate the project with `source .venv/bin/activate`.

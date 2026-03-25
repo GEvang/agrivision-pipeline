@@ -8,6 +8,7 @@ source .venv/bin/activate
 pip install --upgrade pip
 pip install -r requirements.txt
 pip install -e ".[dev]"
+cp .env.example .env
 ```
 
 ## Raw dashboard server

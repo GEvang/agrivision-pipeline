@@ -37,7 +37,7 @@ Open `http://127.0.0.1:8008` in your browser.
 
 - Keep **non-secret settings** in `config.yaml`
 - Keep **secrets** in `.env` or exported environment variables
-- Use `.env.example` as the template for local setup
+- Use `cp .env.example .env` as the starting point for local setup
 - The dashboard masks secrets and does not return full credential values in responses
 
 ## Runtime storage
