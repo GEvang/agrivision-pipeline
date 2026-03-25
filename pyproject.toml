@@ -7,7 +7,7 @@ name = "agrivision-pipeline"
 version = "0.1.0"
 description = "Drone imagery pipeline for orthophotos, vegetation analysis, grid assessment, and farmer-ready reporting."
 readme = "README.md"
-requires-python = ">=3.10"
+requires-python = ">=3.11"
 authors = [
   { name = "AgriVision contributors" }
 ]
@@ -17,7 +17,7 @@ dependencies = [
   "attrs>=25.4.0",
   "click>=8.3.1",
   "matplotlib>=3.10.7",
-  "numpy>=2.3.5",
+  "numpy>=2.3.5,<2.4",
   "packaging>=25.0",
   "pillow>=12.0.0",
   "PyYAML>=6.0.3",

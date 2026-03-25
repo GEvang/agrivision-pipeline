@@ -28,7 +28,7 @@ python run.py
 Dashboard:
 
 ```bash
-python run.py --serve-dashboard --host 127.0.0.1 --port 8008
+python run.py --serve-dashboard --host 127.0.0.1 --port 8008 --host 127.0.0.1 --port 8008
 ```
 
 Open `http://127.0.0.1:8008` in your browser.

@@ -1,3 +1,8 @@
+PYTHON := .venv/bin/python
+PIP := .venv/bin/pip
+RUFF := .venv/bin/ruff
+PYTEST := .venv/bin/pytest
+
 PYTHON ?= python
 
 .PHONY: install install-dev lint format test smoke-config run serve-dashboard verify-phase5

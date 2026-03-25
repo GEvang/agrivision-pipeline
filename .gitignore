@@ -41,7 +41,6 @@ Thumbs.db
 # Local environment / secrets
 # -----------------------------
 .env
-.env.*
 *.env
 
 # -----------------------------
