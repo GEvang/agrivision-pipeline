@@ -1,94 +1,76 @@
 # AgriVision Pipeline
 
-AgriVision Pipeline is an operator-friendly drone imagery workflow with two supported runtime surfaces built on the same processing core:
+AgriVision Pipeline is an OpenAgri-aligned drone imagery pipeline with two supported operator interfaces that share the same processing core:
 
-- **CLI mode** for local or scripted execution
-- **FastAPI dashboard** for uploads, run tracking, reports, previews, and settings
+- **CLI** for direct pipeline execution
+- **Dashboard** for uploads, run tracking, reports, previews, and settings
 
-The transport-agnostic core remains in `agrivision/domain`, `agrivision/pipeline`, `agrivision/services`, and `agrivision/integrations`. The dashboard stays a thin adapter under `agrivision/app/`.
+The core remains transport-agnostic. `agrivision/domain/`, `agrivision/pipeline/`, `agrivision/services/`, and `agrivision/integrations/` continue to own business logic and integrations. The web layer under `agrivision/app/` stays thin.
 
-## Canonical operator workflow
-
-### 1. Clone the repository
+## Canonical operator install
 
 ```bash
 git clone https://github.com/GEvang/agrivision-pipeline.git
 cd agrivision-pipeline
-```
-
-### 2. Run the installer
-
-```bash
 ./install_agrivision.sh
-```
-
-### 3. Activate the environment
-
-```bash
 source .venv/bin/activate
-```
-
-### 4. Verify the setup
-
-```bash
 python run.py --doctor
 ```
 
-### 5. Run AgriVision Pipeline
+## Canonical operator run path
 
-CLI pipeline run:
+CLI:
 
 ```bash
 python run.py
 ```
 
-Dashboard run:
+Dashboard:
 
 ```bash
 python run.py --serve-dashboard --host 127.0.0.1 --port 8008
 ```
 
-Then open `http://127.0.0.1:8008` in your browser.
+Open `http://127.0.0.1:8008` in your browser.
 
-## Secrets and configuration
+## Configuration and secrets
 
-- `config.yaml` is for **non-secret runtime settings** such as paths, location, base URLs, and processing options.
-- `.env` or exported environment variables are for **secrets only**.
-- `.env.example` shows the expected secret keys.
-- Legacy YAML secret values are still read for compatibility, but the preferred path is `.env`.
+- Keep **non-secret settings** in `config.yaml`
+- Keep **secrets** in `.env` or exported environment variables
+- Use `.env.example` as the template for local setup
+- The dashboard masks secrets and does not return full credential values in responses
 
-Typical setup:
-
-```bash
-cp .env.example .env
-```
-
-Fill in only the credentials you actually use.
-
-## Where AgriVision stores runtime data
+## Runtime storage
 
 - `data/uploads/<upload_id>/` — uploaded image datasets
-- `runtime/runs/<run_id>/` — run metadata, logs, previews, outputs
-- `output/` — reports, NDVI artifacts, irrigation output, weather output
+- `runtime/runs/<run_id>/params.json`
+- `runtime/runs/<run_id>/status.json`
+- `runtime/runs/<run_id>/outputs.json`
+- `runtime/runs/<run_id>/run.log`
+- `runtime/runs/<run_id>/previews/`
 
-## Dashboard pages
+## Common commands
 
-- `/` — dashboard with recent runs and latest outputs
-- `/runs/new` — upload images and launch a run
-- `/runs/{run_id}` — run detail, logs, artifacts, preview
-- `/reports` — report history
-- `/settings` — non-secret settings, masked credentials, diagnostics
+```bash
+python run.py --doctor
+python run.py --run-resize
+python run.py --skip-odm
+python run.py --skip-weather
+python run.py --skip-report
+python -m pytest -q
+python -m ruff check .
+```
+
+## Docker
+
+Root-level Docker assets are the only retained container path:
+
+```bash
+docker compose config
+docker compose build
+docker compose up
+```
 
 ## Developer notes
 
-Operator docs now standardize on `install_agrivision.sh` and `python run.py`. Lower-level developer workflows such as raw `uvicorn`, direct editable installs, and Make targets remain available in `docs/developer/`.
-
-## Verification commands
-
-```bash
-make lint
-make test
-make smoke-config
-python -m pytest tests/system/test_dashboard_ui_smoke.py
-python -m pytest tests/system/test_cli_doctor.py
-```
+Developer-oriented alternatives such as raw `uvicorn`, editable installs, and dev tooling are documented under `docs/developer/`.

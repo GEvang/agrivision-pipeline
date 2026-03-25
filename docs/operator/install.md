@@ -1,8 +1,6 @@
 # Install AgriVision Pipeline
 
-## Canonical operator install path
-
-From a clean checkout:
+Use the repository root installer as the canonical operator path.
 
 ```bash
 git clone https://github.com/GEvang/agrivision-pipeline.git
@@ -12,29 +10,15 @@ source .venv/bin/activate
 python run.py --doctor
 ```
 
-This is the primary operator installation path.
+## What the installer does
 
-## Secrets and configuration
+- creates `.venv`
+- installs Python dependencies
+- creates the expected data, output, and runtime directories
+- creates `.env` from `.env.example` when missing
 
-- Keep non-secret settings in `config.yaml`.
-- Keep secrets in `.env` or exported environment variables.
-- Start from `.env.example` when you need Weather or Irrigation credentials.
+## Configuration
 
-```bash
-cp .env.example .env
-```
-
-Examples of secrets managed through `.env`:
-
-- `WEATHER_USERNAME`
-- `WEATHER_PASSWORD`
-- `OPENWEATHER_API_KEY`
-- `IRRIGATION_EMAIL`
-- `IRRIGATION_PASSWORD`
-- `IRRIGATION_TOKEN`
-
-## Data and output locations
-
-- uploaded datasets: `data/uploads/`
-- run state and logs: `runtime/runs/`
-- reports and processing outputs: `output/`
+- keep non-secret settings in `config.yaml`
+- keep secrets in `.env` or exported environment variables
+- never commit real credentials into `config.yaml` or `.env`

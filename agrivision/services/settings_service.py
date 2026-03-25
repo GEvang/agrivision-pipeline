@@ -12,27 +12,11 @@ from agrivision.app.schemas.settings import (
 from agrivision.config.runtime import get_runtime_config
 from agrivision.config.settings import (
     DEFAULT_CONFIG,
-    _apply_env_overrides,
     _deep_merge,
     get_config_path,
+    load_raw_config,
 )
 from agrivision.services.runtime import mask_env_value, update_env_file
-
-
-def _remove_nested(mapping: dict[str, Any], path: tuple[str, ...]) -> None:
-    current: Any = mapping
-    parents: list[tuple[dict[str, Any], str]] = []
-    for key in path[:-1]:
-        if not isinstance(current, dict) or key not in current or not isinstance(current[key], dict):
-            return
-        parents.append((current, key))
-        current = current[key]
-    if isinstance(current, dict):
-        current.pop(path[-1], None)
-    for parent, key in reversed(parents):
-        child = parent.get(key)
-        if isinstance(child, dict) and not child:
-            parent.pop(key, None)
 
 
 class SettingsService:
@@ -62,25 +46,26 @@ class SettingsService:
         return data
 
     def _load_config(self) -> dict[str, Any]:
-        payload = yaml.safe_load(self.config_path.read_text(encoding='utf-8')) if self.config_path.exists() else {}
+        payload = load_raw_config(self.config_path)
         config = _deep_merge(DEFAULT_CONFIG, payload or {})
         env_values = self._env_values()
-        for field_name, env_name in self.SECRET_ENV_MAP.items():
-            if env_name in env_values:
-                # write to process env proxy config shape
-                if field_name == 'weather_username':
-                    config.setdefault('weather', {})['username'] = env_values[env_name]
-                elif field_name == 'weather_password':
-                    config.setdefault('weather', {})['password'] = env_values[env_name]
-                elif field_name == 'openweather_api_key':
-                    config.setdefault('weather', {})['openweather_api_key'] = env_values[env_name]
-                elif field_name == 'irrigation_email':
-                    config.setdefault('irrigation', {}).setdefault('auth', {})['email'] = env_values[env_name]
-                elif field_name == 'irrigation_password':
-                    config.setdefault('irrigation', {}).setdefault('auth', {})['password'] = env_values[env_name]
-                elif field_name == 'irrigation_token':
-                    config.setdefault('irrigation', {})['token'] = env_values[env_name]
-        return _apply_env_overrides(config)
+        mapping = {
+            'WEATHER_USERNAME': ('weather', 'username'),
+            'WEATHER_PASSWORD': ('weather', 'password'),
+            'OPENWEATHER_API_KEY': ('weather', 'openweather_api_key'),
+            'IRRIGATION_EMAIL': ('irrigation', 'auth', 'email'),
+            'IRRIGATION_PASSWORD': ('irrigation', 'auth', 'password'),
+            'IRRIGATION_TOKEN': ('irrigation', 'token'),
+        }
+        for env_name, path in mapping.items():
+            value = env_values.get(env_name)
+            if value in (None, ''):
+                continue
+            current = config
+            for key in path[:-1]:
+                current = current.setdefault(key, {})
+            current[path[-1]] = value
+        return config
 
     def get_settings_view(self) -> dict[str, Any]:
         config = self._load_config()
@@ -109,18 +94,15 @@ class SettingsService:
         return {key: mask_env_value(str(value or '')) for key, value in values.items()}
 
     def update_non_secret_settings(self, request: SettingsUpdateRequest) -> dict[str, Any]:
-        payload = yaml.safe_load(self.config_path.read_text(encoding='utf-8')) if self.config_path.exists() else {}
-        payload = payload or {}
+        payload = _deep_merge(DEFAULT_CONFIG, load_raw_config(self.config_path) or {})
 
-        for path in (
-            ('weather', 'username'),
-            ('weather', 'password'),
-            ('weather', 'openweather_api_key'),
-            ('irrigation', 'auth', 'email'),
-            ('irrigation', 'auth', 'password'),
-            ('irrigation', 'token'),
-        ):
-            _remove_nested(payload, path)
+        # do not persist secrets back into config.yaml from the settings UI
+        payload.setdefault('weather', {}).pop('username', None)
+        payload.setdefault('weather', {}).pop('password', None)
+        payload.setdefault('weather', {}).pop('openweather_api_key', None)
+        payload.setdefault('irrigation', {}).setdefault('auth', {}).pop('email', None)
+        payload.setdefault('irrigation', {}).setdefault('auth', {}).pop('password', None)
+        payload.setdefault('irrigation', {}).pop('token', None)
 
         if request.location_name is not None:
             payload.setdefault('location', {})['name'] = request.location_name

@@ -3,7 +3,7 @@ services:
     build:
       context: .
       dockerfile: Dockerfile
-    image: agrivision-pipeline:local
+    image: agrivision-pipeline:phase5
     container_name: agrivision-pipeline
     network_mode: host
     working_dir: /workspace

@@ -163,7 +163,7 @@ def get_access_token(force_refresh: bool = False) -> str:
     Obtain and cache the access token.
 
     Priority:
-      1) STATIC_TOKEN / IRRIGATION_TOKEN env var / config irrigation.token
+      1) STATIC_TOKEN / IRRIGATION_TOKEN env var (preferred) / legacy config irrigation.token
       2) Cached token from earlier login
       3) Login via POST /api/v1/login/access-token with form fields
 

@@ -1,6 +1,6 @@
 # Local development
 
-## Setup
+## Editable install
 
 ```bash
 python -m venv .venv
@@ -10,21 +10,10 @@ pip install -r requirements.txt
 pip install -e ".[dev]"
 ```
 
-## Useful commands
+## Raw dashboard server
+
+For development only, you can run the FastAPI app directly:
 
 ```bash
-python run.py --doctor
-python run.py --cleanup
-python -m agrivision.app.cli --doctor
-python -m uvicorn agrivision.app.api:app --host 127.0.0.1 --port 8008
-make lint
-make test
-make smoke-config
-```
-
-## Docker validation
-
-```bash
-docker compose -f docker-compose.yml config
-docker build -f Dockerfile -t agrivision-pipeline:dev .
+uvicorn agrivision.app.api:app --host 127.0.0.1 --port 8008 --reload
 ```

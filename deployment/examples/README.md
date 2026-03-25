@@ -1,5 +1,5 @@
 # Deployment examples
 
-This directory contains supplementary notes only.
+Examples in this directory are internal reference material only.
 
-Use the root-level `Dockerfile`, `docker-compose.yml`, `docker-entrypoint.sh`, and `install_agrivision.sh` for the supported operator-facing deployment path.
+Use the repository root `Dockerfile`, `docker-compose.yml`, and `install_agrivision.sh` as the canonical operational assets.

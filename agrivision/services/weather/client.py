@@ -161,14 +161,14 @@ def _require_weather_credentials() -> None:
     resolved = _get_weather_settings()
     if not resolved["username"] or not resolved["password"]:
         raise RuntimeError(
-            "Missing weather credentials. Set weather.username and weather.password in config.yaml or env."
+            "Missing weather credentials. Set WEATHER_USERNAME and WEATHER_PASSWORD in .env or the environment."
         )
 
 
 def _require_openweather_key() -> None:
     if not _get_weather_settings()["openweather_api_key"]:
         raise RuntimeError(
-            "Missing weather.openweather_api_key. Set it in config.yaml or OPENWEATHER_API_KEY in the environment."
+            "Missing weather.openweather_api_key. Set OPENWEATHER_API_KEY in .env or the environment."
         )
 
 

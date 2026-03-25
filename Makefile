@@ -3,7 +3,7 @@ PYTHON ?= python
 .PHONY: install install-dev lint format test smoke-config run serve-dashboard verify-phase5
 
 install:
-	$(PYTHON) -m pip install -r requirements.txt
+	./install_agrivision.sh
 
 install-dev:
 	$(PYTHON) -m pip install -r requirements.txt
