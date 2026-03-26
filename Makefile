@@ -1,7 +1,7 @@
-PYTHON := .venv/bin/python
-PIP := .venv/bin/pip
-RUFF := .venv/bin/ruff
-PYTEST := .venv/bin/pytest
+PYTHON ?= python
+PIP ?= pip
+RUFF ?= ruff
+PYTEST ?= pytest
 
 PYTHON ?= python
 
