@@ -6,9 +6,9 @@ from agrivision.pipeline.report.tables import render_grid_table
 
 
 def test_get_index_title_prefers_metadata_index_name() -> None:
-    ndvi_meta = {"index": {"index_name": "GNDVI-like"}}
-    grid_meta = {"index_name": "Vegetation Index"}
-    assert get_index_title(ndvi_meta, grid_meta) == "GNDVI-like"
+    ndvi_meta = {"index": {"index_name": "Vegetation Index"}}
+    grid_meta = {"index_name": "Fallback Index"}
+    assert get_index_title(ndvi_meta, grid_meta) == "Vegetation Index"
 
 
 
@@ -50,16 +50,7 @@ def test_render_weather_section_includes_weather_heading() -> None:
                     "source": "openweather",
                 }
             ],
-            "thi": {"value": 68.1},
-            "thi_jsonld": {"@context": {}},
-            "forecast5_jsonld": {"@graph": []},
-            "uav_flight_forecast": {"data": [{"status": "good"}]},
-            "spray_forecast": {"data": [{"status": "caution"}]},
-            "spray_forecast_jsonld": {"@graph": []},
-            "historical_daily": {"data": [{"date": "2026-03-19"}]},
-            "historical_hourly": {"data": [{"time": "2026-03-19T12:00:00"}]},
             "notes": [],
-            "uav_model": "dji_phantom4",
             "history_start_date": "2026-03-17",
             "history_end_date": "2026-03-20",
         },
@@ -67,4 +58,7 @@ def test_render_weather_section_includes_weather_heading() -> None:
     )
     assert "OpenAgri Weather Service" in html
     assert "Current Weather Conditions" in html
-    assert "Spray Condition Forecast" in html
+    assert "5-Day Forecast Preview" in html
+    assert "Spray Condition Forecast" not in html
+    assert "Forecast JSON-LD / OCSM Preview" not in html
+    assert "UAV model" not in html

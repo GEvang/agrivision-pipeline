@@ -150,11 +150,11 @@ def compute_index(
 
         meta = {
             "index_mode": "nir_green",
-            "index_name": "GNDVI-like Vegetation Index",
+            "index_name": "Vegetation Index",
             "formula": "(NIR - GREEN) / (NIR + GREEN)",
             "band_mapping": {"nir_band": nir_idx, "green_band": green_idx},
         }
-        print(f"[VI] {label} index_mode=nir_green → computing Vegetation Index (GNDVI-like)")
+        print(f"[VI] {label} index_mode=nir_green → computing Vegetation Index")
         return _normalized_diff(nir, green), meta
 
     if mode == "pseudo":
@@ -291,7 +291,7 @@ def run_ndvi() -> None:
                 "metadata": str(out_meta),
             },
             "notes": [
-                "If index_mode is 'nir_green', this is a GNDVI-like vegetation index (not true NDVI).",
+                "If index_mode is 'nir_green', this vegetation index is computed from NIR and green bands.",
                 "Thresholds are user-configurable and may be calibrated per crop/season/sensor.",
             ],
         }

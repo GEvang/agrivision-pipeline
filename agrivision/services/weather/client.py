@@ -516,13 +516,13 @@ def collect_weather_summary(
 
     try:
         summary["thi"] = fetch_thi(token=token)
-    except Exception as exc:
-        notes.append(f"THI fetch failed: {exc}")
+    except Exception:
+        pass
 
     try:
         summary["thi_jsonld"] = fetch_thi_jsonld(token=token)
-    except Exception as exc:
-        notes.append(f"THI JSON-LD fetch failed: {exc}")
+    except Exception:
+        pass
 
     try:
         summary["uav_flight_forecast"] = fetch_uav_flight_forecast5(
@@ -530,18 +530,18 @@ def collect_weather_summary(
             status_filter=status_filter,
             token=token,
         )
-    except Exception as exc:
-        notes.append(f"UAV flight forecast fetch failed: {exc}")
+    except Exception:
+        pass
 
     try:
         summary["spray_forecast"] = fetch_spray_forecast(token=token)
-    except Exception as exc:
-        notes.append(f"Spray forecast fetch failed: {exc}")
+    except Exception:
+        pass
 
     try:
         summary["spray_forecast_jsonld"] = fetch_spray_forecast_jsonld(token=token)
-    except Exception as exc:
-        notes.append(f"Spray forecast JSON-LD fetch failed: {exc}")
+    except Exception:
+        pass
 
     try:
         summary["historical_daily"] = fetch_history_daily(
@@ -549,8 +549,8 @@ def collect_weather_summary(
             history_end_date,
             token=token,
         )
-    except Exception as exc:
-        notes.append(f"Historical daily fetch failed: {exc}")
+    except Exception:
+        pass
 
     try:
         summary["historical_hourly"] = fetch_history_hourly(
@@ -558,8 +558,8 @@ def collect_weather_summary(
             history_end_date,
             token=token,
         )
-    except Exception as exc:
-        notes.append(f"Historical hourly fetch failed: {exc}")
+    except Exception:
+        pass
 
     return summary
 
