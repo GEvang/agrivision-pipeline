@@ -7,6 +7,7 @@ from typing import Any, Literal
 from pydantic import BaseModel, Field, field_validator
 
 RunStatusValue = Literal['queued', 'running', 'completed', 'failed']
+StageStateValue = Literal['pending', 'running', 'completed', 'failed', 'skipped']
 
 
 class StepSelection(BaseModel):
@@ -20,6 +21,13 @@ class RunParameters(BaseModel):
     preset: str | None = None
     notes: str | None = None
     flight_date: date | None = None
+
+
+class StageStatus(BaseModel):
+    key: str
+    label: str
+    state: StageStateValue = 'pending'
+    message: str | None = None
 
 
 class RunCreateRequest(BaseModel):
@@ -45,13 +53,19 @@ class RunStatus(BaseModel):
     run_id: str
     created_at: datetime
     updated_at: datetime | None = None
+    started_at: datetime | None = None
+    finished_at: datetime | None = None
     dataset_name: str
     input_path: str
     status: RunStatusValue
+    progress_percent: int = 0
+    current_stage: str = 'queued'
+    stage_message: str = 'Queued'
     selected_steps: StepSelection
     parameters: dict[str, Any] = Field(default_factory=dict)
     outputs: dict[str, str] = Field(default_factory=dict)
     errors: list[str] = Field(default_factory=list)
+    stages: list[StageStatus] = Field(default_factory=list)
     logs_path: str
     run_name: str | None = None
     field_name: str | None = None
@@ -64,6 +78,9 @@ class RunRecord(RunStatus):
 class RunLaunchResult(BaseModel):
     run_id: str
     status: RunStatusValue
+    progress_percent: int = 0
+    current_stage: str = 'queued'
+    stage_message: str = 'Queued'
     message: str
 
 
@@ -82,6 +99,9 @@ class ReportItem(BaseModel):
     created_at: datetime
     dataset_name: str
     status: RunStatusValue
+    progress_percent: int = 0
+    current_stage: str = 'queued'
+    stage_message: str = 'Queued'
     report_path: str | None = None
     orthophoto_path: str | None = None
     preview_path: str | None = None

@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from pathlib import Path
+from typing import Callable
 
 from agrivision.pipeline.io.paths import resolve_pipeline_paths
 from agrivision.pipeline.stages.grid import run_grid_report
@@ -29,6 +30,7 @@ def run_full_pipeline(
     skip_ndvi: bool = False,
     skip_weather: bool = False,
     skip_report: bool = False,
+    progress_callback: Callable[[str, str, str], None] | None = None,
 ) -> None:
     print("\n================== AgriVision Pipeline Start ==================\n")
     print("Configuration:")
@@ -51,8 +53,12 @@ def run_full_pipeline(
     output_root = resolved['output_root']
 
     if run_resize_step:
+        if progress_callback:
+            progress_callback('resize_images', 'Resizing images', 'running')
         print('Step 1/5: Resizing images...')
         run_resize()
+        if progress_callback:
+            progress_callback('resize_images', 'Images resized', 'completed')
     else:
         print('Step 1/5: Skipping resize (no --run-resize flag).')
         print('          ODM will auto-select full vs resized images.')
@@ -69,17 +75,27 @@ def run_full_pipeline(
                 f'\n[ERROR] RGB ODM skipped but no RGB orthophoto exists:\n  {ortho_rgb}\n'
             )
     else:
+        if progress_callback:
+            progress_callback('run_odm_rgb', 'Running ODM for RGB images', 'running')
         print('\n[ODM-RGB] Running RGB ODM...')
         run_odm_rgb()
+        if progress_callback:
+            progress_callback('run_odm_rgb', 'RGB orthophoto complete', 'completed')
 
     if skip_odm_mapir:
         print('\n[ODM-MAPIR] Skipping MAPIR ODM (skip flag active).')
     else:
         if folder_has_images(images_full_mapir) or folder_has_images(images_resized_mapir):
+            if progress_callback:
+                progress_callback('run_odm_mapir', 'Running ODM for MAPIR images', 'running')
             print('\n[ODM-MAPIR] MAPIR images detected – running MAPIR ODM...')
             run_odm_mapir()
+            if progress_callback:
+                progress_callback('run_odm_mapir', 'MAPIR orthophoto complete', 'completed')
         else:
             print('\n[ODM-MAPIR] No MAPIR images found. Skipping MAPIR ODM.')
+            if progress_callback:
+                progress_callback('run_odm_mapir', 'No MAPIR images found', 'completed')
 
     if skip_ndvi:
         print('\nStep 3/5: Skipping NDVI (--skip-ndvi).')
@@ -88,18 +104,28 @@ def run_full_pipeline(
                 f'\n[ERROR] NDVI skipped but NDVI output missing:\n  {ndvi_tif}\n'
             )
     else:
+        if progress_callback:
+            progress_callback('compute_ndvi', 'Computing NDVI', 'running')
         print('\nStep 3/5: Computing NDVI...')
         if not _orthophoto_exists(ortho_rgb) and not _orthophoto_exists(ortho_mapir):
             raise RuntimeError('\n[ERROR] No orthophoto available for NDVI.\n')
         run_ndvi()
+        if progress_callback:
+            progress_callback('compute_ndvi', 'NDVI complete', 'completed')
 
+    if progress_callback:
+        progress_callback('generate_grid', 'Generating NDVI grid', 'running')
     print('\nStep 4/5: Generating NDVI grid...')
     run_grid_report()
+    if progress_callback:
+        progress_callback('generate_grid', 'NDVI grid complete', 'completed')
 
     if skip_weather:
         print('\n[AgriVision] Skipping Weather integration (--skip-weather).')
         weather_summary = {'enabled': False, 'notes': ['Skipped by configuration.']}
     else:
+        if progress_callback:
+            progress_callback('fetch_weather', 'Fetching weather data', 'running')
         print('\n[AgriVision] Running Weather integration ...')
         weather_summary = run_weather_enrichment(
             output_root, config.get('location', {}).get('name', 'Unknown location')
@@ -109,7 +135,11 @@ def run_full_pipeline(
         else:
             print('[AgriVision] ⚠️ Weather integration failed (continuing pipeline).')
             print(f"[AgriVision] Reason: {weather_summary.get('notes', [''])[0]}")
+        if progress_callback:
+            progress_callback('fetch_weather', 'Weather enrichment complete', 'completed')
 
+    if progress_callback:
+        progress_callback('irrigation_enrichment', 'Running irrigation enrichment', 'running')
     print('\n[AgriVision] Running Irrigation integration (config-driven ETo) ...')
     irrigation_summary = run_irrigation_enrichment(
         config.get('irrigation', {}).get('base_url', '')
@@ -119,10 +149,16 @@ def run_full_pipeline(
     else:
         print('[AgriVision] ⚠️ Irrigation integration failed (continuing pipeline).')
         print(f"[AgriVision] Reason: {irrigation_summary.get('notes', [''])[0]}")
+    if progress_callback:
+        progress_callback('irrigation_enrichment', 'Irrigation enrichment complete', 'completed')
 
     if skip_report:
         print('\nStep 5/5: Skipping report generation (--skip-report).')
     else:
+        if progress_callback:
+            progress_callback('generate_report', 'Generating report', 'running')
         print('\nStep 5/5: Creating report...')
         run_report(irrigation_summary=irrigation_summary, weather_summary=weather_summary)
+        if progress_callback:
+            progress_callback('generate_report', 'Report generated', 'completed')
     print('\n================== Pipeline Complete ==================\n')

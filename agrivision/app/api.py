@@ -14,6 +14,7 @@ from agrivision.app.schemas.settings import (
     CredentialsUpdateRequest,
     SettingsUpdateRequest,
 )
+from agrivision.config import get_project_root, load_config
 from agrivision.services.report_service import ReportService
 from agrivision.services.run_service import RunService
 from agrivision.services.settings_service import SettingsService
@@ -112,8 +113,17 @@ def get_run(run_id: str, request: Request):
 @app.post('/runs')
 def create_run(request: RunCreateRequest) -> dict[str, str]:
     record = run_service.create_run_record(request)
-    result = run_service.launch_run(record.run_id)
+    result = run_service.start_run(record.run_id)
     return {'run_id': result.run_id, 'status': result.status, 'redirect': f'/runs/{result.run_id}'}
+
+
+@app.get('/runs/{run_id}/status')
+def get_run_status(run_id: str) -> dict:
+    run = run_service.load_run(run_id)
+    payload = run.model_dump(mode='json')
+    payload['logs'] = run_service.log_text(run_id)
+    payload['report'] = report_service.get_report(run_id).model_dump(mode='json')
+    return payload
 
 
 @app.post('/uploads/images')
@@ -258,8 +268,23 @@ def update_credentials_ui(
     return RedirectResponse(url='/settings', status_code=303)
 
 
+@app.get('/artifacts/{run_id}/report-assets/{asset_path:path}')
+def report_asset(run_id: str, asset_path: str) -> FileResponse:
+    run_service.load_run(run_id)
+    config = load_config()
+    output_root = (get_project_root() / config['paths']['output_root']).resolve()
+    candidate = (output_root / asset_path).resolve()
+    try:
+        candidate.relative_to(output_root)
+    except ValueError as exc:
+        raise HTTPException(status_code=404, detail='Artifact not found.') from exc
+    if not candidate.exists() or not candidate.is_file():
+        raise HTTPException(status_code=404, detail='Artifact file missing.')
+    return FileResponse(candidate)
+
+
 @app.get('/artifacts/{run_id}/{artifact_name}')
-def artifact(run_id: str, artifact_name: str) -> FileResponse:
+def artifact(run_id: str, artifact_name: str):
     run = run_service.load_run(run_id)
     report = report_service.get_report(run_id)
     options = {
@@ -274,6 +299,14 @@ def artifact(run_id: str, artifact_name: str) -> FileResponse:
     resolved = Path(path)
     if not resolved.exists():
         raise HTTPException(status_code=404, detail='Artifact file missing.')
+    if artifact_name == 'report':
+        html = resolved.read_text(encoding='utf-8')
+        base_tag = f'<base href="/artifacts/{run_id}/report-assets/">'
+        if '</head>' in html:
+            html = html.replace('</head>', f'  {base_tag}\n</head>', 1)
+        else:
+            html = base_tag + html
+        return HTMLResponse(content=html)
     return FileResponse(resolved)
 
 

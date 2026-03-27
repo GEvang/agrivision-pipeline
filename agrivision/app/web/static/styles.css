@@ -16,3 +16,16 @@ table { width:100%; border-collapse: collapse; }
 th, td { padding:0.6rem; border-bottom:1px solid #e2e8f0; text-align:left; }
 .preview { max-width:100%; border-radius:12px; border:1px solid #cbd5e1; }
 .log-box { max-height: 420px; overflow:auto; background:#0b1020; color:#e2e8f0; padding:1rem; border-radius:12px; }
+
+.run-header { display:grid; grid-template-columns: minmax(240px, 1fr) minmax(260px, 360px); gap:1rem; align-items:center; }
+.progress-shell { display:flex; flex-direction:column; gap:0.5rem; }
+.progress-track { width:100%; height:18px; background:#e2e8f0; border-radius:999px; overflow:hidden; }
+.progress-bar { height:100%; background:#0f172a; transition:width 0.4s ease; }
+.progress-meta { display:flex; justify-content:flex-end; font-weight:700; }
+.stage-list { display:flex; flex-wrap:wrap; gap:0.5rem; }
+.stage-pill { border-radius:999px; padding:0.4rem 0.75rem; font-size:0.92rem; border:1px solid #cbd5e1; background:#f8fafc; }
+.stage-pending { background:#f8fafc; }
+.stage-running { background:#dbeafe; border-color:#93c5fd; }
+.stage-completed { background:#dcfce7; border-color:#86efac; }
+.stage-failed { background:#fee2e2; border-color:#fca5a5; }
+.stage-skipped { background:#f1f5f9; border-color:#cbd5e1; }
