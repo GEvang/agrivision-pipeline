@@ -32,7 +32,7 @@ def test_dashboard_pages_render(tmp_path: Path, monkeypatch) -> None:
         'dataset_name': 'Smoke',
         'input_path': str(tmp_path / 'data' / 'uploads' / 'u1'),
         'status': 'completed',
-        'selected_steps': {'resize_images': False, 'run_odm': True, 'generate_orthophoto': True, 'fetch_weather': True, 'generate_report': True},
+        'selected_steps': {'resize_images': False, 'run_odm': True, 'fetch_weather': True, 'generate_report': True},
         'parameters': {},
         'outputs': {},
         'errors': [],

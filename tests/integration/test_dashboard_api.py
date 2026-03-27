@@ -44,8 +44,10 @@ def test_api_create_run_upload_reports_and_settings(tmp_path: Path, monkeypatch)
 
     client = TestClient(api.app)
     files = [
-        ('files', ('a.png', _image_bytes(), 'image/png')),
-        ('files', ('b.png', _image_bytes(), 'image/png')),
+        ('mapir_files', ('mapir-a.png', _image_bytes(), 'image/png')),
+        ('mapir_files', ('mapir-b.png', _image_bytes(), 'image/png')),
+        ('rgb_files', ('rgb-a.png', _image_bytes(), 'image/png')),
+        ('rgb_files', ('rgb-b.png', _image_bytes(), 'image/png')),
     ]
     upload_response = client.post('/uploads/images', data={'dataset_name': 'Dataset API'}, files=files)
     assert upload_response.status_code == 200, upload_response.text
@@ -60,7 +62,6 @@ def test_api_create_run_upload_reports_and_settings(tmp_path: Path, monkeypatch)
             'selected_steps': {
                 'resize_images': False,
                 'run_odm': True,
-                'generate_orthophoto': True,
                 'fetch_weather': True,
                 'generate_report': True,
             },

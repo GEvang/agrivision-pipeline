@@ -17,7 +17,6 @@ def _request(upload_run_id: str) -> RunCreateRequest:
             'selected_steps': {
                 'resize_images': True,
                 'run_odm': True,
-                'generate_orthophoto': True,
                 'fetch_weather': False,
                 'generate_report': True,
             },
@@ -29,7 +28,10 @@ def _request(upload_run_id: str) -> RunCreateRequest:
 def test_run_record_creation_and_status_update(tmp_path: Path) -> None:
     storage = StorageService(project_root=tmp_path)
     upload_dir = storage.upload_dir('upload-seed')
-    (upload_dir / 'a.jpg').write_bytes(b'123')
+    (upload_dir / 'rgb').mkdir(parents=True, exist_ok=True)
+    (upload_dir / 'mapir').mkdir(parents=True, exist_ok=True)
+    (upload_dir / 'rgb' / 'a.jpg').write_bytes(b'123')
+    (upload_dir / 'mapir' / 'b.jpg').write_bytes(b'123')
     service = RunService(storage)
 
     record = service.create_run_record(_request('upload-seed'))

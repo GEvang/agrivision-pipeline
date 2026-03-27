@@ -60,9 +60,29 @@ def dashboard(request: Request) -> HTMLResponse:
 
 
 @app.get('/runs/new', response_class=HTMLResponse)
-def new_run_page(request: Request) -> HTMLResponse:
-    uploads = [p.name for p in sorted(storage_service.layout.uploads_root.iterdir(), reverse=True) if p.is_dir()]
-    return TEMPLATES.TemplateResponse(request, 'new_run.html', {'uploads': uploads})
+def new_run_page(request: Request, upload_run_id: str | None = None) -> HTMLResponse:
+    uploads: list[dict[str, object]] = []
+    for path in sorted(storage_service.layout.uploads_root.iterdir(), reverse=True):
+        if not path.is_dir():
+            continue
+        manifest = storage_service.read_json(path / 'manifest.json', default={})
+        uploads.append(
+            {
+                'run_id': path.name,
+                'dataset_name': manifest.get('dataset_name') or path.name,
+                'mapir_count': len(manifest.get('mapir_files', [])),
+                'rgb_count': len(manifest.get('rgb_files', [])),
+                'selected': path.name == upload_run_id,
+            }
+        )
+    return TEMPLATES.TemplateResponse(
+        request,
+        'new_run.html',
+        {
+            'uploads': uploads,
+            'selected_upload_run_id': upload_run_id,
+        },
+    )
 
 
 @app.get('/runs')
@@ -97,39 +117,56 @@ def create_run(request: RunCreateRequest) -> dict[str, str]:
 
 
 @app.post('/uploads/images')
-async def upload_images(dataset_name: str = Form(...), files: list[UploadFile] = File(...)) -> dict[str, object]:
+async def upload_images(
+    dataset_name: str = Form(...),
+    mapir_files: list[UploadFile] = File(...),
+    rgb_files: list[UploadFile] = File(...),
+) -> dict[str, object]:
     upload_run_id = storage_service.new_run_id()
     upload_dir = storage_service.upload_dir(upload_run_id)
-    seen_names: set[str] = set()
-    stored_files: list[str] = []
-    errors: list[str] = []
-    for upload in files:
-        suffix = Path(upload.filename or '').suffix.lower()
-        name = Path(upload.filename or '').name
-        if suffix not in ALLOWED_EXTENSIONS:
-            errors.append(f'{name}: unsupported file type')
-            continue
-        if not name or name in seen_names:
-            errors.append(f'{name or "<unnamed>"}: duplicate or invalid name')
-            continue
-        seen_names.add(name)
-        data = await upload.read()
-        if not data:
-            errors.append(f'{name}: empty file')
-            continue
-        target = upload_dir / name
-        target.write_bytes(data)
-        try:
-            with Image.open(target) as image:
-                image.verify()
-        except (UnidentifiedImageError, OSError):
-            target.unlink(missing_ok=True)
-            errors.append(f'{name}: unreadable or corrupt image')
-            continue
-        stored_files.append(name)
+    mapir_dir = upload_dir / 'mapir'
+    rgb_dir = upload_dir / 'rgb'
+    mapir_dir.mkdir(parents=True, exist_ok=True)
+    rgb_dir.mkdir(parents=True, exist_ok=True)
 
-    if len(stored_files) < MINIMUM_DATASET_IMAGES:
-        errors.append(f'At least {MINIMUM_DATASET_IMAGES} valid images are required.')
+    async def _store_images(kind: str, uploads: list[UploadFile], target_dir: Path) -> tuple[list[str], list[str]]:
+        seen_names: set[str] = set()
+        stored_files: list[str] = []
+        validation_errors: list[str] = []
+        for upload in uploads:
+            suffix = Path(upload.filename or '').suffix.lower()
+            name = Path(upload.filename or '').name
+            if suffix not in ALLOWED_EXTENSIONS:
+                validation_errors.append(f'{kind} - {name}: unsupported file type')
+                continue
+            if not name or name in seen_names:
+                validation_errors.append(f'{kind} - {name or "<unnamed>"}: duplicate or invalid name')
+                continue
+            seen_names.add(name)
+            data = await upload.read()
+            if not data:
+                validation_errors.append(f'{kind} - {name}: empty file')
+                continue
+            target = target_dir / name
+            target.write_bytes(data)
+            try:
+                with Image.open(target) as image:
+                    image.verify()
+            except (UnidentifiedImageError, OSError):
+                target.unlink(missing_ok=True)
+                validation_errors.append(f'{kind} - {name}: unreadable or corrupt image')
+                continue
+            stored_files.append(name)
+        return stored_files, validation_errors
+
+    mapir_stored_files, mapir_errors = await _store_images('MAPIR', mapir_files, mapir_dir)
+    rgb_stored_files, rgb_errors = await _store_images('RGB', rgb_files, rgb_dir)
+    errors = [*mapir_errors, *rgb_errors]
+
+    if len(mapir_stored_files) < MINIMUM_DATASET_IMAGES:
+        errors.append(f'MAPIR: at least {MINIMUM_DATASET_IMAGES} valid images are required.')
+    if len(rgb_stored_files) < MINIMUM_DATASET_IMAGES:
+        errors.append(f'RGB: at least {MINIMUM_DATASET_IMAGES} valid images are required.')
     if errors:
         raise HTTPException(status_code=400, detail=errors)
 
@@ -137,7 +174,9 @@ async def upload_images(dataset_name: str = Form(...), files: list[UploadFile] =
         run_id=upload_run_id,
         dataset_name=dataset_name,
         upload_dir=str(upload_dir),
-        files=stored_files,
+        files=sorted([f'mapir/{name}' for name in mapir_stored_files] + [f'rgb/{name}' for name in rgb_stored_files]),
+        mapir_files=sorted(mapir_stored_files),
+        rgb_files=sorted(rgb_stored_files),
         created_at=__import__('datetime').datetime.now(__import__('datetime').timezone.utc),
     )
     storage_service.write_json(upload_dir / 'manifest.json', manifest.model_dump(mode='json'))
@@ -239,44 +278,39 @@ def artifact(run_id: str, artifact_name: str) -> FileResponse:
 
 
 @app.post('/ui/uploads')
-async def upload_images_ui(dataset_name: str = Form(...), files: list[UploadFile] = File(...)) -> RedirectResponse:
-    manifest = await upload_images(dataset_name=dataset_name, files=files)
+async def upload_images_ui(
+    dataset_name: str = Form(...),
+    mapir_files: list[UploadFile] = File(...),
+    rgb_files: list[UploadFile] = File(...),
+) -> RedirectResponse:
+    manifest = await upload_images(dataset_name=dataset_name, mapir_files=mapir_files, rgb_files=rgb_files)
     return RedirectResponse(url=f"/runs/new?upload_run_id={manifest['run_id']}", status_code=303)
 
 
 @app.post('/ui/runs')
 def create_run_ui(
-    run_name: str = Form(...),
-    dataset_name: str = Form(...),
     upload_run_id: str = Form(...),
-    field_name: str = Form(''),
-    preset: str = Form(''),
-    notes: str = Form(''),
-    flight_date: str = Form(''),
+    run_name: str = Form(''),
     resize_images: bool = Form(False),
     run_odm: bool = Form(False),
-    generate_orthophoto: bool = Form(False),
     fetch_weather: bool = Form(False),
     generate_report: bool = Form(False),
 ) -> RedirectResponse:
+    manifest = storage_service.read_json(storage_service.upload_dir(upload_run_id) / 'manifest.json')
+    dataset_name = str(manifest.get('dataset_name') or upload_run_id)
+    normalized_run_name = run_name.strip() if run_name.strip() else dataset_name
     request = RunCreateRequest.model_validate(
         {
-            'run_name': run_name,
+            'run_name': normalized_run_name,
             'dataset_name': dataset_name,
-            'field_name': field_name or None,
             'upload_run_id': upload_run_id,
             'selected_steps': {
                 'resize_images': resize_images,
                 'run_odm': run_odm,
-                'generate_orthophoto': generate_orthophoto,
                 'fetch_weather': fetch_weather,
                 'generate_report': generate_report,
             },
-            'parameters': {
-                'preset': preset or None,
-                'notes': notes or None,
-                'flight_date': flight_date or None,
-            },
+            'parameters': {},
         }
     )
     created = create_run(request)

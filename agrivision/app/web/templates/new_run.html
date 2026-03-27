@@ -4,28 +4,27 @@
   <form class="panel" method="post" action="/ui/uploads" enctype="multipart/form-data">
     <h2>1. Upload Images</h2>
     <label>Dataset name<input type="text" name="dataset_name" required /></label>
-    <label>Images<input type="file" name="files" multiple required /></label>
+    <label>MAPIR images<input type="file" name="mapir_files" multiple required /></label>
+    <label>RGB images<input type="file" name="rgb_files" multiple required /></label>
     <button type="submit">Upload dataset</button>
   </form>
 
   <form class="panel" method="post" action="/ui/runs">
     <h2>2. Configure Run</h2>
-    <label>Run name<input type="text" name="run_name" required /></label>
-    <label>Dataset name<input type="text" name="dataset_name" required /></label>
-    <label>Field / Project<input type="text" name="field_name" /></label>
-    <label>Upload run id
+    <label>Upload dataset
       <select name="upload_run_id" required>
-        {% for upload_id in uploads %}<option value="{{ upload_id }}">{{ upload_id }}</option>{% endfor %}
+        {% for upload in uploads %}
+        <option value="{{ upload.run_id }}" {% if upload.selected %}selected{% endif %}>
+          {{ upload.dataset_name }} · {{ upload.run_id }} · MAPIR {{ upload.mapir_count }} / RGB {{ upload.rgb_count }}
+        </option>
+        {% endfor %}
       </select>
     </label>
-    <label>Preset<input type="text" name="preset" /></label>
-    <label>Flight date<input type="date" name="flight_date" /></label>
-    <label>Notes<textarea name="notes"></textarea></label>
+    <label>Run name (optional)<input type="text" name="run_name" /></label>
     <fieldset>
       <legend>Processing steps</legend>
       <label><input type="checkbox" name="resize_images" value="true" /> Resize images</label>
       <label><input type="checkbox" name="run_odm" value="true" checked /> Run ODM</label>
-      <label><input type="checkbox" name="generate_orthophoto" value="true" checked /> Generate orthophoto</label>
       <label><input type="checkbox" name="fetch_weather" value="true" checked /> Fetch weather</label>
       <label><input type="checkbox" name="generate_report" value="true" checked /> Generate report</label>
     </fieldset>

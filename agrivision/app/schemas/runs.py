@@ -12,7 +12,6 @@ RunStatusValue = Literal['queued', 'running', 'completed', 'failed']
 class StepSelection(BaseModel):
     resize_images: bool = False
     run_odm: bool = True
-    generate_orthophoto: bool = True
     fetch_weather: bool = True
     generate_report: bool = True
 
@@ -24,7 +23,7 @@ class RunParameters(BaseModel):
 
 
 class RunCreateRequest(BaseModel):
-    run_name: str = Field(min_length=1, max_length=120)
+    run_name: str | None = Field(default=None, min_length=1, max_length=120)
     dataset_name: str = Field(min_length=1, max_length=120)
     field_name: str | None = Field(default=None, max_length=120)
     selected_steps: StepSelection = Field(default_factory=StepSelection)
@@ -73,6 +72,8 @@ class UploadManifest(BaseModel):
     dataset_name: str
     upload_dir: str
     files: list[str]
+    mapir_files: list[str] = Field(default_factory=list)
+    rgb_files: list[str] = Field(default_factory=list)
     created_at: datetime
 
 

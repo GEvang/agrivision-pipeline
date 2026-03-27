@@ -90,13 +90,25 @@ class RunService:
         project_root = get_project_root()
         upload_dir = Path(record.input_path)
         target_rgb = project_root / config['paths']['images_full']
-        target_rgb.mkdir(parents=True, exist_ok=True)
-        for file_path in target_rgb.iterdir():
-            if file_path.is_file():
-                file_path.unlink()
-        for src in upload_dir.iterdir():
-            if src.is_file():
-                shutil.copy2(src, target_rgb / src.name)
+        target_mapir = project_root / config['paths']['images_full_mapir']
+
+        def _reset_target(target_dir: Path) -> None:
+            target_dir.mkdir(parents=True, exist_ok=True)
+            for file_path in target_dir.iterdir():
+                if file_path.is_file():
+                    file_path.unlink()
+
+        def _copy_inputs(source_dir: Path, target_dir: Path) -> None:
+            if not source_dir.exists():
+                return
+            for src in source_dir.iterdir():
+                if src.is_file():
+                    shutil.copy2(src, target_dir / src.name)
+
+        _reset_target(target_rgb)
+        _reset_target(target_mapir)
+        _copy_inputs(upload_dir / 'rgb', target_rgb)
+        _copy_inputs(upload_dir / 'mapir', target_mapir)
 
     def launch_run(self, run_id: str) -> RunRecord:
         record = self.load_run(run_id)
@@ -106,7 +118,7 @@ class RunService:
         args = [sys.executable, '-m', 'agrivision.app.cli']
         if record.selected_steps.resize_images:
             args.append('--run-resize')
-        if not record.selected_steps.run_odm or not record.selected_steps.generate_orthophoto:
+        if not record.selected_steps.run_odm:
             args.append('--skip-odm')
         if not record.selected_steps.fetch_weather:
             args.append('--skip-weather')
