@@ -40,7 +40,7 @@ def test_api_create_run_upload_reports_and_settings(tmp_path: Path, monkeypatch)
         Image.new('RGB', (30, 30)).save(ortho)
         return run_service.update_status(run_id, status='completed', outputs={'report_html': str(report_path), 'orthophoto_rgb': str(ortho)})
 
-    monkeypatch.setattr(run_service, 'launch_run', fake_launch)
+    monkeypatch.setattr(run_service, 'start_run', fake_launch)
 
     client = TestClient(api.app)
     files = [

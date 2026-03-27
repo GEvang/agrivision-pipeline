@@ -1,7 +1,6 @@
 from __future__ import annotations
 
 import contextlib
-import io
 import shutil
 import threading
 from datetime import datetime, timezone
