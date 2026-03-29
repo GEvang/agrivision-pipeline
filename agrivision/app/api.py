@@ -28,6 +28,26 @@ report_service = ReportService(run_service=run_service)
 settings_service = SettingsService()
 TEMPLATES = Jinja2Templates(directory=str(Path(__file__).parent / 'web' / 'templates'))
 
+
+
+def _format_system_datetime(value):
+    if value is None:
+        return ''
+    if isinstance(value, str):
+        try:
+            from datetime import datetime
+            value = datetime.fromisoformat(value.replace('Z', '+00:00'))
+        except ValueError:
+            return value
+    try:
+        localized = value.astimezone() if getattr(value, 'tzinfo', None) is not None else value
+    except Exception:
+        localized = value
+    return localized.strftime('%Y-%m-%d %H:%M:%S')
+
+
+TEMPLATES.env.filters['system_datetime'] = _format_system_datetime
+
 ALLOWED_EXTENSIONS = {'.jpg', '.jpeg', '.png', '.tif', '.tiff'}
 MINIMUM_DATASET_IMAGES = 2
 
@@ -348,7 +368,7 @@ def create_run_ui(
 ) -> RedirectResponse:
     manifest = storage_service.read_json(storage_service.upload_dir(upload_run_id) / 'manifest.json')
     dataset_name = str(manifest.get('dataset_name') or upload_run_id)
-    normalized_run_name = run_name.strip() if run_name.strip() else dataset_name
+    normalized_run_name = run_name.strip() if run_name.strip() else None
     request = RunCreateRequest.model_validate(
         {
             'run_name': normalized_run_name,

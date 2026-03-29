@@ -70,10 +70,10 @@ def run_full_pipeline(
 
     if skip_odm_rgb:
         print('\n[ODM-RGB] Skipping RGB ODM step.')
-        if not _orthophoto_exists(ortho_rgb):
-            raise RuntimeError(
-                f'\n[ERROR] RGB ODM skipped but no RGB orthophoto exists:\n  {ortho_rgb}\n'
-            )
+        if _orthophoto_exists(ortho_rgb):
+            print(f'[ODM-RGB] Reusing existing RGB orthophoto: {ortho_rgb}')
+        else:
+            print(f'[ODM-RGB] No existing RGB orthophoto found at: {ortho_rgb}')
     else:
         if progress_callback:
             progress_callback('run_odm_rgb', 'Running ODM for RGB images', 'running')

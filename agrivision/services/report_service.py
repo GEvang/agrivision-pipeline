@@ -32,6 +32,7 @@ class ReportService:
         return ReportItem(
             run_id=run.run_id,
             created_at=run.created_at,
+            run_name=run.run_name,
             dataset_name=run.dataset_name,
             status=run.status,
             report_path=run.outputs.get('report_html'),

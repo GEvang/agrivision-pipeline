@@ -8,12 +8,12 @@
     {% endfor %}
   </div>
   <table>
-    <thead><tr><th>Created</th><th>Dataset</th><th>Status</th><th>Open</th></tr></thead>
+    <thead><tr><th>Created</th><th>Name</th><th>Dataset</th><th>Status</th><th>Open</th></tr></thead>
     <tbody>
     {% for run in recent_runs %}
-      <tr><td>{{ run.created_at }}</td><td>{{ run.dataset_name }}</td><td>{{ run.status }}</td><td><a href="/runs/{{ run.run_id }}">View</a></td></tr>
+      <tr><td>{{ run.created_at | system_datetime }}</td><td>{{ run.run_name or '-' }}</td><td>{{ run.dataset_name }}</td><td>{{ run.status }}</td><td><a href="/runs/{{ run.run_id }}">View</a></td></tr>
     {% else %}
-      <tr><td colspan="4">No runs yet.</td></tr>
+      <tr><td colspan="5">No runs yet.</td></tr>
     {% endfor %}
     </tbody>
   </table>

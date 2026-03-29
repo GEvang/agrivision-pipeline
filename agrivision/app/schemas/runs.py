@@ -97,6 +97,7 @@ class UploadManifest(BaseModel):
 class ReportItem(BaseModel):
     run_id: str
     created_at: datetime
+    run_name: str | None = None
     dataset_name: str
     status: RunStatusValue
     progress_percent: int = 0

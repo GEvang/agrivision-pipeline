@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import contextlib
+import re
 import shutil
 import threading
 from datetime import datetime, timezone
@@ -10,6 +11,15 @@ from agrivision.app.schemas.runs import RunCreateRequest, RunRecord, StageStatus
 from agrivision.config import get_project_root, load_config
 from agrivision.pipeline.orchestrator import run_full_pipeline
 from agrivision.services.storage_service import StorageService
+
+
+def _slugify_report_name(value: str) -> str:
+    slug = re.sub(r"[^A-Za-z0-9]+", "-", value.strip()).strip("-").lower()
+    return slug or "report"
+
+
+def _timestamp_report_name() -> str:
+    return datetime.now().strftime("%Y-%m-%d_%H-%M-%S")
 
 
 class RunService:
@@ -142,8 +152,13 @@ class RunService:
     def _progress_for_stages(self, stages: list[StageStatus]) -> int:
         if not stages:
             return 0
-        complete = sum(1 for stage in stages if stage.state in {'completed', 'skipped'})
-        return int((complete / len(stages)) * 100)
+        score = 0.0
+        for stage in stages:
+            if stage.state in {'completed', 'skipped'}:
+                score += 1.0
+            elif stage.state == 'running':
+                score += 0.5
+        return int((score / len(stages)) * 100)
 
     def update_stage(self, run_id: str, stage_key: str, state: str, message: str | None = None) -> RunRecord:
         record = self.load_run(run_id)
@@ -259,9 +274,23 @@ class RunService:
             with log_path.open('a', encoding='utf-8') as log_handle:
                 log_handle.write(f"\n[dashboard] Run failed: {exc}\n")
 
+    def _report_filename_for_run(self, record: RunRecord) -> str:
+        base_name = record.run_name.strip() if record.run_name else _timestamp_report_name()
+        return f"{_slugify_report_name(base_name)}.html"
+
+    def _persist_report_for_run(self, record: RunRecord, source_report: Path) -> Path:
+        config = load_config()
+        runs_output_root = self.storage.layout.project_root / config['paths'].get('runs_output', 'output/runs')
+        run_output_dir = runs_output_root / record.run_id
+        run_output_dir.mkdir(parents=True, exist_ok=True)
+        destination = run_output_dir / self._report_filename_for_run(record)
+        shutil.copy2(source_report, destination)
+        return destination
+
     def _discover_outputs(self, run_dir: Path) -> dict[str, str]:
         config = load_config()
         project_root = self.storage.layout.project_root
+        record = RunRecord.model_validate(self.storage.read_json(run_dir / 'status.json'))
         report_candidates = [
             project_root / config['paths']['output_root'] / 'report_latest.html',
             project_root / config['paths']['output_root'] / 'report' / 'index.html',
@@ -274,7 +303,7 @@ class RunService:
         outputs = {name: str(path) for name, path in candidates.items() if path.exists()}
         report_path = next((path for path in report_candidates if path.exists()), None)
         if report_path is not None:
-            outputs['report_html'] = str(report_path)
+            outputs['report_html'] = str(self._persist_report_for_run(record, report_path))
         self.storage.write_json(run_dir / 'outputs.json', outputs)
         return outputs
 

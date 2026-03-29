@@ -45,6 +45,7 @@ ODM is then executed in Docker with:
 import os
 import shutil
 import subprocess
+import sys
 from pathlib import Path
 
 from agrivision.config.settings import get_project_root, load_config
@@ -232,7 +233,7 @@ def _run_odm_docker(
     print(f"\n[ODM-{label}] Executing ODM command:")
     print(" ", " ".join(cmd), "\n")
 
-    result = subprocess.run(cmd, cwd=project_root.parent)
+    result = subprocess.run(cmd, cwd=project_root.parent, stdout=sys.stdout, stderr=sys.stderr)
 
     if result.returncode != 0:
         raise RuntimeError(

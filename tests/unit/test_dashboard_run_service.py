@@ -48,10 +48,32 @@ def test_run_record_creation_and_status_update(tmp_path: Path) -> None:
     assert updated.outputs['report_html'].endswith('index.html')
 
 
-def test_discover_outputs_finds_report_latest(tmp_path: Path, monkeypatch) -> None:
+def test_discover_outputs_copies_report_to_per_run_output(tmp_path: Path, monkeypatch) -> None:
     storage = StorageService(project_root=tmp_path)
     service = RunService(storage)
     run_dir = storage.run_dir('run-1')
+    storage.write_json(run_dir / 'status.json', {
+        'run_id': 'run-1',
+        'created_at': '2026-03-29T00:00:00Z',
+        'updated_at': '2026-03-29T00:00:00Z',
+        'started_at': None,
+        'finished_at': None,
+        'dataset_name': 'Dataset 1',
+        'input_path': str(tmp_path / 'data' / 'uploads' / 'upload-seed'),
+        'status': 'running',
+        'progress_percent': 0,
+        'current_stage': 'generate_report',
+        'stage_message': 'Generating report',
+        'selected_steps': {'resize_images': False, 'run_odm': True, 'fetch_weather': False, 'generate_report': True},
+        'parameters': {},
+        'outputs': {},
+        'errors': [],
+        'stages': [],
+        'logs_path': str(run_dir / 'run.log'),
+        'run_name': 'Final Vineyard Report',
+        'field_name': None,
+        'run_dir': str(run_dir),
+    })
     output_root = tmp_path / 'output'
     report_latest = output_root / 'report_latest.html'
     report_latest.parent.mkdir(parents=True, exist_ok=True)
@@ -72,4 +94,54 @@ def test_discover_outputs_finds_report_latest(tmp_path: Path, monkeypatch) -> No
     })
 
     outputs = service._discover_outputs(run_dir)
-    assert outputs['report_html'].endswith('report_latest.html')
+    saved_report = Path(outputs['report_html'])
+    assert saved_report.exists()
+    assert saved_report.parent == tmp_path / 'output' / 'runs' / 'run-1'
+    assert saved_report.name == 'final-vineyard-report.html'
+
+
+def test_report_filename_falls_back_to_system_timestamp(tmp_path: Path, monkeypatch) -> None:
+    storage = StorageService(project_root=tmp_path)
+    service = RunService(storage)
+    run_dir = storage.run_dir('run-2')
+    storage.write_json(run_dir / 'status.json', {
+        'run_id': 'run-2',
+        'created_at': '2026-03-29T00:00:00Z',
+        'updated_at': '2026-03-29T00:00:00Z',
+        'started_at': None,
+        'finished_at': None,
+        'dataset_name': 'Dataset 2',
+        'input_path': str(tmp_path / 'data' / 'uploads' / 'upload-seed'),
+        'status': 'running',
+        'progress_percent': 0,
+        'current_stage': 'generate_report',
+        'stage_message': 'Generating report',
+        'selected_steps': {'resize_images': False, 'run_odm': True, 'fetch_weather': False, 'generate_report': True},
+        'parameters': {},
+        'outputs': {},
+        'errors': [],
+        'stages': [],
+        'logs_path': str(run_dir / 'run.log'),
+        'run_name': None,
+        'field_name': None,
+        'run_dir': str(run_dir),
+    })
+    report_latest = tmp_path / 'output' / 'report_latest.html'
+    report_latest.parent.mkdir(parents=True, exist_ok=True)
+    report_latest.write_text('<html></html>', encoding='utf-8')
+
+    monkeypatch.setattr('agrivision.services.run_service._timestamp_report_name', lambda: '2026-03-29_12-34-56')
+    monkeypatch.setattr('agrivision.services.run_service.load_config', lambda: {
+        'paths': {
+            'output_root': 'output',
+            'runs_output': 'output/runs',
+            'ndvi_output': 'output/ndvi',
+            'odm_project_root_rgb': 'odm_rgb',
+            'odm_project_root_mapir': 'odm_mapir',
+            'images_full': 'images/full',
+            'images_full_mapir': 'images/full_mapir',
+        }
+    })
+
+    outputs = service._discover_outputs(run_dir)
+    assert Path(outputs['report_html']).name == '2026-03-29-12-34-56.html'
