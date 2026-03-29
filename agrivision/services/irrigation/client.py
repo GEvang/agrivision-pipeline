@@ -27,16 +27,14 @@ Swagger shows ETo endpoint as:
 from __future__ import annotations
 
 import os
-import subprocess
-import time
 from dataclasses import dataclass
 from datetime import date, datetime, timedelta
-from pathlib import Path
 from typing import Any, Dict, List
 
 import requests
 
 from agrivision.config.settings import get_project_root, load_config
+from agrivision.services.irrigation.runtime import ensure_service_available
 
 # ---------------------------------------------------------------------------
 # Models (minimal; keep raw payload for compatibility)
@@ -102,40 +100,9 @@ def _get_irrigation_settings() -> dict[str, Any]:
     }
 
 
-def _service_dir() -> Path:
+def _ensure_irrigation_service_available() -> None:
     settings = _get_irrigation_settings()
-    return Path(settings["project_root"]) / str(settings["service_dirname"])
-
-
-def _start_irrigation_service_if_needed() -> None:
-    """
-    Best-effort: if base_url isn't reachable, attempt docker compose up -d
-    from the vendored service directory.
-    """
-    settings = _get_irrigation_settings()
-    base_url = str(settings["base_url"])
-
-    try:
-        requests.get(f"{base_url}/docs", timeout=2)
-        return
-    except requests.RequestException:
-        pass
-
-    svc_dir = _service_dir()
-    if not svc_dir.exists():
-        print(
-            f"[Irrigation] Service not reachable at {base_url}, and folder not found:\n"
-            f"            {svc_dir}\n"
-            "Cannot auto-start irrigation service."
-        )
-        return
-
-    print(f"[Irrigation] Service not reachable at {base_url}. Trying docker compose up -d in {svc_dir} ...")
-    try:
-        subprocess.run(["docker", "compose", "up", "-d"], cwd=str(svc_dir), check=False)
-        time.sleep(5)
-    except Exception as e:
-        print(f"[Irrigation] Failed to start irrigation service via docker compose: {e}")
+    ensure_service_available(timeout_seconds=int(settings["timeout_seconds"]), verbose=True)
 
 
 def _json_or_text(resp: requests.Response) -> Dict[str, Any]:
@@ -193,7 +160,7 @@ def get_access_token(force_refresh: bool = False) -> str:
             "  - or config.yaml -> irrigation.auth.email + irrigation.auth.password\n"
         )
 
-    _start_irrigation_service_if_needed()
+    _ensure_irrigation_service_available()
 
     url = f"{base_url}/api/v1/login/access-token"
     form = {

@@ -64,13 +64,19 @@ def ensure_repo_and_env(timeout_seconds: int = 90) -> ServiceRuntimeState:
     )
 
 
-def start_service_if_needed(timeout_seconds: int = 90) -> None:
+def ensure_service_available(timeout_seconds: int = 90, verbose: bool = True) -> ServiceRuntimeState:
     settings = get_settings()
     state = ensure_repo_and_env(timeout_seconds=timeout_seconds)
-    if state.env_sync.changed:
+    if verbose and state.env_sync.changed:
         for line in summarize_env_changes(_env_values(), state.env_sync):
             print(f"[Irrigation] {line}")
     if not state.ready:
         raise ServiceBootstrapError(
             f"Irrigation service did not become reachable at {settings.irrigation.base_url}"
         )
+    return state
+
+
+# Backward-compatible alias for older callers.
+def start_service_if_needed(timeout_seconds: int = 90) -> None:
+    ensure_service_available(timeout_seconds=timeout_seconds, verbose=True)

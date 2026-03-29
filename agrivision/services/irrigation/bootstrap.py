@@ -5,8 +5,9 @@ agrivision.services.irrigation.bootstrap
 Bootstraps OpenAgri Irrigation Management Service auth + parcels + ETo (official workflow).
 
 Self-healing:
-- If the Irrigation service is down (e.g., after reboot), attempt to bring it up via
-  docker compose in OpenAgri-IrrigationManagement, then wait until reachable.
+- Reuse the shared irrigation runtime reconciler to clone the repo if missing,
+  sync the service .env, detect the compose file, start/restart containers, and
+  wait until the service is reachable.
 
 Official ETo workflow (no GateKeeper required):
   GET /api/v1/eto/get-calculations/{location_id}/from/{from_date}/to/{to_date}/
@@ -28,8 +29,6 @@ Artifacts written:
 from __future__ import annotations
 
 import json
-import subprocess
-import time
 import urllib.error
 import urllib.parse
 import urllib.request
@@ -38,28 +37,24 @@ from pathlib import Path
 from typing import Any, Dict, List, Optional, Tuple
 
 from agrivision.config.settings import get_project_root, get_settings
+from agrivision.services.irrigation.runtime import ensure_service_available
 
 
 def _get_bootstrap_paths() -> dict[str, Path]:
     settings = get_settings()
     project_root = get_project_root()
     output_root = str(getattr(settings.paths, "output_root", "output") or "output")
-    service_dir = str(getattr(settings.irrigation, "service_dir", "OpenAgri-IrrigationManagement") or "OpenAgri-IrrigationManagement")
 
     output_dir = project_root / output_root / "irrigation"
     token_path = output_dir / "auth_token.json"
     parcel_path = output_dir / "parcel.json"
     eto_path = output_dir / "eto.json"
-    irrigation_repo_dir = project_root / service_dir
-    irrigation_compose_file = irrigation_repo_dir / "compose.yaml"
     return {
         "project_root": project_root,
         "output_dir": output_dir,
         "token_path": token_path,
         "parcel_path": parcel_path,
         "eto_path": eto_path,
-        "irrigation_repo_dir": irrigation_repo_dir,
-        "irrigation_compose_file": irrigation_compose_file,
     }
 
 
@@ -180,76 +175,8 @@ def _http_form(
 # ----------------------------
 # Service up / self-heal
 # ----------------------------
-def _is_service_up(base_url: str) -> bool:
-    try:
-        status, _ = _http_json("GET", f"{base_url}/api/v1/openapi.json", timeout=6)
-        return 200 <= status < 300
-    except Exception:
-        return False
-
-
-def _run_compose_up(verbose: bool = True) -> None:
-    """
-    Try to bring up the irrigation stack using docker compose.
-
-    Attempts:
-      1) docker compose (no sudo)
-      2) sudo -n docker compose (only works if passwordless sudo is configured)
-    """
-    paths = _get_bootstrap_paths()
-    irrigation_repo_dir = paths["irrigation_repo_dir"]
-    irrigation_compose_file = paths["irrigation_compose_file"]
-
-    if not irrigation_repo_dir.exists():
-        raise FileNotFoundError(f"Irrigation repo not found at: {irrigation_repo_dir}")
-    if not irrigation_compose_file.exists():
-        raise FileNotFoundError(f"compose.yaml not found at: {irrigation_compose_file}")
-
-    cmds = [
-        ["docker", "compose", "-f", str(irrigation_compose_file), "up", "-d"],
-        ["sudo", "-n", "docker", "compose", "-f", str(irrigation_compose_file), "up", "-d"],
-    ]
-
-    last_err = None
-    for cmd in cmds:
-        try:
-            if verbose:
-                print(f"[Irrigation] Running: {' '.join(cmd)} (cwd={irrigation_repo_dir})")
-            subprocess.run(
-                cmd,
-                cwd=str(irrigation_repo_dir),
-                check=True,
-                stdout=subprocess.PIPE,
-                stderr=subprocess.PIPE,
-                text=True,
-            )
-            return
-        except Exception as e:
-            last_err = str(e)
-
-    raise RuntimeError(f"Failed to start irrigation via docker compose. Last error: {last_err}")
-
-
 def _ensure_service_up(base_url: str, seconds: int = 75, verbose: bool = True) -> None:
-    if _is_service_up(base_url):
-        if verbose:
-            print("[Irrigation] ✅ Service is already reachable")
-        return
-
-    if verbose:
-        print("[Irrigation] ⚠️ Service not reachable. Attempting to start via Docker Compose...")
-
-    _run_compose_up(verbose=verbose)
-
-    deadline = time.time() + seconds
-    while time.time() < deadline:
-        if _is_service_up(base_url):
-            if verbose:
-                print("[Irrigation] ✅ Service is reachable after startup")
-            return
-        time.sleep(2)
-
-    raise RuntimeError("Service did not become reachable after docker compose up")
+    ensure_service_available(timeout_seconds=seconds, verbose=verbose)
 
 
 # ----------------------------
