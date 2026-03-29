@@ -12,6 +12,7 @@ The core remains transport-agnostic. `agrivision/domain/`, `agrivision/pipeline/
 ```bash
 git clone https://github.com/GEvang/agrivision-pipeline.git
 cd agrivision-pipeline
+chmod +x install_agrivision.sh
 ./install_agrivision.sh
 source .venv/bin/activate
 python run.py --doctor
