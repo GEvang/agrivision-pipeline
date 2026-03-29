@@ -1,0 +1,121 @@
+{% extends 'base.html' %}
+{% block content %}
+<section class="panel">
+  <div class="run-header">
+    <div>
+      <h2>{{ run.run_name or run.dataset_name }}</h2>
+      <p>Status: <strong id="run-status">{{ run.status }}</strong></p>
+      <p>Current stage: <span id="current-stage">{{ run.stage_message }}</span></p>
+      <p>Elapsed: <strong id="elapsed-timer">--:--</strong></p>
+    </div>
+    <div class="progress-shell">
+      <div class="progress-track">
+        <div class="progress-bar" id="progress-bar" style="width: {{ run.progress_percent }}%;"></div>
+      </div>
+      <div class="progress-meta">
+        <span id="progress-percent">{{ run.progress_percent }}%</span>
+      </div>
+    </div>
+  </div>
+
+  <p>Created: {{ run.created_at }}</p>
+  <p>Dataset: {{ run.dataset_name }}</p>
+
+  <h3>Pipeline Stages</h3>
+  <div class="stage-list" id="stage-list">
+    {% for stage in run.stages %}
+    <span class="stage-pill stage-{{ stage.state }}">{{ stage.label }}</span>
+    {% endfor %}
+  </div>
+
+  {% if report.preview_path %}
+  <h3>Orthophoto Preview</h3>
+  <img class="preview" src="/artifacts/{{ run.run_id }}/preview" alt="Orthophoto preview" />
+  {% endif %}
+
+  <h3>Artifacts</h3>
+  <ul id="artifact-list">
+    {% if report.report_path %}<li><a href="/artifacts/{{ run.run_id }}/report">Report</a></li>{% endif %}
+    {% if report.orthophoto_path %}<li><a href="/artifacts/{{ run.run_id }}/orthophoto">Orthophoto</a></li>{% endif %}
+    <li><a href="/artifacts/{{ run.run_id }}/log">Run log</a></li>
+  </ul>
+
+  <h3>Logs</h3>
+  <pre class="log-box" id="run-logs">{{ logs }}</pre>
+</section>
+
+<script>
+const runId = {{ run.run_id | tojson }};
+const statusEl = document.getElementById('run-status');
+const stageEl = document.getElementById('current-stage');
+const percentEl = document.getElementById('progress-percent');
+const barEl = document.getElementById('progress-bar');
+const timerEl = document.getElementById('elapsed-timer');
+const logsEl = document.getElementById('run-logs');
+const stageListEl = document.getElementById('stage-list');
+const artifactListEl = document.getElementById('artifact-list');
+let startedAtValue = {{ (run.started_at.isoformat() if run.started_at else None) | tojson }};
+let finishedAtValue = {{ (run.finished_at.isoformat() if run.finished_at else None) | tojson }};
+
+function formatElapsed(startedAt, finishedAt) {
+  if (!startedAt) return '--:--';
+  const start = new Date(startedAt);
+  const end = finishedAt ? new Date(finishedAt) : new Date();
+  const seconds = Math.max(0, Math.floor((end - start) / 1000));
+  const hours = Math.floor(seconds / 3600);
+  const minutes = Math.floor((seconds % 3600) / 60);
+  const secs = seconds % 60;
+  return hours > 0
+    ? `${String(hours).padStart(2,'0')}:${String(minutes).padStart(2,'0')}:${String(secs).padStart(2,'0')}`
+    : `${String(minutes).padStart(2,'0')}:${String(secs).padStart(2,'0')}`;
+}
+
+function renderStages(stages) {
+  stageListEl.innerHTML = '';
+  for (const stage of stages || []) {
+    const pill = document.createElement('span');
+    pill.className = `stage-pill stage-${stage.state}`;
+    pill.textContent = stage.label;
+    stageListEl.appendChild(pill);
+  }
+}
+
+function renderArtifacts(report) {
+  artifactListEl.innerHTML = '';
+  if (report?.report_path) {
+    artifactListEl.innerHTML += `<li><a href="/artifacts/${runId}/report">Report</a></li>`;
+  }
+  if (report?.orthophoto_path) {
+    artifactListEl.innerHTML += `<li><a href="/artifacts/${runId}/orthophoto">Orthophoto</a></li>`;
+  }
+  artifactListEl.innerHTML += `<li><a href="/artifacts/${runId}/log">Run log</a></li>`;
+}
+
+async function refreshStatus() {
+  const response = await fetch(`/runs/${runId}/status`, { headers: { 'accept': 'application/json' }});
+  if (!response.ok) return;
+  const payload = await response.json();
+  statusEl.textContent = payload.status;
+  stageEl.textContent = payload.stage_message || payload.current_stage || 'Queued';
+  percentEl.textContent = `${payload.progress_percent ?? 0}%`;
+  barEl.style.width = `${payload.progress_percent ?? 0}%`;
+  startedAtValue = payload.started_at || startedAtValue;
+  finishedAtValue = payload.finished_at || null;
+  timerEl.textContent = formatElapsed(startedAtValue, finishedAtValue);
+  logsEl.textContent = payload.logs || '';
+  renderStages(payload.stages);
+  renderArtifacts(payload.report);
+  if (payload.status === 'running' || payload.status === 'queued') {
+    window.setTimeout(refreshStatus, 2000);
+  }
+}
+
+timerEl.textContent = formatElapsed(startedAtValue, finishedAtValue);
+if ({{ run.status | tojson }} === 'running' || {{ run.status | tojson }} === 'queued') {
+  window.setTimeout(refreshStatus, 1000);
+}
+window.setInterval(() => {
+  timerEl.textContent = formatElapsed(startedAtValue, finishedAtValue);
+}, 1000);
+</script>
+{% endblock %}

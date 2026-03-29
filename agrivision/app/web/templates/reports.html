@@ -1,0 +1,22 @@
+{% extends 'base.html' %}
+{% block content %}
+<section class="panel">
+  <h2>Report History</h2>
+  <table>
+    <thead><tr><th>Created</th><th>Name</th><th>Dataset</th><th>Status</th><th>Report</th></tr></thead>
+    <tbody>
+      {% for report in reports %}
+      <tr>
+        <td>{{ report.created_at | system_datetime }}</td>
+        <td>{{ report.run_name or '-' }}</td>
+        <td><a href="/runs/{{ report.run_id }}">{{ report.dataset_name }}</a></td>
+        <td>{{ report.status }}</td>
+        <td>{% if report.report_path %}<a href="/reports/{{ report.run_id }}/view">View report</a>{% else %}-{% endif %}</td>
+      </tr>
+      {% else %}
+      <tr><td colspan="5">No reports available.</td></tr>
+      {% endfor %}
+    </tbody>
+  </table>
+</section>
+{% endblock %}

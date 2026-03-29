@@ -1,44 +1,76 @@
-AgriVision is a lightweight, fully automated pipeline for processing drone imagery into orthophotos, NDVI maps, grid-based health assessments, and a farmer-ready HTML report. It integrates seamlessly with the OpenAgri WeatherService for real-time weather data.
+# AgriVision Pipeline
 
-Features
-- Automatic image resizing
-- ODM photogrammetry via Docker
-- NDVI computation (GeoTIFF + PNG)
-- Grid-based crop health classification
-- Field report generation (report_latest.html)
-- Automatic WeatherService startup
-- Works on x86_64 and ARM devices
+AgriVision Pipeline is an OpenAgri-aligned drone imagery pipeline with two supported operator interfaces that share the same processing core:
 
-One-Line Installation
-curl -s https://raw.githubusercontent.com/GEvang/agrivision-pipeline/main/bootstrap.sh | bash
+- **CLI** for direct pipeline execution
+- **Dashboard** for uploads, run tracking, reports, previews, and settings
 
-Project Structure
-agrivision-ads/
-  agrivision/
-    pipeline/
-    utils/
-    weather/
-  data/
-  output/
-  OpenAgri-WeatherService/
-  install_agrivision.sh
-  bootstrap.sh
-  config.yaml
-  run.py
-  venv/
+The core remains transport-agnostic. `agrivision/domain/`, `agrivision/pipeline/`, `agrivision/services/`, and `agrivision/integrations/` continue to own business logic and integrations. The web layer under `agrivision/app/` stays thin.
 
-Usage
-1. Activate environment:
-   source venv/bin/activate
-2. Copy drone images to data/images_full/
-3. Run pipeline:
-   python run.py
-4. Open output/report_latest.html
+## Canonical operator install
 
-Weather Service
-Automatically started if not running using docker compose.
+```bash
+git clone https://github.com/GEvang/agrivision-pipeline.git
+cd agrivision-pipeline
+./install_agrivision.sh
+source .venv/bin/activate
+python run.py --doctor
+```
 
-Configuration
-Edit config.yaml to adjust NDVI thresholds, camera bands, grid size, resize options, WeatherService URL, etc.
+## Canonical operator run path
 
+CLI:
 
+```bash
+python run.py
+```
+
+Dashboard:
+
+```bash
+python run.py --serve-dashboard --host 127.0.0.1 --port 8008 --host 127.0.0.1 --port 8008
+```
+
+Open `http://127.0.0.1:8008` in your browser.
+
+## Configuration and secrets
+
+- Keep **non-secret settings** in `config.yaml`
+- Keep **secrets** in `.env` or exported environment variables
+- Use `cp .env.example .env` as the starting point for local setup
+- The dashboard masks secrets and does not return full credential values in responses
+
+## Runtime storage
+
+- `data/uploads/<upload_id>/` — uploaded image datasets
+- `runtime/runs/<run_id>/params.json`
+- `runtime/runs/<run_id>/status.json`
+- `runtime/runs/<run_id>/outputs.json`
+- `runtime/runs/<run_id>/run.log`
+- `runtime/runs/<run_id>/previews/`
+
+## Common commands
+
+```bash
+python run.py --doctor
+python run.py --run-resize
+python run.py --skip-odm
+python run.py --skip-weather
+python run.py --skip-report
+python -m pytest -q
+python -m ruff check .
+```
+
+## Docker
+
+Root-level Docker assets are the only retained container path:
+
+```bash
+docker compose config
+docker compose build
+docker compose up
+```
+
+## Developer notes
+
+Developer-oriented alternatives such as raw `uvicorn`, editable installs, and dev tooling are documented under `docs/developer/`.

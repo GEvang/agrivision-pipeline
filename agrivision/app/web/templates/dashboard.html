@@ -1,0 +1,43 @@
+{% extends 'base.html' %}
+{% block content %}
+<section class="panel">
+  <h2>Recent Runs</h2>
+  <div class="stats">
+    {% for key, value in status_summary.items() %}
+    <div class="stat"><strong>{{ value }}</strong><span>{{ key }}</span></div>
+    {% endfor %}
+  </div>
+  <table>
+    <thead><tr><th>Created</th><th>Name</th><th>Dataset</th><th>Status</th><th>Open</th></tr></thead>
+    <tbody>
+    {% for run in recent_runs %}
+      <tr><td>{{ run.created_at | system_datetime }}</td><td>{{ run.run_name or '-' }}</td><td>{{ run.dataset_name }}</td><td>{{ run.status }}</td><td><a href="/runs/{{ run.run_id }}">View</a></td></tr>
+    {% else %}
+      <tr><td colspan="5">No runs yet.</td></tr>
+    {% endfor %}
+    </tbody>
+  </table>
+</section>
+<section class="panel">
+  <div class="panel-header">
+    <div>
+      <h2>Latest Report</h2>
+      {% if latest_report %}
+      <p class="muted">Run {{ latest_report.run_id }} — {{ latest_report.dataset_name }}</p>
+      {% else %}
+      <p class="muted">No completed reports yet.</p>
+      {% endif %}
+    </div>
+    {% if latest_report %}
+    <a class="button-link" href="/reports/{{ latest_report.run_id }}/view">Open report</a>
+    {% else %}
+    <a class="button-link" href="/runs/new">New Run</a>
+    {% endif %}
+  </div>
+  {% if latest_report %}
+  <div class="latest-report-embed">
+    <iframe class="report-frame" src="/reports/{{ latest_report.run_id }}/view?embedded=1" title="Latest report"></iframe>
+  </div>
+  {% endif %}
+</section>
+{% endblock %}
