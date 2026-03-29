@@ -15,10 +15,13 @@ from agrivision.app.schemas.settings import (
     SettingsUpdateRequest,
 )
 from agrivision.config import get_project_root, load_config
+from agrivision.config.settings import load_local_env
 from agrivision.services.report_service import ReportService
 from agrivision.services.run_service import RunService
 from agrivision.services.settings_service import SettingsService
 from agrivision.services.storage_service import StorageService
+
+load_local_env()
 
 app = FastAPI(title='AgriVision Dashboard', version='0.2.0')
 app.mount('/static', StaticFiles(directory=str(Path(__file__).parent / 'web' / 'static')), name='static')

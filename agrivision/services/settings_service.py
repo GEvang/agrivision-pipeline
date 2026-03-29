@@ -13,7 +13,9 @@ from agrivision.config.runtime import get_runtime_config
 from agrivision.config.settings import (
     DEFAULT_CONFIG,
     _deep_merge,
+    _remove_yaml_secrets,
     get_config_path,
+    load_local_env,
     load_raw_config,
 )
 from agrivision.services.runtime import mask_env_value, update_env_file
@@ -46,8 +48,9 @@ class SettingsService:
         return data
 
     def _load_config(self) -> dict[str, Any]:
+        load_local_env(self.env_path)
         payload = load_raw_config(self.config_path)
-        config = _deep_merge(DEFAULT_CONFIG, payload or {})
+        config = _remove_yaml_secrets(_deep_merge(DEFAULT_CONFIG, payload or {}))
         env_values = self._env_values()
         mapping = {
             'WEATHER_USERNAME': ('weather', 'username'),
@@ -131,4 +134,6 @@ class SettingsService:
         }
         if values:
             update_env_file(self.env_path, values)
+            for env_name, value in values.items():
+                __import__('os').environ[env_name] = value
         return self.get_settings_view()

@@ -1,7 +1,6 @@
 from __future__ import annotations
 
 import os
-import warnings
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, Mapping
@@ -10,6 +9,34 @@ import yaml
 
 _PROJECT_ROOT = Path(__file__).resolve().parents[2]
 _CONFIG_PATH = Path(os.getenv("AGRIVISION_CONFIG_PATH", str(_PROJECT_ROOT / "config.yaml")))
+
+
+def load_local_env(env_path: Path | None = None) -> None:
+    resolved = env_path or (get_config_path().parent / ".env")
+    if not resolved.exists():
+        return
+    for raw_line in resolved.read_text(encoding="utf-8").splitlines():
+        line = raw_line.strip()
+        if not line or line.startswith("#") or "=" not in line:
+            continue
+        key, value = line.split("=", 1)
+        key = key.strip()
+        value = value.strip().strip('"').strip("'")
+        if key and key not in os.environ:
+            os.environ[key] = value
+
+
+def _remove_yaml_secrets(config: dict[str, Any]) -> dict[str, Any]:
+    weather = config.setdefault("weather", {})
+    weather["username"] = ""
+    weather["password"] = ""
+    weather["openweather_api_key"] = ""
+    irrigation = config.setdefault("irrigation", {})
+    irrigation_auth = irrigation.setdefault("auth", {})
+    irrigation_auth["email"] = ""
+    irrigation_auth["password"] = ""
+    irrigation["token"] = ""
+    return config
 
 
 DEFAULT_CONFIG: dict[str, Any] = {
@@ -255,11 +282,6 @@ def _apply_env_overrides(config: dict[str, Any]) -> dict[str, Any]:
     return config
 
 
-def _warn_for_yaml_secrets(config: Mapping[str, Any]) -> None:
-    for path, env_name, label in _ENV_SECRET_OVERRIDES:
-        _warn_if_yaml_secret_used(config, path, env_name, label)
-
-
 def load_raw_config(config_path: Path | None = None) -> dict[str, Any]:
     """Load raw YAML config as a dict. Missing config files return an empty mapping."""
     resolved = config_path or get_config_path()
@@ -276,10 +298,11 @@ def load_raw_config(config_path: Path | None = None) -> dict[str, Any]:
 
 
 def load_config() -> dict:
-    """Return config dict with explicit precedence: defaults < YAML < environment."""
+    """Return config dict with explicit precedence: defaults < YAML(non-secret) < .env/environment."""
+    load_local_env()
     config = _deep_merge(DEFAULT_CONFIG, load_raw_config())
+    config = _remove_yaml_secrets(config)
     config = _apply_env_overrides(config)
-    _warn_for_yaml_secrets(config)
     return config
 
 

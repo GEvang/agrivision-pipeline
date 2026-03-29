@@ -217,10 +217,18 @@ class RunService:
         record = self.load_run(run_id)
         if run_id in self._threads and self._threads[run_id].is_alive():
             return record
-        thread = threading.Thread(target=self._execute_run, args=(run_id,), daemon=True)
+        record = self.update_status(
+            run_id,
+            status='running',
+            current_stage='queued',
+            stage_message='Starting pipeline',
+            progress_percent=0,
+            errors=[],
+        )
+        thread = threading.Thread(target=self._execute_run, args=(run_id,), daemon=True, name=f'agrivision-run-{run_id}')
         self._threads[run_id] = thread
         thread.start()
-        return self.update_status(run_id, status='running', current_stage='queued', stage_message='Queued', progress_percent=0)
+        return record
 
     def launch_run(self, run_id: str) -> RunRecord:
         self._execute_run(run_id)
