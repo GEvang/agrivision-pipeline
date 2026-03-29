@@ -1,0 +1,17 @@
+{% extends 'base.html' %}
+{% block title %}Report · {{ run.dataset_name }}{% endblock %}
+{% block content %}
+<section class="panel">
+  <div class="panel-header">
+    <div>
+      <h2>{{ run.dataset_name }} Report</h2>
+      <p class="muted">Run {{ run.run_id }} · {{ run.status }}</p>
+    </div>
+    <div class="button-row">
+      <a class="button-link secondary" href="/runs/{{ run.run_id }}">Back to run</a>
+      <a class="button-link" href="/artifacts/{{ run.run_id }}/report" target="_blank" rel="noopener">Open standalone</a>
+    </div>
+  </div>
+  <iframe class="report-frame report-frame-full" src="/artifacts/{{ run.run_id }}/report" title="Report for {{ run.dataset_name }}"></iframe>
+</section>
+{% endblock %}

@@ -20,5 +20,7 @@ def test_settings_masking_and_updates(tmp_path: Path) -> None:
     assert masked['weather_password'].startswith('se')
     assert 'secret-pass' not in masked['weather_password']
 
-    view = service.update_non_secret_settings(SettingsUpdateRequest(location_name='Demo Farm'))
+    view = service.update_non_secret_settings(SettingsUpdateRequest(location_name='Demo Farm', location_lat=35.26, location_lon=25.6))
     assert view['non_secret']['location_name'] == 'Demo Farm'
+    assert view['non_secret']['location_lat'] == 35.26
+    assert view['non_secret']['location_lon'] == 25.6

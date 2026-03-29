@@ -18,13 +18,26 @@
     </tbody>
   </table>
 </section>
-{% if latest_report %}
 <section class="panel">
-  <h2>Latest Output</h2>
-  <p>Run {{ latest_report.run_id }} — {{ latest_report.status }}</p>
-  {% if latest_report.preview_path %}
-  <img class="preview" src="/artifacts/{{ latest_report.run_id }}/preview" alt="Orthophoto preview" />
+  <div class="panel-header">
+    <div>
+      <h2>Latest Report</h2>
+      {% if latest_report %}
+      <p class="muted">Run {{ latest_report.run_id }} — {{ latest_report.dataset_name }}</p>
+      {% else %}
+      <p class="muted">No completed reports yet.</p>
+      {% endif %}
+    </div>
+    {% if latest_report %}
+    <a class="button-link" href="/reports/{{ latest_report.run_id }}/view">Open report</a>
+    {% else %}
+    <a class="button-link" href="/runs/new">New Run</a>
+    {% endif %}
+  </div>
+  {% if latest_report %}
+  <div class="latest-report-embed">
+    <iframe class="report-frame" src="/reports/{{ latest_report.run_id }}/view?embedded=1" title="Latest report"></iframe>
+  </div>
   {% endif %}
 </section>
-{% endif %}
 {% endblock %}

@@ -7,6 +7,8 @@ from pydantic import BaseModel, Field, field_validator
 
 class SettingsUpdateRequest(BaseModel):
     location_name: str | None = Field(default=None, max_length=200)
+    location_lat: float | None = Field(default=None, ge=-90, le=90)
+    location_lon: float | None = Field(default=None, ge=-180, le=180)
     weather_base_url: str | None = Field(default=None, max_length=500)
     irrigation_base_url: str | None = Field(default=None, max_length=500)
     resize_max_long_edge: int | None = Field(default=None, ge=256, le=12000)

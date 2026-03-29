@@ -72,6 +72,8 @@ class SettingsService:
         return {
             'non_secret': {
                 'location_name': config.get('location', {}).get('name', ''),
+                'location_lat': config.get('location', {}).get('lat', ''),
+                'location_lon': config.get('location', {}).get('lon', ''),
                 'weather_base_url': config.get('weather', {}).get('base_url', ''),
                 'irrigation_base_url': config.get('irrigation', {}).get('base_url', ''),
                 'resize_max_long_edge': config.get('resize', {}).get('max_long_edge', ''),
@@ -89,7 +91,6 @@ class SettingsService:
             'openweather_api_key': config.get('weather', {}).get('openweather_api_key', ''),
             'irrigation_email': config.get('irrigation', {}).get('auth', {}).get('email', ''),
             'irrigation_password': config.get('irrigation', {}).get('auth', {}).get('password', ''),
-            'irrigation_token': config.get('irrigation', {}).get('token', ''),
         }
         return {key: mask_env_value(str(value or '')) for key, value in values.items()}
 
@@ -106,6 +107,10 @@ class SettingsService:
 
         if request.location_name is not None:
             payload.setdefault('location', {})['name'] = request.location_name
+        if request.location_lat is not None:
+            payload.setdefault('location', {})['lat'] = request.location_lat
+        if request.location_lon is not None:
+            payload.setdefault('location', {})['lon'] = request.location_lon
         if request.weather_base_url is not None:
             payload.setdefault('weather', {})['base_url'] = request.weather_base_url
         if request.irrigation_base_url is not None:

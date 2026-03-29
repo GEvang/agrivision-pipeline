@@ -48,7 +48,8 @@ def dashboard(request: Request) -> HTMLResponse:
     status_summary: dict[str, int] = {}
     for run in runs:
         status_summary[run.status] = status_summary.get(run.status, 0) + 1
-    latest_report = report_service.list_reports()[0] if runs else None
+    report_items = [item for item in report_service.list_reports() if item.report_path]
+    latest_report = report_items[0] if report_items else None
     return TEMPLATES.TemplateResponse(
         request,
         'dashboard.html',
@@ -206,6 +207,20 @@ def get_report(run_id: str) -> dict:
     return report_service.get_report(run_id).model_dump(mode='json')
 
 
+@app.get('/reports/{run_id}/view', response_class=HTMLResponse)
+def report_view(run_id: str, request: Request, embedded: bool = False) -> HTMLResponse:
+    report = report_service.get_report(run_id)
+    if not report.report_path:
+        raise HTTPException(status_code=404, detail='Report not found.')
+    run = run_service.load_run(run_id)
+    template_name = 'report_embed.html' if embedded else 'report_view.html'
+    return TEMPLATES.TemplateResponse(
+        request,
+        template_name,
+        {'run': run, 'report': report},
+    )
+
+
 @app.get('/settings')
 def settings_page(request: Request):
     view = settings_service.get_settings_view()
@@ -229,6 +244,8 @@ def update_credentials(request: CredentialsUpdateRequest) -> dict:
 @app.post('/ui/settings')
 def update_settings_ui(
     location_name: str = Form(''),
+    location_lat: float | None = Form(None),
+    location_lon: float | None = Form(None),
     weather_base_url: str = Form(''),
     irrigation_base_url: str = Form(''),
     resize_max_long_edge: int | None = Form(None),
@@ -237,6 +254,8 @@ def update_settings_ui(
     update_settings(
         SettingsUpdateRequest(
             location_name=location_name or None,
+            location_lat=location_lat,
+            location_lon=location_lon,
             weather_base_url=weather_base_url or None,
             irrigation_base_url=irrigation_base_url or None,
             resize_max_long_edge=resize_max_long_edge,
@@ -253,7 +272,6 @@ def update_credentials_ui(
     openweather_api_key: str = Form(''),
     irrigation_email: str = Form(''),
     irrigation_password: str = Form(''),
-    irrigation_token: str = Form(''),
 ) -> RedirectResponse:
     update_credentials(
         CredentialsUpdateRequest(
@@ -262,7 +280,6 @@ def update_credentials_ui(
             openweather_api_key=openweather_api_key or None,
             irrigation_email=irrigation_email or None,
             irrigation_password=irrigation_password or None,
-            irrigation_token=irrigation_token or None,
         )
     )
     return RedirectResponse(url='/settings', status_code=303)

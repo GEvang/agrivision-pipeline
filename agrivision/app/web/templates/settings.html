@@ -4,6 +4,10 @@
   <form class="panel" method="post" action="/ui/settings">
     <h2>Non-secret Settings</h2>
     <label>Location name<input type="text" name="location_name" value="{{ non_secret.location_name }}" /></label>
+    <div class="inline-fields">
+      <label>Location latitude<input type="number" step="any" name="location_lat" value="{{ non_secret.location_lat }}" /></label>
+      <label>Location longitude<input type="number" step="any" name="location_lon" value="{{ non_secret.location_lon }}" /></label>
+    </div>
     <label>Weather base URL<input type="text" name="weather_base_url" value="{{ non_secret.weather_base_url }}" /></label>
     <label>Irrigation base URL<input type="text" name="irrigation_base_url" value="{{ non_secret.irrigation_base_url }}" /></label>
     <label>Resize max long edge<input type="number" name="resize_max_long_edge" value="{{ non_secret.resize_max_long_edge }}" /></label>
@@ -23,10 +27,7 @@
     <label>OpenWeather API key<input type="password" name="openweather_api_key" /></label>
     <label>Irrigation email<input type="email" name="irrigation_email" /></label>
     <label>Irrigation password<input type="password" name="irrigation_password" /></label>
-    <label>Irrigation token<input type="password" name="irrigation_token" /></label>
     <button type="submit">Save credentials</button>
-    <h3>Diagnostics</h3>
-    <pre>{{ diagnostics }}</pre>
   </form>
 </section>
 {% endblock %}

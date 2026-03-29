@@ -29,3 +29,16 @@ th, td { padding:0.6rem; border-bottom:1px solid #e2e8f0; text-align:left; }
 .stage-completed { background:#dcfce7; border-color:#86efac; }
 .stage-failed { background:#fee2e2; border-color:#fca5a5; }
 .stage-skipped { background:#f1f5f9; border-color:#cbd5e1; }
+
+
+.muted { color:#64748b; }
+.panel-header { display:flex; justify-content:space-between; align-items:flex-start; gap:1rem; margin-bottom:1rem; }
+.button-row { display:flex; gap:0.75rem; flex-wrap:wrap; }
+.button-link { display:inline-flex; align-items:center; justify-content:center; text-decoration:none; background:#0f172a; color:white; border-radius:10px; padding:0.65rem 1rem; }
+.button-link.secondary { background:#334155; }
+.inline-fields { display:grid; grid-template-columns: repeat(auto-fit, minmax(180px, 1fr)); gap:1rem; }
+.report-frame { width:100%; min-height:70vh; border:1px solid #cbd5e1; border-radius:12px; background:white; }
+.report-frame-full { min-height:85vh; }
+
+.latest-report-embed { width: 100%; margin-top: 1rem; }
+.latest-report-embed .report-frame { display: block; width: 100%; min-height: 900px; height: 900px; border: 1px solid #cbd5e1; border-radius: 12px; background: white; }

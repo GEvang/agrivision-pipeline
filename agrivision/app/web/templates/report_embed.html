@@ -1,0 +1,18 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>{{ run.dataset_name }} Report</title>
+  <style>
+    html, body { margin: 0; padding: 0; height: 100%; background: #fff; }
+    .report-shell { width: 100%; height: 100vh; }
+    .report-shell iframe { display: block; width: 100%; height: 100%; border: 0; background: #fff; }
+  </style>
+</head>
+<body>
+  <div class="report-shell">
+    <iframe src="/artifacts/{{ run.run_id }}/report" title="Report for {{ run.dataset_name }}"></iframe>
+  </div>
+</body>
+</html>
