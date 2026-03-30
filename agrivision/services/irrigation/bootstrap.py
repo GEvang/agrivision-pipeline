@@ -266,6 +266,7 @@ def _ensure_parcel_state(
         }
     """
     notes: List[str] = []
+    locations_list: List[dict] = []
     created_default = False
     paths = _get_bootstrap_paths()
 
@@ -288,7 +289,7 @@ def _ensure_parcel_state(
             "error_summary": error_summary,
         }
 
-    locations_list: List[dict] = []
+    
     if isinstance(locations_resp, dict) and isinstance(locations_resp.get("locations"), list):
         locations_list = locations_resp["locations"]
     else:
@@ -446,6 +447,7 @@ def _authenticate_irrigation(
         }
     """
     notes: List[str] = []
+    locations_list: List[dict] = []
     token: Optional[str] = None
     paths = _get_bootstrap_paths()
 
