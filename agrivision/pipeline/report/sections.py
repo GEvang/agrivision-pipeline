@@ -222,6 +222,7 @@ def render_irrigation_section(
     eto_count = eto.get("count", None)
     eto_preview = eto.get("preview", "")
     eto_artifact_path = eto.get("artifact_path", "")
+    weather_debug = eto.get("weather_debug") or {}
 
     status_label = "OK" if authenticated else "Not authenticated / unavailable"
     status_color = "#2a5d34" if authenticated else "#a13a3a"
@@ -261,6 +262,39 @@ def render_irrigation_section(
             f"border:1px solid #ddd; padding:10px;'>{safe_html(eto_preview)}</pre>"
         )
 
+    weather_debug_html = ""
+    if isinstance(weather_debug, dict) and weather_debug:
+        debug_path = weather_debug.get("artifact_path", "")
+        debug_link_html = "<em>Not available</em>"
+        try:
+            weather_path = Path(debug_path)
+            if weather_path.exists():
+                href = rel_to_report(weather_path, output_dir)
+                debug_link_html = f'<a href="{safe_html(href)}">{safe_html(href)}</a>'
+        except Exception:
+            pass
+        debug_status = "OK" if weather_debug.get("ok") else "Failed"
+        debug_color = "#2a5d34" if weather_debug.get("ok") else "#a13a3a"
+        debug_preview = weather_debug.get("preview", "")
+        debug_preview_html = ""
+        if debug_preview:
+            debug_preview_html = (
+                "<pre style='white-space: pre-wrap; max-height: 220px; overflow:auto; "
+                f"border:1px solid #ddd; padding:10px;'>{safe_html(debug_preview)}</pre>"
+            )
+        weather_debug_html = f"""
+<h3>Weather debug probe</h3>
+<p>
+  Triggered automatically because ETo returned no values or failed. This calls the Weather Service history endpoint directly
+  for the same date range so you can confirm whether weather data is available independently of irrigation ingestion.
+</p>
+<table border="1" cellpadding="6" cellspacing="0">
+  <tr><th align="left">Probe status</th><td><span style="color:{debug_color}; font-weight:bold;">{safe_html(debug_status)}</span></td></tr>
+  <tr><th align="left">Artifact</th><td>{debug_link_html}</td></tr>
+</table>
+{debug_preview_html}
+""".strip()
+
     return f"""
 <h2>Irrigation Service Integration</h2>
 <p>
@@ -287,6 +321,8 @@ def render_irrigation_section(
 </table>
 
 {eto_preview_html}
+
+{weather_debug_html}
 
 {notes_html}
 """.strip()

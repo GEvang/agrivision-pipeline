@@ -405,6 +405,15 @@ def fetch_history_daily(
             "lon": location["lon"],
             "start": start_date,
             "end": end_date,
+            # The Weather Service daily-history endpoint expects a request body shaped like
+            # the public README example, including a variables array and radius_km.
+            # Omitting them can yield HTTP 422 depending on the deployed schema.
+            "variables": [
+                "temperature_2m_max",
+                "temperature_2m_min",
+                "precipitation_sum",
+            ],
+            "radius_km": 10,
         },
         timeout=20,
     )
@@ -426,6 +435,12 @@ def fetch_history_hourly(
             "lon": location["lon"],
             "start": start_date,
             "end": end_date,
+            "variables": [
+                "temperature_2m",
+                "relative_humidity_2m",
+                "precipitation",
+            ],
+            "radius_km": 10,
         },
         timeout=20,
     )

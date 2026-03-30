@@ -38,6 +38,7 @@ from typing import Any, Dict, List, Optional, Tuple
 
 from agrivision.config.settings import get_project_root, get_settings
 from agrivision.services.irrigation.runtime import ensure_service_available
+from agrivision.services.weather.client import fetch_history_daily
 
 
 def _get_bootstrap_paths() -> dict[str, Path]:
@@ -49,12 +50,14 @@ def _get_bootstrap_paths() -> dict[str, Path]:
     token_path = output_dir / "auth_token.json"
     parcel_path = output_dir / "parcel.json"
     eto_path = output_dir / "eto.json"
+    weather_debug_path = output_dir / "weather_debug.json"
     return {
         "project_root": project_root,
         "output_dir": output_dir,
         "token_path": token_path,
         "parcel_path": parcel_path,
         "eto_path": eto_path,
+        "weather_debug_path": weather_debug_path,
     }
 
 
@@ -89,6 +92,11 @@ def _write_parcel_artifact(payload: Dict[str, Any]) -> None:
 def _write_eto_artifact(payload: Dict[str, Any]) -> None:
     paths = _get_bootstrap_paths()
     _write_json(paths["eto_path"], payload)
+
+
+def _write_weather_debug_artifact(payload: Dict[str, Any]) -> None:
+    paths = _get_bootstrap_paths()
+    _write_json(paths["weather_debug_path"], payload)
 
 
 # ----------------------------
@@ -276,6 +284,7 @@ def _ensure_parcel_state(
             "parcel_count": 0,
             "created_default_parcel": False,
             "notes": notes,
+            "locations": locations_list,
             "error_summary": error_summary,
         }
 
@@ -322,7 +331,94 @@ def _ensure_parcel_state(
         "parcel_count": parcel_count,
         "created_default_parcel": created_default,
         "notes": notes,
+        "locations": locations_list,
         "error_summary": None,
+    }
+
+
+def _select_effective_location_id(
+    *,
+    configured_location_id: int,
+    locations: List[dict[str, Any]],
+    created_default_parcel: bool,
+    notes: List[str],
+) -> int:
+    """Resolve a safe location_id for ETo requests from the live location list."""
+    valid_ids: List[int] = []
+    for item in locations:
+        if not isinstance(item, dict):
+            continue
+        raw_id = item.get("id")
+        try:
+            valid_ids.append(int(raw_id))
+        except (TypeError, ValueError):
+            continue
+
+    if not valid_ids:
+        return int(configured_location_id)
+
+    if int(configured_location_id) in valid_ids:
+        return int(configured_location_id)
+
+    if created_default_parcel:
+        selected = valid_ids[-1]
+        notes.append(
+            f"Configured irrigation.eto.location_id={configured_location_id} was not found; "
+            f"using newly available parcel location_id={selected}."
+        )
+        return selected
+
+    if len(valid_ids) == 1:
+        selected = valid_ids[0]
+        notes.append(
+            f"Configured irrigation.eto.location_id={configured_location_id} was not found; "
+            f"using the only visible parcel location_id={selected}."
+        )
+        return selected
+
+    selected = valid_ids[-1]
+    notes.append(
+        f"Configured irrigation.eto.location_id={configured_location_id} was not found among visible parcels {valid_ids}; "
+        f"using most recent visible location_id={selected}."
+    )
+    return selected
+
+
+def _run_weather_debug_probe(
+    *,
+    from_date_str: str,
+    to_date_str: str,
+    write_artifacts: bool = True,
+) -> Dict[str, Any]:
+    """
+    Probe the Weather service history endpoint so ETo failures can be separated from weather-data availability.
+    """
+    paths = _get_bootstrap_paths()
+    try:
+        history_payload = fetch_history_daily(from_date_str, to_date_str)
+        ok = True
+        error = None
+    except Exception as exc:  # noqa: BLE001
+        history_payload = {"error": str(exc)}
+        ok = False
+        error = str(exc)
+
+    if write_artifacts:
+        _write_weather_debug_artifact(
+            {
+                "requested": {"from_date": from_date_str, "to_date": to_date_str},
+                "ok": ok,
+                "response": history_payload,
+            }
+        )
+
+    preview = json.dumps(history_payload, indent=2)[:900] if isinstance(history_payload, (dict, list)) else str(history_payload)[:900]
+    return {
+        "ok": ok,
+        "artifact_path": str(paths["weather_debug_path"]),
+        "preview": preview,
+        "response": history_payload,
+        "error": error,
     }
 
 
@@ -401,6 +497,7 @@ def _authenticate_irrigation(
             "email": "",
             "me": {},
             "notes": notes,
+            "locations": locations_list,
             "error_summary": error_summary,
         }
 
@@ -457,6 +554,7 @@ def _authenticate_irrigation(
         "email": me.get("email", email),
         "me": me,
         "notes": notes,
+        "locations": locations_list,
         "error_summary": None,
     }
 
@@ -582,6 +680,23 @@ def _fetch_eto_state(
     if not eto_ok:
         notes.append(f"ETo get-calculations failed (HTTP {eto_status}). See output/irrigation/eto.json for details.")
 
+    weather_debug: Optional[Dict[str, Any]] = None
+    if not eto_ok or eto_count == 0:
+        weather_debug = _run_weather_debug_probe(
+            from_date_str=from_date_str,
+            to_date_str=to_date_str,
+            write_artifacts=write_artifacts,
+        )
+        if weather_debug["ok"]:
+            notes.append(
+                "Weather debug probe succeeded via WeatherService /api/v1/history/daily; "
+                "compare output/irrigation/weather_debug.json with the irrigation ETo response to isolate ingestion gaps."
+            )
+        else:
+            notes.append(
+                "Weather debug probe failed; see output/irrigation/weather_debug.json for direct WeatherService diagnostics."
+            )
+
     try:
         eto_preview = json.dumps(eto_resp, indent=2)[:900] if isinstance(eto_resp, (dict, list)) else str(eto_resp)[:900]
     except Exception:
@@ -600,6 +715,7 @@ def _fetch_eto_state(
             "count": eto_count,
             "artifact_path": str(paths["eto_path"]),
             "preview": eto_preview,
+            "weather_debug": weather_debug,
         },
     }
 
@@ -714,6 +830,12 @@ def ensure_irrigation_auth_parcel_and_eto(
     parcel_count = parcel_result["parcel_count"]
     created_default = parcel_result["created_default_parcel"]
     notes.extend(parcel_result["notes"])
+    effective_location_id = _select_effective_location_id(
+        configured_location_id=effective_location_id,
+        locations=parcel_result.get("locations", []),
+        created_default_parcel=created_default,
+        notes=notes,
+    )
     eto_result = _fetch_eto_state(
         base_url=base_url,
         token=token,
