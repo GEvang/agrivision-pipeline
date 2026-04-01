@@ -8,6 +8,7 @@ from agrivision.config.settings import get_project_root, get_settings
 from agrivision.integrations.pdm.client import (
     PdmClient,
     build_weather_dataset_csv,
+    build_weather_dataset_records,
     ensure_pdm_service_available,
     ensure_remote_model,
     ensure_remote_parcel,
@@ -54,9 +55,13 @@ def bootstrap_pdm_context(
         csv_path.write_text(csv_payload, encoding='utf-8')
         dataset_csv_artifact = str(csv_path)
         try:
-            dataset_upload = client.upload_weather_dataset('agrivision-pdm-weather.csv', csv_payload)
+            records = build_weather_dataset_records(weather_summary, parcel_reference=parcel_wkt)
+            dataset_upload = client.upload_weather_dataset(parcel_id=int(parcel_state['parcel_id']), records=records)
+            if isinstance(dataset_upload, dict):
+                dataset_upload.setdefault('uploaded', True)
+                dataset_upload.setdefault('record_count', len(records))
         except Exception as exc:  # noqa: BLE001
-            dataset_upload = {'error': str(exc)}
+            dataset_upload = {'error': str(exc), 'uploaded': False, 'record_count': len(records) if 'records' in locals() else 0}
 
     payload = {
         'runtime': runtime,
@@ -77,6 +82,7 @@ def bootstrap_pdm_context(
         },
         'dataset_upload': dataset_upload or {},
         'dataset_upload_id': _extract_dataset_upload_id(dataset_upload),
+        'dataset_upload_succeeded': bool(isinstance(dataset_upload, dict) and not dataset_upload.get('error')) if dataset_upload is not None else False,
         'dataset_csv_artifact': dataset_csv_artifact,
     }
     payload['artifact_path'] = _write_json('bootstrap.json', payload)

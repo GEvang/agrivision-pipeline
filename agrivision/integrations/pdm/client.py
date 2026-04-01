@@ -1,11 +1,9 @@
 from __future__ import annotations
 
-import csv
-import io
 import json
 import uuid
 from dataclasses import dataclass
-from datetime import datetime, timedelta, timezone
+from datetime import date, datetime, timedelta, timezone
 from pathlib import Path
 from typing import Any
 
@@ -162,6 +160,18 @@ class PdmClient:
         pests = payload.get('pests', []) if isinstance(payload, dict) else []
         return pests if isinstance(pests, list) else []
 
+    def list_parcels(self) -> list[dict[str, Any]]:
+        payload = self._request('GET', '/api/v1/parcel/').json()
+        if isinstance(payload, list):
+            return payload
+        if not isinstance(payload, dict):
+            return []
+        for key in ('elements', 'parcels', 'items', 'results', 'data'):
+            parcels = payload.get(key, [])
+            if isinstance(parcels, list):
+                return parcels
+        return []
+
     def create_pest_model(self, *, name: str, description: str, geo_areas_of_application: str, crop: str) -> dict[str, Any]:
         payload = {
             'name': name,
@@ -202,56 +212,50 @@ class PdmClient:
         except ValueError:
             return {'message': response.text}
 
-    def upload_weather_dataset(self, file_name: str, csv_payload: str) -> dict[str, Any]:
-        files = {'file': (file_name, csv_payload.encode('utf-8'), 'text/csv')}
-        response = self._request('POST', '/api/v1/data/upload/', files=files)
+    def upload_weather_dataset(self, *, parcel_id: int, records: list[dict[str, Any]]) -> dict[str, Any]:
+        response = self._request('POST', f'/api/v1/data/{parcel_id}/', json=records)
         try:
-            return response.json() if response.content else {}
+            payload = response.json() if response.content else {}
         except ValueError:
-            return {'message': response.text}
+            payload = {'message': response.text}
+        if isinstance(payload, dict):
+            payload.setdefault('uploaded', True)
+            payload.setdefault('record_count', len(records))
+            payload.setdefault('parcel_id', parcel_id)
+            return payload
+        return {'uploaded': True, 'record_count': len(records), 'parcel_id': parcel_id, 'response': payload}
 
     def calculate_risk_index(
         self,
         *,
-        resource_id: str,
+        parcel_id: int,
         model_ids: list[str],
+        from_date: str,
+        to_date: str,
         high_only: bool = False,
-        parcel_id: str = '',
     ) -> dict[str, Any]:
         suffix = 'high' if high_only else 'verbose'
         model_segment = ','.join(model_ids)
-        candidate_paths: list[str] = []
-        if resource_id:
-            candidate_paths.extend([
-                f"/api/v1/tool/calculate-risk-index/weather/{resource_id}/model/{model_segment}/{suffix}/",
-                f"/api/v1/tool/calculate-risk-index/data/{resource_id}/model/{model_segment}/{suffix}/",
-                f"/api/v1/tool/calculate-risk-index/dataset/{resource_id}/model/{model_segment}/{suffix}/",
-            ])
-        if parcel_id:
-            candidate_paths.extend([
-                f"/api/v1/tool/calculate-risk-index/parcel/{parcel_id}/model/{model_segment}/{suffix}/",
-                f"/api/v1/tool/calculate-risk-index/weather/{parcel_id}/model/{model_segment}/{suffix}/",
-            ])
+        path = (
+            f"/api/v1/tool/calculate-risk-index/weather/{parcel_id}/model/{model_segment}/"
+            f"{suffix}/{from_date}/from/{to_date}/to/"
+        )
+        response = self._request('GET', path)
+        text = response.text if response.content else ''
+        try:
+            payload = response.json() if response.content else {}
+        except ValueError:
+            try:
+                payload = json.loads(text) if text else {}
+            except Exception:
+                payload = {'raw_text': text}
+        if isinstance(payload, dict):
+            payload.setdefault('_request_path', path)
+            return payload
+        if isinstance(payload, list):
+            return {'entries': payload, '_request_path': path}
+        return {'raw_text': text, '_request_path': path}
 
-        seen: set[str] = set()
-        last_response: Response | None = None
-        for path in candidate_paths:
-            if path in seen:
-                continue
-            seen.add(path)
-            response = self._request('POST', path, expected_ok=False)
-            if response.ok:
-                return response.json() if response.content else {}
-            last_response = response
-            if response.status_code != 404:
-                raise PdmApiError(f'POST {path} failed with HTTP {response.status_code}: {response.text[:500]}')
-
-        if last_response is not None:
-            attempted = ', '.join(seen)
-            raise PdmApiError(
-                f'PDM risk-index endpoint not found after trying: {attempted}. Last response: HTTP {last_response.status_code}: {last_response.text[:500]}'
-            )
-        raise PdmApiError('No PDM risk-index resource identifier was available for execution.')
 
 
 def get_pdm_service_config() -> PdmServiceConfig:
@@ -386,25 +390,42 @@ def ensure_remote_model(client: PdmClient, model_key: str, *, geo_wkt: str) -> d
 
 
 def ensure_remote_parcel(client: PdmClient, *, model_key: str, geo_wkt: str) -> dict[str, Any]:
-    payload = client.create_parcel_wkt(name=parcel_name_for_model(model_key), wkt_polygon=geo_wkt)
+    name = parcel_name_for_model(model_key)
+    payload = client.create_parcel_wkt(name=name, wkt_polygon=geo_wkt)
     message = payload.get('message') if isinstance(payload, dict) else None
     parcel_id = ''
+    parcel_record: dict[str, Any] | None = None
     if isinstance(payload, dict):
-        parcel_id = str(payload.get('id') or payload.get('parcel_id') or '')
+        candidate = payload.get('id') or payload.get('parcel_id')
+        if candidate not in (None, ''):
+            parcel_id = str(candidate)
+            parcel_record = payload
     if not parcel_id:
-        # The public docs only guarantee a success message. Use a stable synthetic id if the API omits one.
-        parcel_id = str(uuid.uuid5(uuid.NAMESPACE_URL, f'{model_key}:{geo_wkt}'))
+        try:
+            matches: list[dict[str, Any]] = []
+            for parcel in client.list_parcels():
+                if str(parcel.get('name') or '') == name:
+                    matches.append(parcel)
+            if matches:
+                parcel_record = max(matches, key=lambda item: int(item.get('id') or item.get('parcel_id') or 0))
+                candidate = parcel_record.get('id') or parcel_record.get('parcel_id')
+                if candidate not in (None, ''):
+                    parcel_id = str(candidate)
+        except Exception:
+            pass
+    if not parcel_id:
+        raise PdmApiError(f'PDM parcel id could not be resolved after parcel creation. Response: {payload!r}')
     return {
-        'parcel': payload,
+        'parcel': parcel_record or payload,
         'parcel_id': parcel_id,
         'message': message or 'Parcel request submitted to PDM service.',
     }
 
 
-def build_weather_dataset_csv(weather_summary: dict[str, Any] | None, parcel_reference: str | None = None) -> str:
+def build_weather_dataset_records(weather_summary: dict[str, Any] | None, parcel_reference: str | None = None) -> list[dict[str, Any]]:
     rows: list[dict[str, Any]] = []
     if not weather_summary:
-        return 'date;time;parcel_location;atmospheric_temperature;atmospheric_relative_humidity;precipitation\n'
+        return rows
 
     current = weather_summary.get('current_weather') or {}
     timestamp = current.get('timestamp')
@@ -415,16 +436,17 @@ def build_weather_dataset_csv(weather_summary: dict[str, Any] | None, parcel_ref
             dt = datetime.now(timezone.utc)
     else:
         dt = datetime.now(timezone.utc)
-    rows.append(
-        {
-            'date': dt.date().isoformat(),
-            'time': dt.time().replace(microsecond=0).isoformat(),
-            'parcel_location': parcel_reference or '',
-            'atmospheric_temperature': current.get('temperature') or '',
-            'atmospheric_relative_humidity': current.get('humidity') or '',
-            'precipitation': '',
+
+    def _record(day: str, tm: str, temp: Any, humidity: Any, rain: Any) -> dict[str, Any]:
+        return {
+            'date': day,
+            'time': tm,
+            'atmospheric_temperature': temp if temp not in (None, '') else 0,
+            'atmospheric_relative_humidity': humidity if humidity not in (None, '') else 0,
+            'precipitation': rain if rain not in (None, '') else 0,
         }
-    )
+
+    rows.append(_record(dt.date().isoformat(), dt.time().replace(microsecond=0).isoformat(), current.get('temperature'), current.get('humidity'), 0))
 
     historical = weather_summary.get('historical_daily') or {}
     data = historical.get('data') if isinstance(historical, dict) else {}
@@ -433,29 +455,25 @@ def build_weather_dataset_csv(weather_summary: dict[str, Any] | None, parcel_ref
     temps = list(daily.get('temperature_2m_mean') or daily.get('temperature_mean') or []) if isinstance(daily, dict) else []
     rains = list(daily.get('precipitation_sum') or daily.get('precipitation') or []) if isinstance(daily, dict) else []
     for idx, day in enumerate(dates):
-        rows.append(
-            {
-                'date': str(day),
-                'time': '12:00:00',
-                'parcel_location': parcel_reference or '',
-                'atmospheric_temperature': temps[idx] if idx < len(temps) else '',
-                'atmospheric_relative_humidity': current.get('humidity') or '',
-                'precipitation': rains[idx] if idx < len(rains) else '',
-            }
-        )
+        rows.append(_record(str(day), '12:00:00', temps[idx] if idx < len(temps) else 0, current.get('humidity'), rains[idx] if idx < len(rains) else 0))
 
     if len(rows) == 1:
-        duplicate = dict(rows[0])
         later = dt + timedelta(hours=1)
-        duplicate['time'] = later.time().replace(microsecond=0).isoformat()
-        rows.append(duplicate)
+        rows.append(_record(later.date().isoformat(), later.time().replace(microsecond=0).isoformat(), current.get('temperature'), current.get('humidity'), 0))
 
-    buffer = io.StringIO()
-    writer = csv.DictWriter(
-        buffer,
-        fieldnames=['date', 'time', 'parcel_location', 'atmospheric_temperature', 'atmospheric_relative_humidity', 'precipitation'],
-        delimiter=';'
-    )
-    writer.writeheader()
-    writer.writerows(rows)
-    return buffer.getvalue()
+    return rows
+
+
+def build_weather_dataset_csv(weather_summary: dict[str, Any] | None, parcel_reference: str | None = None) -> str:
+    records = build_weather_dataset_records(weather_summary, parcel_reference)
+    lines = ['date;time;parcel_location;atmospheric_temperature;atmospheric_relative_humidity;precipitation']
+    for item in records:
+        lines.append(';'.join([
+            str(item.get('date', '')),
+            str(item.get('time', '')),
+            str(parcel_reference or ''),
+            str(item.get('atmospheric_temperature', '')),
+            str(item.get('atmospheric_relative_humidity', '')),
+            str(item.get('precipitation', '')),
+        ]))
+    return '\n'.join(lines) + ('\n' if lines else '')
