@@ -6,6 +6,7 @@ from typing import Callable
 from agrivision.pipeline.io.paths import resolve_pipeline_paths
 from agrivision.pipeline.stages.grid import run_grid_report
 from agrivision.pipeline.stages.irrigation_enrichment import run_irrigation_enrichment
+from agrivision.pipeline.stages.pdm_enrichment import run_pdm_enrichment
 from agrivision.pipeline.stages.odm import run_odm_mapir, run_odm_rgb
 from agrivision.pipeline.stages.report import run_report
 from agrivision.pipeline.stages.resize import run_resize
@@ -29,7 +30,10 @@ def run_full_pipeline(
     skip_odm_mapir: bool = False,
     skip_ndvi: bool = False,
     skip_weather: bool = False,
+    skip_pdm: bool = False,
     skip_report: bool = False,
+    pdm_crop: str | None = None,
+    pdm_model_key: str | None = None,
     progress_callback: Callable[[str, str, str], None] | None = None,
 ) -> None:
     print("\n================== AgriVision Pipeline Start ==================\n")
@@ -40,6 +44,7 @@ def run_full_pipeline(
     print(f"  skip_odm_mapir  = {skip_odm_mapir}")
     print(f"  skip_ndvi       = {skip_ndvi}")
     print(f"  skip_weather    = {skip_weather}")
+    print(f"  skip_pdm        = {skip_pdm}")
     print(f"  skip_report     = {skip_report}")
     print()
 
@@ -152,13 +157,38 @@ def run_full_pipeline(
     if progress_callback:
         progress_callback('irrigation_enrichment', 'Irrigation enrichment complete', 'completed')
 
+    pdm_cfg = config.get('pdm', {}) if isinstance(config.get('pdm'), dict) else {}
+    resolved_pdm_crop = (pdm_crop or pdm_cfg.get('default_crop') or 'grapevine')
+    resolved_pdm_model_key = (pdm_model_key or pdm_cfg.get('default_model_key') or 'grapevine_powdery_mildew_risk_v1')
+    if skip_pdm:
+        print('\n[AgriVision] Skipping PDM integration (--skip-pdm).')
+        pdm_summary = {'enabled': False, 'status': 'disabled', 'notes': ['Skipped by configuration.']}
+    else:
+        if progress_callback:
+            progress_callback('pdm_enrichment', 'Running pest & disease enrichment', 'running')
+        print('\n[AgriVision] Running Pest & Disease integration ...')
+        pdm_summary = run_pdm_enrichment(
+            base_url=pdm_cfg.get('base_url', ''),
+            weather_summary=weather_summary,
+            enabled=True,
+            crop=resolved_pdm_crop,
+            model_key=resolved_pdm_model_key,
+        )
+        if pdm_summary.get('status') == 'success':
+            print('[AgriVision] ✅ Pest & Disease integration completed')
+        else:
+            print('[AgriVision] ⚠️ Pest & Disease integration failed or degraded (continuing pipeline).')
+            print(f"[AgriVision] Reason: {pdm_summary.get('error_message') or (pdm_summary.get('notes', [''])[0] if pdm_summary.get('notes') else '')}")
+        if progress_callback:
+            progress_callback('pdm_enrichment', 'Pest & disease enrichment complete', 'completed')
+
     if skip_report:
         print('\nStep 5/5: Skipping report generation (--skip-report).')
     else:
         if progress_callback:
             progress_callback('generate_report', 'Generating report', 'running')
         print('\nStep 5/5: Creating report...')
-        run_report(irrigation_summary=irrigation_summary, weather_summary=weather_summary)
+        run_report(irrigation_summary=irrigation_summary, weather_summary=weather_summary, pdm_summary=pdm_summary)
         if progress_callback:
             progress_callback('generate_report', 'Report generated', 'completed')
     print('\n================== Pipeline Complete ==================\n')

@@ -26,9 +26,48 @@
       <label><input type="checkbox" name="resize_images" value="true" /> Resize images</label>
       <label><input type="checkbox" name="run_odm" value="true" checked /> Run ODM</label>
       <label><input type="checkbox" name="fetch_weather" value="true" checked /> Fetch weather</label>
+      <label><input type="checkbox" name="run_pdm" value="true" {% if pdm_enabled_by_default %}checked{% endif %} /> Run Pest &amp; Disease</label>
       <label><input type="checkbox" name="generate_report" value="true" checked /> Generate report</label>
+    </fieldset>
+    <fieldset>
+      <legend>Pest &amp; Disease</legend>
+      <label>Crop
+        <select name="pdm_crop" id="pdm-crop-select">
+          <option value="grapevine" {% if pdm_default_crop == 'grapevine' %}selected{% endif %}>grapevine</option>
+          <option value="olive" {% if pdm_default_crop == 'olive' %}selected{% endif %}>olive</option>
+        </select>
+      </label>
+      <label>Predefined model
+        <select name="pdm_model_key" id="pdm-model-select">
+          {% for item in pdm_model_catalog %}
+          <option value="{{ item.key }}" data-crop="{{ item.crop }}" {% if item.key == pdm_default_model_key %}selected{% endif %}>{{ item.crop }} · {{ item.label }}</option>
+          {% endfor %}
+        </select>
+      </label>
     </fieldset>
     <button type="submit">Launch run</button>
   </form>
 </section>
+<script>
+(function() {
+  const cropSelect = document.getElementById('pdm-crop-select');
+  const modelSelect = document.getElementById('pdm-model-select');
+  if (!cropSelect || !modelSelect) return;
+  function filterModels() {
+    const crop = cropSelect.value;
+    let firstVisible = null;
+    Array.from(modelSelect.options).forEach((option) => {
+      const visible = option.dataset.crop === crop;
+      option.hidden = !visible;
+      if (visible && !firstVisible) firstVisible = option;
+    });
+    const selected = modelSelect.options[modelSelect.selectedIndex];
+    if (!selected || selected.hidden) {
+      if (firstVisible) firstVisible.selected = true;
+    }
+  }
+  cropSelect.addEventListener('change', filterModels);
+  filterModels();
+})();
+</script>
 {% endblock %}

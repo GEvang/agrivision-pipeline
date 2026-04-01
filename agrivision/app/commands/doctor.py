@@ -11,4 +11,5 @@ def doctor() -> dict[str, str]:
         'project_root': runtime['project_root'],
         'weather_base_url': runtime['weather_base_url'],
         'irrigation_base_url': runtime['irrigation_base_url'],
+        'pdm_base_url': runtime.get('pdm_base_url', ''),
     }

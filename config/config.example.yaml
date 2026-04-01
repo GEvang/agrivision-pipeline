@@ -86,3 +86,12 @@ irrigation:
 orthophoto:
   odm_docker_image: "opendronemap/odm:latest"
   orthophoto_resolution_cm: 1
+
+
+pdm:
+  enabled_by_default: true
+  base_url: "http://127.0.0.1:8006"
+  default_crop: "grapevine"
+  default_model_key: "grapevine_powdery_mildew_risk_v1"
+  allow_per_run_override: true
+  verify_ssl: false

@@ -326,3 +326,55 @@ def render_irrigation_section(
 
 {notes_html}
 """.strip()
+
+
+def render_pdm_section(
+    pdm_summary: Optional[Dict[str, Any]],
+    output_dir: Path,
+) -> str:
+    if not pdm_summary:
+        return (
+            "<h2>Pest &amp; Disease</h2>"
+            "<p><em>No Pest &amp; Disease data provided for this run.</em></p>"
+        )
+
+    status = pdm_summary.get('status', 'unknown')
+    status_color = '#2a5d34' if status == 'success' else '#a13a3a' if status == 'failed' else '#8a6d1d'
+    notes = pdm_summary.get('notes', []) or []
+    reasons = pdm_summary.get('triggered_conditions', []) or []
+    notes_html = "<ul>" + "".join(f"<li>{safe_html(note)}</li>" for note in notes) + "</ul>" if notes else ''
+    reasons_html = "<ul>" + "".join(f"<li>{safe_html(reason)}</li>" for reason in reasons) + "</ul>" if reasons else '<p><em>No rule matches recorded.</em></p>'
+    artifact_row = _render_artifact_link_row('Raw summary artifact', str(pdm_summary.get('raw_payload_artifact', '')), output_dir)
+    bootstrap_row = _render_artifact_link_row('Bootstrap artifact', str(pdm_summary.get('bootstrap_artifact', '')), output_dir)
+    time_window = pdm_summary.get('time_window', {}) if isinstance(pdm_summary.get('time_window'), dict) else {}
+
+    return f"""
+<h2>Pest &amp; Disease</h2>
+<p>
+  This run includes a live OpenAgri Pest &amp; Disease Management service execution using the selected predefined remote model and parcel.
+</p>
+<table border="1" cellpadding="6" cellspacing="0">
+  <tr><th align="left">Status</th><td><span style="color:{status_color}; font-weight:bold;">{safe_html(status.title())}</span></td></tr>
+  <tr><th align="left">Crop</th><td>{safe_html(pdm_summary.get('crop', ''))}</td></tr>
+  <tr><th align="left">Model</th><td>{safe_html(pdm_summary.get('display_label', ''))}</td></tr>
+  <tr><th align="left">Model key</th><td>{safe_html(pdm_summary.get('selected_model_key', ''))}</td></tr>
+  <tr><th align="left">Organism</th><td>{safe_html(pdm_summary.get('organism_name', ''))}</td></tr>
+  <tr><th align="left">EPPO code</th><td>{safe_html(pdm_summary.get('eppo_code', ''))}</td></tr>
+  <tr><th align="left">Calculation type</th><td>{safe_html(pdm_summary.get('calculation_type', ''))}</td></tr>
+  <tr><th align="left">Evaluated window</th><td>{safe_html(time_window.get('start', 'N/A'))} -&gt; {safe_html(time_window.get('end', 'N/A'))}</td></tr>
+  <tr><th align="left">Observed at</th><td>{safe_html(time_window.get('observed_at', 'N/A'))}</td></tr>
+  <tr><th align="left">Remote latest timestamp</th><td>{safe_html(time_window.get('remote_latest_timestamp', 'N/A'))}</td></tr>
+  <tr><th align="left">Remote highest timestamp</th><td>{safe_html(time_window.get('remote_highest_timestamp', 'N/A'))}</td></tr>
+  <tr><th align="left">Risk level</th><td>{safe_html(pdm_summary.get('risk_level', 'Unavailable'))}</td></tr>
+  <tr><th align="left">Recommendation</th><td>{safe_html(pdm_summary.get('recommendation', pdm_summary.get('error_message', '')))}</td></tr>
+  <tr><th align="left">Service URL</th><td>{safe_html((pdm_summary.get('service_status') or {}).get('base_url', ''))}</td></tr>
+  <tr><th align="left">Service reachable</th><td>{safe_html((pdm_summary.get('service_status') or {}).get('reachable', False))}</td></tr>
+  <tr><th align="left">Remote parcel id</th><td>{safe_html(pdm_summary.get('remote_parcel_id', ''))}</td></tr>
+  <tr><th align="left">Remote model id</th><td>{safe_html(pdm_summary.get('remote_model_id', ''))}</td></tr>
+  {artifact_row}
+  {bootstrap_row}
+</table>
+<h3>Triggered conditions / reasons</h3>
+{reasons_html}
+{notes_html}
+""".strip()

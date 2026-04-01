@@ -14,6 +14,7 @@ class StepSelection(BaseModel):
     resize_images: bool = False
     run_odm: bool = True
     fetch_weather: bool = True
+    run_pdm: bool = True
     generate_report: bool = True
 
 
@@ -21,6 +22,8 @@ class RunParameters(BaseModel):
     preset: str | None = None
     notes: str | None = None
     flight_date: date | None = None
+    pdm_crop: str | None = None
+    pdm_model_key: str | None = None
 
 
 class StageStatus(BaseModel):

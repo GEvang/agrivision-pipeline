@@ -37,6 +37,11 @@ def _remove_yaml_secrets(config: dict[str, Any]) -> dict[str, Any]:
     irrigation_auth["email"] = ""
     irrigation_auth["password"] = ""
     irrigation["token"] = ""
+    pdm = config.setdefault("pdm", {})
+    pdm_auth = pdm.setdefault("auth", {})
+    pdm_auth["username"] = ""
+    pdm_auth["password"] = ""
+    pdm["token"] = ""
     return config
 
 
@@ -104,6 +109,21 @@ DEFAULT_CONFIG: dict[str, Any] = {
         "odm_docker_image": "opendronemap/odm:latest",
         "orthophoto_resolution_cm": 1,
     },
+    "pdm": {
+        "enabled_by_default": True,
+        "base_url": "http://127.0.0.1:8006",
+        "auth": {
+            "username": "",
+            "password": "",
+        },
+        "token": "",
+        "timeout_seconds": 12,
+        "verify_ssl": False,
+        "default_crop": "grapevine",
+        "default_model_key": "grapevine_powdery_mildew_risk_v1",
+        "allow_per_run_override": True,
+        "service_dir": "OpenAgri-PestAndDiseaseManagement",
+    },
 }
 
 
@@ -114,6 +134,9 @@ _ENV_SECRET_OVERRIDES: tuple[tuple[tuple[str, ...], str, str], ...] = (
     (("irrigation", "auth", "email"), "IRRIGATION_EMAIL", "irrigation.auth.email"),
     (("irrigation", "auth", "password"), "IRRIGATION_PASSWORD", "irrigation.auth.password"),
     (("irrigation", "token"), "IRRIGATION_TOKEN", "irrigation.token"),
+    (("pdm", "auth", "username"), "PDM_USERNAME", "pdm.auth.username"),
+    (("pdm", "auth", "password"), "PDM_PASSWORD", "pdm.auth.password"),
+    (("pdm", "token"), "PDM_TOKEN", "pdm.token"),
 )
 
 
@@ -174,6 +197,26 @@ class IrrigationSettings:
     service_dir: str
 
 
+
+@dataclass(frozen=True)
+class PdmAuthSettings:
+    username: str
+    password: str
+
+
+@dataclass(frozen=True)
+class PdmSettings:
+    enabled_by_default: bool
+    base_url: str
+    auth: PdmAuthSettings
+    token: str
+    timeout_seconds: int
+    verify_ssl: bool
+    default_crop: str
+    default_model_key: str
+    allow_per_run_override: bool
+    service_dir: str
+
 @dataclass(frozen=True)
 class NdviSettings:
     poor_max: float
@@ -195,6 +238,7 @@ class AppSettings:
     weather: WeatherSettings
     location: LocationSettings
     irrigation: IrrigationSettings
+    pdm: PdmSettings
     ndvi: NdviSettings
     resize: ResizeSettings
     orthophoto: OrthophotoSettings
@@ -342,6 +386,8 @@ def get_settings() -> AppSettings:
     irrigation_cfg = _as_dict(cfg.get("irrigation"))
     irrigation_auth_cfg = _as_dict(irrigation_cfg.get("auth"))
     irrigation_eto_cfg = _as_dict(irrigation_cfg.get("eto"))
+    pdm_cfg = _as_dict(cfg.get("pdm"))
+    pdm_auth_cfg = _as_dict(pdm_cfg.get("auth"))
     ndvi_cfg = _as_dict(cfg.get("ndvi"))
     resize_cfg = _as_dict(cfg.get("resize"))
     orthophoto_cfg = _as_dict(cfg.get("orthophoto"))
@@ -352,6 +398,8 @@ def get_settings() -> AppSettings:
     irrigation_defaults = _as_dict(defaults.get("irrigation"))
     irrigation_auth_defaults = _as_dict(irrigation_defaults.get("auth"))
     irrigation_eto_defaults = _as_dict(irrigation_defaults.get("eto"))
+    pdm_defaults = _as_dict(defaults.get("pdm"))
+    pdm_auth_defaults = _as_dict(pdm_defaults.get("auth"))
     ndvi_defaults = _as_dict(defaults.get("ndvi"))
     resize_defaults = _as_dict(defaults.get("resize"))
     orthophoto_defaults = _as_dict(defaults.get("orthophoto"))
@@ -426,6 +474,21 @@ def get_settings() -> AppSettings:
             timeout_seconds=_as_int(irrigation_cfg.get("timeout_seconds"), _as_int(irrigation_defaults.get("timeout_seconds"), 20)),
             service_dir=_as_str(irrigation_cfg.get("service_dir"), _as_str(irrigation_defaults.get("service_dir"), "OpenAgri-IrrigationManagement")),
 
+        ),
+        pdm=PdmSettings(
+            enabled_by_default=bool(pdm_cfg.get("enabled_by_default", pdm_defaults.get("enabled_by_default", True))),
+            base_url=_as_str(pdm_cfg.get("base_url"), _as_str(pdm_defaults.get("base_url"))),
+            auth=PdmAuthSettings(
+                username=_as_str(pdm_auth_cfg.get("username"), _as_str(pdm_auth_defaults.get("username"))),
+                password=_as_str(pdm_auth_cfg.get("password"), _as_str(pdm_auth_defaults.get("password"))),
+            ),
+            token=_as_str(pdm_cfg.get("token"), _as_str(pdm_defaults.get("token"))),
+            timeout_seconds=_as_int(pdm_cfg.get("timeout_seconds"), _as_int(pdm_defaults.get("timeout_seconds"), 12)),
+            verify_ssl=bool(pdm_cfg.get("verify_ssl", pdm_defaults.get("verify_ssl", False))),
+            default_crop=_as_str(pdm_cfg.get("default_crop"), _as_str(pdm_defaults.get("default_crop"), "grapevine")),
+            default_model_key=_as_str(pdm_cfg.get("default_model_key"), _as_str(pdm_defaults.get("default_model_key"), "grapevine_powdery_mildew_risk_v1")),
+            allow_per_run_override=bool(pdm_cfg.get("allow_per_run_override", pdm_defaults.get("allow_per_run_override", True))),
+            service_dir=_as_str(pdm_cfg.get("service_dir"), _as_str(pdm_defaults.get("service_dir"), "OpenAgri-PestAndDiseaseManagement")),
         ),
         ndvi=NdviSettings(
             poor_max=_as_float(ndvi_cfg.get("poor_max"), _as_float(ndvi_defaults.get("poor_max"), 0.25)),

@@ -17,6 +17,9 @@ services:
       IRRIGATION_EMAIL: ${IRRIGATION_EMAIL:-}
       IRRIGATION_PASSWORD: ${IRRIGATION_PASSWORD:-}
       IRRIGATION_TOKEN: ${IRRIGATION_TOKEN:-}
+      PDM_USERNAME: ${PDM_USERNAME:-}
+      PDM_PASSWORD: ${PDM_PASSWORD:-}
+      PDM_TOKEN: ${PDM_TOKEN:-}
     volumes:
       - .:/workspace
       - /var/run/docker.sock:/var/run/docker.sock

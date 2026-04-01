@@ -50,6 +50,8 @@ class RunService:
                 'preset': request.parameters.preset,
                 'notes': request.parameters.notes,
                 'flight_date': request.parameters.flight_date.isoformat() if request.parameters.flight_date else None,
+                'pdm_crop': request.parameters.pdm_crop,
+                'pdm_model_key': request.parameters.pdm_model_key,
             },
             outputs={},
             errors=[],
@@ -78,6 +80,8 @@ class RunService:
         if selected_steps.fetch_weather:
             stages.append(StageStatus(key='fetch_weather', label='Fetch weather'))
         stages.append(StageStatus(key='irrigation_enrichment', label='Irrigation enrichment'))
+        if selected_steps.run_pdm:
+            stages.append(StageStatus(key='pdm_enrichment', label='Pest & disease enrichment'))
         if selected_steps.generate_report:
             stages.append(StageStatus(key='generate_report', label='Generate report'))
         return stages
@@ -254,7 +258,10 @@ class RunService:
                         run_resize_step=selected.resize_images,
                         skip_odm=not selected.run_odm,
                         skip_weather=not selected.fetch_weather,
+                        skip_pdm=not selected.run_pdm,
                         skip_report=not selected.generate_report,
+                        pdm_crop=record.parameters.get('pdm_crop'),
+                        pdm_model_key=record.parameters.get('pdm_model_key'),
                         progress_callback=callback,
                     )
             outputs = self._discover_outputs(Path(record.run_dir))

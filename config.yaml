@@ -86,3 +86,15 @@ irrigation:
 orthophoto:
   odm_docker_image: "opendronemap/odm:latest"
   orthophoto_resolution_cm: 1
+
+# OpenAgri Pest & Disease Management Service integration
+pdm:
+  enabled_by_default: true
+  base_url: "http://127.0.0.1:8006"
+  auth:
+    username: ""
+  verify_ssl: false
+  default_crop: "grapevine"
+  default_model_key: "grapevine_powdery_mildew_risk_v1"
+  timeout_seconds: 20
+  service_dir: "OpenAgri-PestAndDiseaseManagement"

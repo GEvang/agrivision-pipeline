@@ -10,6 +10,15 @@
     </div>
     <label>Weather base URL<input type="text" name="weather_base_url" value="{{ non_secret.weather_base_url }}" /></label>
     <label>Irrigation base URL<input type="text" name="irrigation_base_url" value="{{ non_secret.irrigation_base_url }}" /></label>
+    <label>PDM base URL<input type="text" name="pdm_base_url" value="{{ non_secret.pdm_base_url }}" /></label>
+    <label><input type="checkbox" name="pdm_enabled_by_default" value="true" {% if non_secret.pdm_enabled_by_default %}checked{% endif %} /> Enable PDM by default</label>
+    <label>PDM default crop
+      <select name="pdm_default_crop">
+        <option value="grapevine" {% if non_secret.pdm_default_crop == 'grapevine' %}selected{% endif %}>grapevine</option>
+        <option value="olive" {% if non_secret.pdm_default_crop == 'olive' %}selected{% endif %}>olive</option>
+      </select>
+    </label>
+    <label>PDM default model key<input type="text" name="pdm_default_model_key" value="{{ non_secret.pdm_default_model_key }}" /></label>
     <label>Resize max long edge<input type="number" name="resize_max_long_edge" value="{{ non_secret.resize_max_long_edge }}" /></label>
     <label>Orthophoto resolution (cm)<input type="number" name="orthophoto_resolution_cm" value="{{ non_secret.orthophoto_resolution_cm }}" /></label>
     <button type="submit">Save settings</button>
@@ -18,15 +27,13 @@
     <h2>Credentials</h2>
     <p>Existing values stay masked unless you replace them.</p>
     <ul>
-      {% for key, value in credentials.items() %}
-      <li><strong>{{ key }}</strong>: {{ value }}</li>
-      {% endfor %}
+      <li><strong>shared_username</strong>: {{ credentials.shared_username }}</li>
+      <li><strong>shared_password</strong>: {{ credentials.shared_password }}</li>
+      <li><strong>openweather_api_key</strong>: {{ credentials.openweather_api_key }}</li>
     </ul>
-    <label>Weather username<input type="text" name="weather_username" /></label>
-    <label>Weather password<input type="password" name="weather_password" /></label>
+    <label>Shared username / email<input type="text" name="shared_username" /></label>
+    <label>Shared password<input type="password" name="shared_password" /></label>
     <label>OpenWeather API key<input type="password" name="openweather_api_key" /></label>
-    <label>Irrigation email<input type="email" name="irrigation_email" /></label>
-    <label>Irrigation password<input type="password" name="irrigation_password" /></label>
     <button type="submit">Save credentials</button>
   </form>
 </section>

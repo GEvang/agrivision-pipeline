@@ -20,6 +20,7 @@ from agrivision.services.report_service import ReportService
 from agrivision.services.run_service import RunService
 from agrivision.services.settings_service import SettingsService
 from agrivision.services.storage_service import StorageService
+from agrivision.services.pdm.catalog import PDM_MODEL_CATALOG, get_models_for_crop
 
 load_local_env()
 
@@ -100,12 +101,22 @@ def new_run_page(request: Request, upload_run_id: str | None = None) -> HTMLResp
                 'selected': path.name == upload_run_id,
             }
         )
+    model_catalog = list(PDM_MODEL_CATALOG)
+    models_by_crop = {}
+    for item in model_catalog:
+        models_by_crop.setdefault(item['crop'], []).append(item)
+    settings_view = settings_service.get_settings_view()
     return TEMPLATES.TemplateResponse(
         request,
         'new_run.html',
         {
             'uploads': uploads,
             'selected_upload_run_id': upload_run_id,
+            'pdm_model_catalog': model_catalog,
+            'pdm_models_by_crop': models_by_crop,
+            'pdm_default_crop': settings_view['non_secret'].get('pdm_default_crop', 'grapevine'),
+            'pdm_default_model_key': settings_view['non_secret'].get('pdm_default_model_key', 'grapevine_powdery_mildew_risk_v1'),
+            'pdm_enabled_by_default': settings_view['non_secret'].get('pdm_enabled_by_default', True),
         },
     )
 
@@ -271,6 +282,10 @@ def update_settings_ui(
     location_lon: float | None = Form(None),
     weather_base_url: str = Form(''),
     irrigation_base_url: str = Form(''),
+    pdm_base_url: str = Form(''),
+    pdm_enabled_by_default: bool = Form(False),
+    pdm_default_crop: str = Form('grapevine'),
+    pdm_default_model_key: str = Form('grapevine_powdery_mildew_risk_v1'),
     resize_max_long_edge: int | None = Form(None),
     orthophoto_resolution_cm: int | None = Form(None),
 ) -> RedirectResponse:
@@ -281,6 +296,10 @@ def update_settings_ui(
             location_lon=location_lon,
             weather_base_url=weather_base_url or None,
             irrigation_base_url=irrigation_base_url or None,
+            pdm_base_url=pdm_base_url or None,
+            pdm_enabled_by_default=pdm_enabled_by_default,
+            pdm_default_crop=pdm_default_crop or None,
+            pdm_default_model_key=pdm_default_model_key or None,
             resize_max_long_edge=resize_max_long_edge,
             orthophoto_resolution_cm=orthophoto_resolution_cm,
         )
@@ -290,19 +309,15 @@ def update_settings_ui(
 
 @app.post('/ui/settings/credentials')
 def update_credentials_ui(
-    weather_username: str = Form(''),
-    weather_password: str = Form(''),
+    shared_username: str = Form(''),
+    shared_password: str = Form(''),
     openweather_api_key: str = Form(''),
-    irrigation_email: str = Form(''),
-    irrigation_password: str = Form(''),
 ) -> RedirectResponse:
     update_credentials(
         CredentialsUpdateRequest(
-            weather_username=weather_username or None,
-            weather_password=weather_password or None,
+            shared_username=shared_username or None,
+            shared_password=shared_password or None,
             openweather_api_key=openweather_api_key or None,
-            irrigation_email=irrigation_email or None,
-            irrigation_password=irrigation_password or None,
         )
     )
     return RedirectResponse(url='/settings', status_code=303)
@@ -367,6 +382,9 @@ def create_run_ui(
     resize_images: bool = Form(False),
     run_odm: bool = Form(False),
     fetch_weather: bool = Form(False),
+    run_pdm: bool = Form(False),
+    pdm_crop: str = Form('grapevine'),
+    pdm_model_key: str = Form('grapevine_powdery_mildew_risk_v1'),
     generate_report: bool = Form(False),
 ) -> RedirectResponse:
     manifest = storage_service.read_json(storage_service.upload_dir(upload_run_id) / 'manifest.json')
@@ -381,9 +399,13 @@ def create_run_ui(
                 'resize_images': resize_images,
                 'run_odm': run_odm,
                 'fetch_weather': fetch_weather,
+                'run_pdm': run_pdm,
                 'generate_report': generate_report,
             },
-            'parameters': {},
+            'parameters': {
+                'pdm_crop': pdm_crop,
+                'pdm_model_key': pdm_model_key,
+            },
         }
     )
     created = create_run(request)
