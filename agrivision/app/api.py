@@ -1,6 +1,9 @@
 from __future__ import annotations
 
+import subprocess
 from pathlib import Path
+from urllib.error import URLError
+from urllib.request import Request as UrlRequest, urlopen
 
 from fastapi import FastAPI, File, Form, HTTPException, Request, UploadFile
 from fastapi.responses import FileResponse, HTMLResponse, RedirectResponse
@@ -50,7 +53,81 @@ def _format_system_datetime(value):
     return localized.strftime('%Y-%m-%d %H:%M:%S')
 
 
+def _format_duration(started_at, finished_at):
+    if started_at is None:
+        return '-'
+    end_value = finished_at
+    if end_value is None:
+        from datetime import datetime, timezone
+        end_value = datetime.now(timezone.utc)
+    try:
+        seconds = int(max(0, (end_value - started_at).total_seconds()))
+    except Exception:
+        return '-'
+    hours, remainder = divmod(seconds, 3600)
+    minutes, secs = divmod(remainder, 60)
+    if hours:
+        return f'{hours}h {minutes}m'
+    if minutes:
+        return f'{minutes}m {secs}s'
+    return f'{secs}s'
+
+
+def _step_summary(run) -> str:
+    selected = run.selected_steps
+    parts = [
+        'ODM' if selected.run_odm else 'Existing orthos',
+        'Weather' if selected.fetch_weather else 'No weather',
+        'PDM' if selected.run_pdm else 'No PDM',
+    ]
+    if selected.resize_images:
+        parts.insert(0, 'Resize')
+    return ' / '.join(parts)
+
+
+def _url_health(name: str, base_url: str, paths: tuple[str, ...] = ('/health', '/docs', '/openapi.json')) -> dict[str, str]:
+    for path in paths:
+        url = base_url.rstrip('/') + path
+        try:
+            request = UrlRequest(url, method='GET')
+            with urlopen(request, timeout=0.8) as response:
+                if 200 <= response.status < 500:
+                    state = 'ok' if response.status < 400 else 'warn'
+                    return {'name': name, 'state': state, 'detail': f'HTTP {response.status}', 'target': url}
+        except (OSError, URLError):
+            continue
+    return {'name': name, 'state': 'down', 'detail': 'Not reachable', 'target': base_url}
+
+
+def _docker_health() -> dict[str, str]:
+    try:
+        result = subprocess.run(
+            ['docker', 'version', '--format', '{{.Server.Version}}'],
+            capture_output=True,
+            text=True,
+            timeout=2,
+            check=False,
+        )
+    except (FileNotFoundError, subprocess.TimeoutExpired):
+        return {'name': 'Docker', 'state': 'down', 'detail': 'Unavailable', 'target': 'docker'}
+    version = result.stdout.strip()
+    if result.returncode == 0 and version:
+        return {'name': 'Docker', 'state': 'ok', 'detail': version, 'target': 'docker'}
+    return {'name': 'Docker', 'state': 'warn', 'detail': 'Installed, daemon unavailable', 'target': 'docker'}
+
+
+def _service_health() -> list[dict[str, str]]:
+    config = load_config()
+    return [
+        _docker_health(),
+        _url_health('Weather', config.get('weather', {}).get('base_url', '')),
+        _url_health('Irrigation', config.get('irrigation', {}).get('base_url', '')),
+        _url_health('PDM', config.get('pdm', {}).get('base_url', '')),
+    ]
+
+
 TEMPLATES.env.filters['system_datetime'] = _format_system_datetime
+TEMPLATES.env.filters['duration'] = _format_duration
 
 ALLOWED_EXTENSIONS = {'.jpg', '.jpeg', '.png', '.tif', '.tiff'}
 MINIMUM_DATASET_IMAGES = 2
@@ -72,15 +149,19 @@ def dashboard(request: Request) -> HTMLResponse:
     status_summary: dict[str, int] = {}
     for run in runs:
         status_summary[run.status] = status_summary.get(run.status, 0) + 1
-    report_items = [item for item in report_service.list_reports() if item.report_path]
-    latest_report = report_items[0] if report_items else None
+    latest_report = report_service.latest_report(generate_preview=False)
+    active_runs = sum(1 for run in runs if run.status in {'queued', 'running'})
     return TEMPLATES.TemplateResponse(
         request,
         'dashboard.html',
         {
             'recent_runs': runs[:10],
+            'total_runs': len(runs),
+            'active_runs': active_runs,
             'status_summary': status_summary,
             'latest_report': latest_report,
+            'service_health': _service_health(),
+            'step_summary': _step_summary,
         },
     )
 

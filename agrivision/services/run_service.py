@@ -198,6 +198,19 @@ class RunService:
             stages=stages,
         )
 
+    def _cancel_stages(self, stages: list[StageStatus]) -> list[StageStatus]:
+        cancelled_stages = [StageStatus.model_validate(stage.model_dump()) for stage in stages]
+        for stage in cancelled_stages:
+            if stage.state == 'running':
+                stage.state = 'cancelled'
+                stage.message = 'Stopped by operator'
+            elif stage.state == 'pending':
+                stage.state = 'skipped'
+        return cancelled_stages
+
+    def _append_unique_error(self, errors: list[str], message: str) -> list[str]:
+        return errors if message in errors else [*errors, message]
+
     def stage_inputs_for_run(self, run_id: str) -> None:
         record = self.load_run(run_id)
         config = load_config()
@@ -250,21 +263,14 @@ class RunService:
         event = self._cancel_events.setdefault(run_id, threading.Event())
         event.set()
         self._stop_odm_containers()
-        stages = [StageStatus.model_validate(stage.model_dump()) for stage in record.stages]
-        for stage in stages:
-            if stage.state == 'running':
-                stage.state = 'failed'
-                stage.message = 'Stopped by operator'
-            elif stage.state == 'pending':
-                stage.state = 'skipped'
         return self.update_status(
             run_id,
             status='cancelled',
-            current_stage=record.current_stage,
+            current_stage='cancelled',
             stage_message='Run stopped by operator.',
-            errors=[*record.errors, 'Run stopped by operator.'],
+            errors=self._append_unique_error(record.errors, 'Run stopped by operator.'),
             finished_at=datetime.now(timezone.utc),
-            stages=stages,
+            stages=self._cancel_stages(record.stages),
         )
 
     def launch_run(self, run_id: str) -> RunRecord:
@@ -332,9 +338,11 @@ class RunService:
             self.update_status(
                 run_id,
                 status='cancelled',
-                errors=[*record.errors, str(exc)] if str(exc) not in record.errors else record.errors,
+                current_stage='cancelled',
+                errors=self._append_unique_error(record.errors, str(exc)),
                 finished_at=datetime.now(timezone.utc),
                 stage_message=str(exc),
+                stages=self._cancel_stages(record.stages),
             )
             with log_path.open('a', encoding='utf-8') as log_handle:
                 log_handle.write(f"\n[dashboard] Run cancelled: {exc}\n")
@@ -344,9 +352,11 @@ class RunService:
                 self.update_status(
                     run_id,
                     status='cancelled',
-                    errors=[*record.errors, 'Run stopped by operator.'],
+                    current_stage='cancelled',
+                    errors=self._append_unique_error(record.errors, 'Run stopped by operator.'),
                     finished_at=datetime.now(timezone.utc),
                     stage_message='Run stopped by operator.',
+                    stages=self._cancel_stages(record.stages),
                 )
                 with log_path.open('a', encoding='utf-8') as log_handle:
                     log_handle.write(f"\n[dashboard] Run cancelled: {exc}\n")

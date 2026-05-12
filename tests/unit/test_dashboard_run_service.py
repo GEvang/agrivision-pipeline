@@ -62,8 +62,10 @@ def test_request_stop_marks_running_run_cancelled(tmp_path: Path, monkeypatch) -
     stopped = service.request_stop(record.run_id)
 
     assert stopped.status == 'cancelled'
+    assert stopped.current_stage == 'cancelled'
     assert stopped.finished_at is not None
     assert 'Run stopped by operator.' in stopped.errors
+    assert stopped.errors.count('Run stopped by operator.') == 1
 
 
 def test_update_status_uses_storage_run_dir_for_legacy_record_paths(tmp_path: Path) -> None:

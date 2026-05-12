@@ -1,42 +1,112 @@
 {% extends 'base.html' %}
 {% block content %}
+<section class="dashboard-hero">
+  <div>
+    <h2>Operations</h2>
+    <p class="muted">{{ total_runs }} total runs, {{ active_runs }} active</p>
+  </div>
+  <div class="button-row">
+    <a class="button-link" href="/runs/new">New run</a>
+    <a class="button-link secondary" href="/reports">Reports</a>
+    <a class="button-link secondary" href="/settings">Settings</a>
+  </div>
+</section>
+
+<section class="metric-grid">
+  {% for key, value in status_summary.items() %}
+  <div class="metric">
+    <strong>{{ value }}</strong>
+    <span class="status-badge status-{{ key }}">{{ key }}</span>
+  </div>
+  {% else %}
+  <div class="metric">
+    <strong>0</strong>
+    <span>No runs</span>
+  </div>
+  {% endfor %}
+</section>
+
 <section class="panel">
-  <h2>Recent Runs</h2>
-  <div class="stats">
-    {% for key, value in status_summary.items() %}
-    <div class="stat"><strong>{{ value }}</strong><span>{{ key }}</span></div>
+  <div class="panel-header">
+    <div>
+      <h2>Service Health</h2>
+      <p class="muted">Runtime checks before starting a pipeline run.</p>
+    </div>
+  </div>
+  <div class="service-grid">
+    {% for service in service_health %}
+    <div class="service-tile service-{{ service.state }}">
+      <div>
+        <strong>{{ service.name }}</strong>
+        <span>{{ service.detail }}</span>
+      </div>
+      <span class="health-dot"></span>
+    </div>
     {% endfor %}
   </div>
-  <table>
-    <thead><tr><th>Created</th><th>Name</th><th>Dataset</th><th>Status</th><th>Actions</th></tr></thead>
-    <tbody>
-    {% for run in recent_runs %}
-      <tr>
-        <td>{{ run.created_at | system_datetime }}</td>
-        <td>{{ run.run_name or '-' }}</td>
-        <td>{{ run.dataset_name }}</td>
-        <td>{{ run.status }}</td>
-        <td class="table-actions">
-          <a href="/runs/{{ run.run_id }}">View</a>
-          {% if run.status in ['queued', 'running'] %}
-          <form method="post" action="/ui/runs/{{ run.run_id }}/stop">
-            <button class="link-button danger-text" type="submit">Stop</button>
-          </form>
-          {% endif %}
-        </td>
-      </tr>
-    {% else %}
-      <tr><td colspan="5">No runs yet.</td></tr>
-    {% endfor %}
-    </tbody>
-  </table>
 </section>
+
+<section class="panel">
+  <div class="panel-header">
+    <div>
+      <h2>Recent Runs</h2>
+      <p class="muted">Showing the latest 10. Use filters to focus the table.</p>
+    </div>
+    <div class="filter-tabs" aria-label="Run status filters">
+      <button type="button" class="filter-tab active" data-filter="all">All</button>
+      <button type="button" class="filter-tab" data-filter="active">Active</button>
+      <button type="button" class="filter-tab" data-filter="completed">Completed</button>
+      <button type="button" class="filter-tab" data-filter="failed">Failed</button>
+      <button type="button" class="filter-tab" data-filter="cancelled">Cancelled</button>
+    </div>
+  </div>
+  <div class="table-wrap">
+    <table>
+      <thead>
+        <tr>
+          <th>Created</th>
+          <th>Name</th>
+          <th>Dataset</th>
+          <th>Status</th>
+          <th>Duration</th>
+          <th>Steps</th>
+          <th>Last message</th>
+          <th>Actions</th>
+        </tr>
+      </thead>
+      <tbody id="recent-runs-body">
+      {% for run in recent_runs %}
+        <tr data-status="{{ run.status }}">
+          <td>{{ run.created_at | system_datetime }}</td>
+          <td>{{ run.run_name or '-' }}</td>
+          <td>{{ run.dataset_name }}</td>
+          <td><span class="status-badge status-{{ run.status }}">{{ run.status }}</span></td>
+          <td>{{ run.started_at | duration(run.finished_at) }}</td>
+          <td class="muted">{{ step_summary(run) }}</td>
+          <td class="message-cell">{{ run.errors[-1] if run.errors else run.stage_message }}</td>
+          <td class="table-actions">
+            <a href="/runs/{{ run.run_id }}">View</a>
+            {% if run.status in ['queued', 'running'] %}
+            <form method="post" action="/ui/runs/{{ run.run_id }}/stop">
+              <button class="link-button danger-text" type="submit">Stop</button>
+            </form>
+            {% endif %}
+          </td>
+        </tr>
+      {% else %}
+        <tr><td colspan="8">No runs yet.</td></tr>
+      {% endfor %}
+      </tbody>
+    </table>
+  </div>
+</section>
+
 <section class="panel">
   <div class="panel-header">
     <div>
       <h2>Latest Report</h2>
       {% if latest_report %}
-      <p class="muted">Run {{ latest_report.run_id }} — {{ latest_report.dataset_name }}</p>
+      <p class="muted">Run {{ latest_report.run_id }} - {{ latest_report.dataset_name }}</p>
       {% else %}
       <p class="muted">No completed reports yet.</p>
       {% endif %}
@@ -44,13 +114,47 @@
     {% if latest_report %}
     <a class="button-link" href="/reports/{{ latest_report.run_id }}/view">Open report</a>
     {% else %}
-    <a class="button-link" href="/runs/new">New Run</a>
+    <a class="button-link" href="/runs/new">New run</a>
     {% endif %}
   </div>
   {% if latest_report %}
-  <div class="latest-report-embed">
-    <iframe class="report-frame" src="/reports/{{ latest_report.run_id }}/view?embedded=1" title="Latest report"></iframe>
+  <div class="report-summary">
+    <div>
+      <span class="summary-label">Status</span>
+      <strong class="status-badge status-{{ latest_report.status }}">{{ latest_report.status }}</strong>
+    </div>
+    <div>
+      <span class="summary-label">Created</span>
+      <strong>{{ latest_report.created_at | system_datetime }}</strong>
+    </div>
+    <div>
+      <span class="summary-label">Artifacts</span>
+      <strong>{% if latest_report.orthophoto_path %}Orthophoto ready{% else %}Report only{% endif %}</strong>
+    </div>
   </div>
   {% endif %}
 </section>
+
+<script>
+const filterButtons = document.querySelectorAll('.filter-tab');
+const runRows = document.querySelectorAll('#recent-runs-body tr[data-status]');
+
+function rowMatches(row, filter) {
+  const status = row.dataset.status;
+  if (filter === 'all') return true;
+  if (filter === 'active') return status === 'queued' || status === 'running';
+  return status === filter;
+}
+
+filterButtons.forEach((button) => {
+  button.addEventListener('click', () => {
+    filterButtons.forEach((item) => item.classList.remove('active'));
+    button.classList.add('active');
+    const filter = button.dataset.filter;
+    runRows.forEach((row) => {
+      row.hidden = !rowMatches(row, filter);
+    });
+  });
+});
+</script>
 {% endblock %}
