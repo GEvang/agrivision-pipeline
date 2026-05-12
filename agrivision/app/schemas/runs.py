@@ -6,7 +6,7 @@ from typing import Any, Literal
 
 from pydantic import BaseModel, Field, field_validator
 
-RunStatusValue = Literal['queued', 'running', 'completed', 'failed']
+RunStatusValue = Literal['queued', 'running', 'completed', 'failed', 'cancelled']
 StageStateValue = Literal['pending', 'running', 'completed', 'failed', 'skipped']
 
 

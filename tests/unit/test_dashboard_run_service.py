@@ -48,6 +48,58 @@ def test_run_record_creation_and_status_update(tmp_path: Path) -> None:
     assert updated.outputs['report_html'].endswith('index.html')
 
 
+def test_request_stop_marks_running_run_cancelled(tmp_path: Path, monkeypatch) -> None:
+    storage = StorageService(project_root=tmp_path)
+    upload_dir = storage.upload_dir('upload-seed')
+    (upload_dir / 'rgb').mkdir(parents=True, exist_ok=True)
+    (upload_dir / 'mapir').mkdir(parents=True, exist_ok=True)
+    service = RunService(storage)
+    monkeypatch.setattr(service, '_stop_odm_containers', lambda: None)
+
+    record = service.create_run_record(_request('upload-seed'))
+    service.update_status(record.run_id, status='running')
+
+    stopped = service.request_stop(record.run_id)
+
+    assert stopped.status == 'cancelled'
+    assert stopped.finished_at is not None
+    assert 'Run stopped by operator.' in stopped.errors
+
+
+def test_update_status_uses_storage_run_dir_for_legacy_record_paths(tmp_path: Path) -> None:
+    storage = StorageService(project_root=tmp_path)
+    service = RunService(storage)
+    run_dir = storage.run_dir('legacy-run')
+    legacy_dir = tmp_path / 'not-the-runtime-dir'
+    storage.write_json(run_dir / 'status.json', {
+        'run_id': 'legacy-run',
+        'created_at': '2026-03-29T00:00:00Z',
+        'updated_at': '2026-03-29T00:00:00Z',
+        'started_at': None,
+        'finished_at': None,
+        'dataset_name': 'Dataset 1',
+        'input_path': str(tmp_path / 'data' / 'uploads' / 'upload-seed'),
+        'status': 'running',
+        'progress_percent': 0,
+        'current_stage': 'run_odm_rgb',
+        'stage_message': 'Running ODM',
+        'selected_steps': {'resize_images': False, 'run_odm': True, 'fetch_weather': False, 'generate_report': True},
+        'parameters': {},
+        'outputs': {},
+        'errors': [],
+        'stages': [],
+        'logs_path': str(legacy_dir / 'run.log'),
+        'run_name': None,
+        'field_name': None,
+        'run_dir': str(legacy_dir),
+    })
+
+    service.update_status('legacy-run', status='cancelled')
+
+    assert service.load_run('legacy-run').status == 'cancelled'
+    assert not (legacy_dir / 'status.json').exists()
+
+
 def test_discover_outputs_copies_report_to_per_run_output(tmp_path: Path, monkeypatch) -> None:
     storage = StorageService(project_root=tmp_path)
     service = RunService(storage)

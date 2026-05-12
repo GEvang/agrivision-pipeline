@@ -161,6 +161,15 @@ def get_run_status(run_id: str) -> dict:
     return payload
 
 
+@app.post('/runs/{run_id}/stop')
+def stop_run(run_id: str) -> dict:
+    try:
+        run = run_service.request_stop(run_id)
+    except Exception as exc:
+        raise HTTPException(status_code=404, detail='Run not found.') from exc
+    return run.model_dump(mode='json')
+
+
 @app.post('/uploads/images')
 async def upload_images(
     dataset_name: str = Form(...),
@@ -410,3 +419,9 @@ def create_run_ui(
     )
     created = create_run(request)
     return RedirectResponse(url=created['redirect'], status_code=303)
+
+
+@app.post('/ui/runs/{run_id}/stop')
+def stop_run_ui(run_id: str) -> RedirectResponse:
+    stop_run(run_id)
+    return RedirectResponse(url=f'/runs/{run_id}', status_code=303)

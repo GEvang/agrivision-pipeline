@@ -38,6 +38,7 @@ def make_grid(
     classifier: Classifier,
     grid_rows: int,
     grid_cols: int,
+    min_valid_fraction: float = 0.0,
 ) -> Tuple[List[CellRecord], np.ndarray, np.ndarray]:
     """Split an array into grid cells and classify each cell by its mean value."""
     h, w = arr.shape
@@ -54,8 +55,9 @@ def make_grid(
 
             patch = arr[r0:r1, c0:c1]
             mask = np.isfinite(patch)
+            valid_fraction = float(mask.mean()) if patch.size else 0.0
 
-            if not mask.any():
+            if not mask.any() or valid_fraction < min_valid_fraction:
                 mean_val: Optional[float] = None
             else:
                 mean_val = float(patch[mask].mean())
@@ -73,6 +75,7 @@ def make_grid(
                     "col_label": col_lbl,
                     "cell_id": cell_id,
                     "mean_value": mean_val,
+                    "valid_fraction": valid_fraction,
                     "class": cls,
                     "r0": r0,
                     "r1": r1,

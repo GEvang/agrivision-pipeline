@@ -58,7 +58,9 @@ class StorageService:
 
     def write_json(self, path: Path, payload: JSONDict) -> None:
         path.parent.mkdir(parents=True, exist_ok=True)
-        path.write_text(json.dumps(payload, indent=2, sort_keys=True), encoding='utf-8')
+        temp_path = path.with_name(f'{path.name}.tmp')
+        temp_path.write_text(json.dumps(payload, indent=2, sort_keys=True), encoding='utf-8')
+        temp_path.replace(path)
 
     def read_json(self, path: Path, default: JSONDict | None = None) -> JSONDict:
         if not path.exists():

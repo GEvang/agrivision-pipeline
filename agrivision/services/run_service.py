@@ -3,6 +3,7 @@ from __future__ import annotations
 import contextlib
 import re
 import shutil
+import subprocess
 import threading
 from datetime import datetime, timezone
 from pathlib import Path
@@ -22,11 +23,16 @@ def _timestamp_report_name() -> str:
     return datetime.now().strftime("%Y-%m-%d_%H-%M-%S")
 
 
+class RunCancelled(RuntimeError):
+    pass
+
+
 class RunService:
     def __init__(self, storage: StorageService | None = None) -> None:
         self.storage = storage or StorageService()
         self._lock = threading.Lock()
         self._threads: dict[str, threading.Thread] = {}
+        self._cancel_events: dict[str, threading.Event] = {}
 
     def create_run_record(self, request: RunCreateRequest) -> RunRecord:
         run_id = self.storage.new_run_id()
@@ -130,12 +136,13 @@ class RunService:
     ) -> RunRecord:
         with self._lock:
             record = self.load_run(run_id)
+            run_dir = self.storage.run_dir(run_id)
             if status is not None:
                 record.status = status  # type: ignore[misc]
             record.updated_at = datetime.now(timezone.utc)
             if outputs is not None:
                 record.outputs = outputs
-                self.storage.write_json(Path(record.run_dir) / 'outputs.json', outputs)
+                self.storage.write_json(run_dir / 'outputs.json', outputs)
             if errors is not None:
                 record.errors = errors
             if progress_percent is not None:
@@ -150,7 +157,7 @@ class RunService:
                 record.finished_at = finished_at
             if stages is not None:
                 record.stages = stages
-            self.storage.write_json(Path(record.run_dir) / 'status.json', record.model_dump(mode='json'))
+            self.storage.write_json(run_dir / 'status.json', record.model_dump(mode='json'))
             return record
 
     def _progress_for_stages(self, stages: list[StageStatus]) -> int:
@@ -221,6 +228,7 @@ class RunService:
         record = self.load_run(run_id)
         if run_id in self._threads and self._threads[run_id].is_alive():
             return record
+        self._cancel_events[run_id] = threading.Event()
         record = self.update_status(
             run_id,
             status='running',
@@ -234,9 +242,49 @@ class RunService:
         thread.start()
         return record
 
+    def request_stop(self, run_id: str) -> RunRecord:
+        record = self.load_run(run_id)
+        if record.status not in {'queued', 'running'}:
+            return record
+
+        event = self._cancel_events.setdefault(run_id, threading.Event())
+        event.set()
+        self._stop_odm_containers()
+        stages = [StageStatus.model_validate(stage.model_dump()) for stage in record.stages]
+        for stage in stages:
+            if stage.state == 'running':
+                stage.state = 'failed'
+                stage.message = 'Stopped by operator'
+            elif stage.state == 'pending':
+                stage.state = 'skipped'
+        return self.update_status(
+            run_id,
+            status='cancelled',
+            current_stage=record.current_stage,
+            stage_message='Run stopped by operator.',
+            errors=[*record.errors, 'Run stopped by operator.'],
+            finished_at=datetime.now(timezone.utc),
+            stages=stages,
+        )
+
     def launch_run(self, run_id: str) -> RunRecord:
+        self._cancel_events[run_id] = threading.Event()
         self._execute_run(run_id)
         return self.load_run(run_id)
+
+    def _raise_if_cancelled(self, run_id: str) -> None:
+        if self._cancel_events.get(run_id, threading.Event()).is_set():
+            raise RunCancelled('Run stopped by operator.')
+
+    def _stop_odm_containers(self) -> None:
+        for container_name in ('agrivision-odm-rgb', 'agrivision-odm-mapir'):
+            with contextlib.suppress(FileNotFoundError):
+                subprocess.run(
+                    ['docker', 'stop', container_name],
+                    stdout=subprocess.DEVNULL,
+                    stderr=subprocess.DEVNULL,
+                    check=False,
+                )
 
     def _execute_run(self, run_id: str) -> None:
         record = self.load_run(run_id)
@@ -244,12 +292,15 @@ class RunService:
         self.update_status(run_id, status='running', started_at=started_at, current_stage='stage_inputs', stage_message='Staging inputs', progress_percent=0)
         log_path = Path(record.logs_path)
         try:
+            self._raise_if_cancelled(run_id)
             self.update_stage(run_id, 'stage_inputs', 'running', 'Staging MAPIR and RGB inputs')
             self.stage_inputs_for_run(run_id)
             self.update_stage(run_id, 'stage_inputs', 'completed', 'Inputs staged')
+            self._raise_if_cancelled(run_id)
 
             selected = record.selected_steps
             def callback(stage_key: str, message: str, state: str = 'running') -> None:
+                self._raise_if_cancelled(run_id)
                 self.update_stage(run_id, stage_key, state, message)
 
             with log_path.open('a', encoding='utf-8') as log_handle:
@@ -264,6 +315,7 @@ class RunService:
                         pdm_model_key=record.parameters.get('pdm_model_key'),
                         progress_callback=callback,
                     )
+            self._raise_if_cancelled(run_id)
             outputs = self._discover_outputs(Path(record.run_dir))
             self.update_status(
                 run_id,
@@ -275,7 +327,30 @@ class RunService:
                 stage_message='Pipeline completed',
                 finished_at=datetime.now(timezone.utc),
             )
+        except RunCancelled as exc:
+            record = self.load_run(run_id)
+            self.update_status(
+                run_id,
+                status='cancelled',
+                errors=[*record.errors, str(exc)] if str(exc) not in record.errors else record.errors,
+                finished_at=datetime.now(timezone.utc),
+                stage_message=str(exc),
+            )
+            with log_path.open('a', encoding='utf-8') as log_handle:
+                log_handle.write(f"\n[dashboard] Run cancelled: {exc}\n")
         except Exception as exc:
+            if self._cancel_events.get(run_id, threading.Event()).is_set():
+                record = self.load_run(run_id)
+                self.update_status(
+                    run_id,
+                    status='cancelled',
+                    errors=[*record.errors, 'Run stopped by operator.'],
+                    finished_at=datetime.now(timezone.utc),
+                    stage_message='Run stopped by operator.',
+                )
+                with log_path.open('a', encoding='utf-8') as log_handle:
+                    log_handle.write(f"\n[dashboard] Run cancelled: {exc}\n")
+                return
             outputs = self._discover_outputs(Path(record.run_dir))
             self.update_stage(run_id, self.load_run(run_id).current_stage or 'pipeline', 'failed', str(exc))
             self.update_status(
@@ -288,6 +363,8 @@ class RunService:
             )
             with log_path.open('a', encoding='utf-8') as log_handle:
                 log_handle.write(f"\n[dashboard] Run failed: {exc}\n")
+        finally:
+            self._cancel_events.pop(run_id, None)
 
     def _report_filename_for_run(self, record: RunRecord) -> str:
         base_name = record.run_name.strip() if record.run_name else _timestamp_report_name()
@@ -325,6 +402,8 @@ class RunService:
     def log_text(self, run_id: str) -> str:
         record = self.load_run(run_id)
         log_path = Path(record.logs_path)
+        if not log_path.exists():
+            log_path = self.storage.run_dir(run_id) / 'run.log'
         if not log_path.exists():
             return ''
         return log_path.read_text(encoding='utf-8')[-10000:]

@@ -75,6 +75,10 @@ def test_api_create_run_upload_reports_and_settings(tmp_path: Path, monkeypatch)
     assert detail.status_code == 200
     assert detail.json()['status'] == 'completed'
 
+    stop_completed = client.post(f'/runs/{run_id}/stop')
+    assert stop_completed.status_code == 200
+    assert stop_completed.json()['status'] == 'completed'
+
     reports = client.get('/reports', headers={'accept': 'application/json'})
     assert reports.status_code == 200
     assert reports.json()[0]['run_id'] == run_id

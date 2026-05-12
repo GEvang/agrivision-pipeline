@@ -3,10 +3,11 @@
 from __future__ import annotations
 
 from pathlib import Path
-from typing import Dict, List
+from typing import Dict, List, Tuple
 
 import matplotlib.pyplot as plt
 import numpy as np
+import rasterio
 
 COLOR_BY_CLASS = {
     "poor": "red",
@@ -14,6 +15,65 @@ COLOR_BY_CLASS = {
     "good": "lime",
     "no_data": "gray",
 }
+
+MAX_DISPLAY_SIDE = 2500
+
+
+def _display_shape(shape: Tuple[int, int]) -> Tuple[int, int, float]:
+    height, width = shape
+    scale = min(1.0, MAX_DISPLAY_SIDE / float(max(height, width)))
+    return max(1, int(round(height * scale))), max(1, int(round(width * scale))), scale
+
+
+def _normalize_rgb(bands: np.ndarray) -> np.ndarray:
+    image = bands.astype("float32")
+    if image.shape[0] == 1:
+        image = np.repeat(image, 3, axis=0)
+    image = image[:3]
+
+    out = np.zeros_like(image, dtype="float32")
+    for idx, band in enumerate(image):
+        finite = np.isfinite(band)
+        if not np.any(finite):
+            continue
+
+        low, high = np.nanpercentile(band[finite], [2, 98])
+        if high <= low:
+            high = float(np.nanmax(band[finite]))
+            low = float(np.nanmin(band[finite]))
+        if high <= low:
+            continue
+
+        out[idx] = np.clip((band - low) / (high - low), 0.0, 1.0)
+
+    return np.moveaxis(out, 0, -1)
+
+
+def _read_rgb_background(
+    background_path: Path,
+    shape: Tuple[int, int],
+) -> Tuple[np.ndarray, float] | None:
+    if not background_path.exists():
+        return None
+
+    display_height, display_width, scale = _display_shape(shape)
+    with rasterio.open(background_path) as src:
+        indexes = [idx for idx in (1, 2, 3) if idx <= src.count]
+        if not indexes:
+            return None
+
+        bands = src.read(indexes, out_shape=(len(indexes), display_height, display_width))
+
+    return _normalize_rgb(bands), scale
+
+
+def _index_background(arr: np.ndarray) -> Tuple[np.ndarray, float]:
+    display_height, display_width, scale = _display_shape(arr.shape)
+    row_idx = np.linspace(0, arr.shape[0] - 1, display_height).astype(int)
+    col_idx = np.linspace(0, arr.shape[1] - 1, display_width).astype(int)
+    arr_display = arr[np.ix_(row_idx, col_idx)]
+    arr_norm = (arr_display + 1.0) / 2.0
+    return np.clip(arr_norm, 0.0, 1.0), scale
 
 
 
@@ -23,28 +83,39 @@ def save_grid_overlay(
     row_edges: np.ndarray,
     col_edges: np.ndarray,
     out_path: Path,
+    background_path: Path | None = None,
 ) -> None:
     out_path.parent.mkdir(parents=True, exist_ok=True)
 
-    arr_norm = (arr + 1.0) / 2.0
-    arr_norm = np.clip(arr_norm, 0.0, 1.0)
+    rgb_background = (
+        _read_rgb_background(background_path, arr.shape) if background_path is not None else None
+    )
 
     plt.figure(figsize=(8, 8))
-    plt.imshow(arr_norm, cmap="YlGn", origin="upper")
+    if rgb_background is not None:
+        image, scale = rgb_background
+        plt.imshow(image, origin="upper")
+    else:
+        image, scale = _index_background(arr)
+        plt.imshow(image, cmap="YlGn", origin="upper")
+
     plt.axis("off")
 
     for x in col_edges:
-        plt.axvline(x=x, color="black", linewidth=0.5, alpha=0.5)
+        plt.axvline(x=x * scale, color="black", linewidth=0.5, alpha=0.5)
     for y in row_edges:
-        plt.axhline(y=y, color="black", linewidth=0.5, alpha=0.5)
+        plt.axhline(y=y * scale, color="black", linewidth=0.5, alpha=0.5)
 
     for cell in cells:
+        cls = cell["class"]
+        if cls == "no_data":
+            continue
+
         r0, r1 = cell["r0"], cell["r1"]
         c0, c1 = cell["c0"], cell["c1"]
-        y_center = (r0 + r1) / 2.0
-        x_center = (c0 + c1) / 2.0
+        y_center = ((r0 + r1) / 2.0) * scale
+        x_center = ((c0 + c1) / 2.0) * scale
         label = cell["cell_id"]
-        cls = cell["class"]
         color = COLOR_BY_CLASS.get(cls, "white")
 
         plt.text(

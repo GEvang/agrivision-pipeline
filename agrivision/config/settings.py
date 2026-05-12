@@ -5,6 +5,7 @@ import warnings
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, Mapping
+from urllib.parse import urlsplit, urlunsplit
 
 import yaml
 
@@ -70,6 +71,9 @@ DEFAULT_CONFIG: dict[str, Any] = {
     "ndvi": {
         "poor_max": 0.25,
         "medium_max": 0.4,
+        "threshold_mode": "fixed",
+        "calibration_percentiles": [33, 66],
+        "min_cell_valid_fraction": 0.2,
         "grid_rows": 17,
         "grid_cols": 17,
         "mapir_profile": {
@@ -221,6 +225,9 @@ class PdmSettings:
 class NdviSettings:
     poor_max: float
     medium_max: float
+    threshold_mode: str
+    calibration_percentiles: list[float]
+    min_cell_valid_fraction: float
     grid_rows: int
     grid_cols: int
     mapir_profile: dict[str, Any]
@@ -327,6 +334,26 @@ def _apply_env_overrides(config: dict[str, Any]) -> dict[str, Any]:
     return config
 
 
+def _rewrite_loopback_urls_for_container(config: dict[str, Any]) -> dict[str, Any]:
+    if not os.getenv("APP_CONTAINER_PROJECT_ROOT"):
+        return config
+    if os.getenv("AGRIVISION_REWRITE_LOOPBACK_URLS", "1").strip().lower() in {"0", "false", "no"}:
+        return config
+
+    for section in ("weather", "irrigation", "pdm"):
+        value = config.get(section, {}).get("base_url")
+        if not isinstance(value, str) or not value:
+            continue
+        parsed = urlsplit(value)
+        if parsed.hostname not in {"127.0.0.1", "localhost"}:
+            continue
+        port = f":{parsed.port}" if parsed.port is not None else ""
+        config[section]["base_url"] = urlunsplit(
+            (parsed.scheme, f"host.docker.internal{port}", parsed.path, parsed.query, parsed.fragment)
+        )
+    return config
+
+
 def load_raw_config(config_path: Path | None = None) -> dict[str, Any]:
     """Load raw YAML config as a dict. Missing config files return an empty mapping."""
     resolved = config_path or get_config_path()
@@ -348,6 +375,7 @@ def load_config() -> dict:
     config = _deep_merge(DEFAULT_CONFIG, load_raw_config())
     config = _remove_yaml_secrets(config)
     config = _apply_env_overrides(config)
+    config = _rewrite_loopback_urls_for_container(config)
     return config
 
 
@@ -495,6 +523,24 @@ def get_settings() -> AppSettings:
             medium_max=_as_float(
                 ndvi_cfg.get("medium_max"),
                 _as_float(ndvi_defaults.get("medium_max"), 0.4),
+            ),
+            threshold_mode=_as_str(
+                ndvi_cfg.get("threshold_mode"),
+                _as_str(ndvi_defaults.get("threshold_mode"), "fixed"),
+            ),
+            calibration_percentiles=[
+                _as_float(value, fallback)
+                for value, fallback in zip(
+                    ndvi_cfg.get(
+                        "calibration_percentiles",
+                        ndvi_defaults.get("calibration_percentiles", [33, 66]),
+                    ),
+                    [33, 66],
+                )
+            ],
+            min_cell_valid_fraction=_as_float(
+                ndvi_cfg.get("min_cell_valid_fraction"),
+                _as_float(ndvi_defaults.get("min_cell_valid_fraction"), 0.2),
             ),
             grid_rows=_as_int(ndvi_cfg.get("grid_rows"), _as_int(ndvi_defaults.get("grid_rows"), 17)),
             grid_cols=_as_int(ndvi_cfg.get("grid_cols"), _as_int(ndvi_defaults.get("grid_cols"), 17)),

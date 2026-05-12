@@ -133,6 +133,9 @@ def render_methodology_section(meta: dict) -> str:
     thresholds = meta.get("classification_thresholds", {}) or {}
     source = meta.get("source", {}) or {}
     band_map = index.get("band_mapping", {}) or {}
+    valid_pixels = meta.get("valid_pixels", {}) or {}
+    distribution = meta.get("distribution", {}) or {}
+    quality_flags = meta.get("quality_flags", []) or []
 
     band_map_str = "N/A"
     if isinstance(band_map, dict) and band_map:
@@ -143,8 +146,19 @@ def render_methodology_section(meta: dict) -> str:
     if isinstance(notes, list) and notes:
         notes_html = "<ul>" + "".join(f"<li>{safe_html(n)}</li>" for n in notes) + "</ul>"
 
+    flags_html = ""
+    if isinstance(quality_flags, list) and quality_flags:
+        flags_html = (
+            "<div style='border:1px solid #b45309; background:#fff7ed; color:#7c2d12; "
+            "padding:10px; margin:12px 0;'>"
+            "<strong>Quality warning:</strong><ul>"
+            + "".join(f"<li>{safe_html(flag)}</li>" for flag in quality_flags)
+            + "</ul></div>"
+        )
+
     return f"""
 <h2>Vegetation Index Methodology</h2>
+{flags_html}
 <table border="1" cellpadding="6" cellspacing="0">
   <tr><th align="left">Index type</th><td>{safe_html(index.get("index_name", "Unknown"))}</td></tr>
   <tr><th align="left">Formula</th><td><code>{safe_html(index.get("formula", "N/A"))}</code></td></tr>
@@ -152,6 +166,9 @@ def render_methodology_section(meta: dict) -> str:
   <tr><th align="left">Band mapping</th><td>{band_map_str}</td></tr>
   <tr><th align="left">Configured poor threshold (max)</th><td>{safe_html(thresholds.get("poor_max", "N/A"))}</td></tr>
   <tr><th align="left">Configured medium threshold (max)</th><td>{safe_html(thresholds.get("medium_max", "N/A"))}</td></tr>
+  <tr><th align="left">Valid pixels used</th><td>{safe_html(valid_pixels.get("percent", "N/A"))}%</td></tr>
+  <tr><th align="left">Median index value</th><td>{safe_html(distribution.get("median", "N/A"))}</td></tr>
+  <tr><th align="left">Pixels >= 0.95</th><td>{safe_html(distribution.get("saturated_high_percent", "N/A"))}%</td></tr>
   <tr><th align="left">Generated at (UTC)</th><td>{safe_html(meta.get("generated_at_utc", "N/A"))}</td></tr>
 </table>
 {notes_html}
@@ -175,6 +192,8 @@ def render_grid_metadata_section(grid_meta: dict) -> str:
     mode_expl = "Unknown."
     if mode == "fixed":
         mode_expl = "Fixed thresholds from configuration were applied."
+    elif mode == "percentile_calibrated":
+        mode_expl = "Thresholds were calibrated from this run's valid grid-cell means."
     elif mode == "percentile_fallback":
         mode_expl = (
             "Percentile-based thresholds were applied because fixed thresholds produced "

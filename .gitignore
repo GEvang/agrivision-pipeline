@@ -55,6 +55,10 @@ Thumbs.db
 # -----------------------------
 /OpenAgri-IrrigationManagement/
 /OpenAgri-WeatherService/
+/OpenAgri-PestAndDiseaseManagement/
+
+# Malformed Windows-path runtime folders produced by older container path handling.
+/D*runtime*runs*/
 
 # -----------------------------
 # Local package metadata

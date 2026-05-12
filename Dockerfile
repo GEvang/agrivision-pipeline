@@ -37,7 +37,8 @@ COPY run.py ./run.py
 COPY config.yaml ./config.yaml
 COPY docker-entrypoint.sh ./docker-entrypoint.sh
 
-RUN chmod +x /app/docker-entrypoint.sh \
+RUN sed -i 's/\r$//' /app/docker-entrypoint.sh \
+    && chmod +x /app/docker-entrypoint.sh \
     && mkdir -p /workspace/data /workspace/output
 
 ENTRYPOINT ["/app/docker-entrypoint.sh"]

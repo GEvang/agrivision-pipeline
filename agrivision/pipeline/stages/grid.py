@@ -25,6 +25,7 @@ def run_grid_report() -> None:
     resolved = get_grid_settings()
     ndvi_tif = cast(Path, resolved["ndvi_tif"])
     ndvi_meta_json = cast(Path, resolved["ndvi_meta_json"])
+    ortho_rgb = cast(Path, resolved["ortho_rgb"])
     grid_png = cast(Path, resolved["grid_png"])
     grid_table_csv = cast(Path, resolved["grid_table_csv"])
     grid_categories_csv = cast(Path, resolved["grid_categories_csv"])
@@ -33,6 +34,11 @@ def run_grid_report() -> None:
     grid_cols = cast(int, resolved["grid_cols"])
     poor_max_cfg = cast(float, resolved["poor_max_cfg"])
     medium_max_cfg = cast(float, resolved["medium_max_cfg"])
+    threshold_mode = cast(str, resolved["threshold_mode"]).strip().lower()
+    calibration_percentiles = cast(list[float], resolved["calibration_percentiles"])
+    min_cell_valid_fraction = cast(float, resolved["min_cell_valid_fraction"])
+    if len(calibration_percentiles) < 2:
+        calibration_percentiles = [33, 66]
 
     print("[AgriVision] Grid report")
     print(f"  Raster source: {ndvi_tif}")
@@ -50,11 +56,19 @@ def run_grid_report() -> None:
 
     print("[Grid] First pass classification with configured thresholds:")
     print(f"       POOR_MAX={poor_max_cfg}, MEDIUM_MAX={medium_max_cfg}")
+    print(f"       THRESHOLD_MODE={threshold_mode}")
+    print(f"       MIN_CELL_VALID_FRACTION={min_cell_valid_fraction}")
 
     def abs_classifier(v: Optional[float]) -> str:
         return classify_value_absolute(v, poor_max_cfg, medium_max_cfg)
 
-    cells, row_edges, col_edges = make_grid(arr, abs_classifier, grid_rows, grid_cols)
+    cells, row_edges, col_edges = make_grid(
+        arr,
+        abs_classifier,
+        grid_rows,
+        grid_cols,
+        min_valid_fraction=min_cell_valid_fraction,
+    )
     classes = {c["class"] for c in cells if c["mean_value"] is not None}
     print(f"[Grid] Classes found: {classes}")
 
@@ -62,7 +76,37 @@ def run_grid_report() -> None:
     poor_used = poor_max_cfg
     medium_used = medium_max_cfg
 
-    if len(classes) <= 1 and classes and "no_data" not in classes:
+    if threshold_mode == "percentile":
+        print("[Grid] Applying calibrated percentile thresholds from cell means.")
+        values = np.array(
+            [c["mean_value"] for c in cells if c["mean_value"] is not None],
+            dtype="float32",
+        )
+        if values.size < 2:
+            raise RuntimeError("[Grid] Not enough valid grid cells to calibrate thresholds.")
+
+        p_low = float(calibration_percentiles[0])
+        p_high = float(calibration_percentiles[1])
+        q33, q66 = np.nanpercentile(values, [p_low, p_high])
+        print("[Grid] Calibrated thresholds computed from cell means:")
+        print(f"       {p_low:g} percentile: {q33:.4f}")
+        print(f"       {p_high:g} percentile: {q66:.4f}")
+
+        classification_mode = "percentile_calibrated"
+        poor_used = float(q33)
+        medium_used = float(q66)
+
+        def dyn_classifier(v: Optional[float]) -> str:
+            return classify_value_absolute(v, poor_used, medium_used)
+
+        cells, row_edges, col_edges = make_grid(
+            arr,
+            dyn_classifier,
+            grid_rows,
+            grid_cols,
+            min_valid_fraction=min_cell_valid_fraction,
+        )
+    elif len(classes) <= 1 and classes and "no_data" not in classes:
         print("[Grid] All cells fell into one class; applying percentile fallback thresholds.")
         values = np.array(
             [c["mean_value"] for c in cells if c["mean_value"] is not None],
@@ -80,9 +124,15 @@ def run_grid_report() -> None:
         def dyn_classifier(v: Optional[float]) -> str:
             return classify_value_absolute(v, poor_used, medium_used)
 
-        cells, row_edges, col_edges = make_grid(arr, dyn_classifier, grid_rows, grid_cols)
+        cells, row_edges, col_edges = make_grid(
+            arr,
+            dyn_classifier,
+            grid_rows,
+            grid_cols,
+            min_valid_fraction=min_cell_valid_fraction,
+        )
 
-    save_grid_overlay(arr, cells, row_edges, col_edges, grid_png)
+    save_grid_overlay(arr, cells, row_edges, col_edges, grid_png, background_path=ortho_rgb)
     save_cell_table_csv(cells, grid_table_csv, index_name=index_name, index_mode=index_mode)
     save_categories_csv(
         grid_categories_csv,
@@ -103,6 +153,9 @@ def run_grid_report() -> None:
         grid_cols=grid_cols,
         poor_max_cfg=poor_max_cfg,
         medium_max_cfg=medium_max_cfg,
+        threshold_mode=threshold_mode,
+        calibration_percentiles=[float(calibration_percentiles[0]), float(calibration_percentiles[1])],
+        min_cell_valid_fraction=min_cell_valid_fraction,
     )
 
     print("\n[AgriVision] Grid report complete.")
