@@ -11,43 +11,78 @@
 
   <form class="panel" method="post" action="/ui/runs">
     <h2>2. Configure Run</h2>
+    {% if validation_result %}
+    <div class="validation-panel validation-{{ 'ok' if validation_result.ok else 'error' }}">
+      {% if validation_result.blockers %}
+      <strong>Run cannot start yet</strong>
+      <ul>
+        {% for item in validation_result.blockers %}
+        <li>{{ item }}</li>
+        {% endfor %}
+      </ul>
+      {% else %}
+      <strong>Preflight passed</strong>
+      {% endif %}
+      {% if validation_result.warnings %}
+      <strong>Warnings</strong>
+      <ul>
+        {% for item in validation_result.warnings %}
+        <li>{{ item }}</li>
+        {% endfor %}
+      </ul>
+      {% endif %}
+    </div>
+    {% endif %}
+
     <label>Upload dataset
       <select name="upload_run_id" required>
         {% for upload in uploads %}
         <option value="{{ upload.run_id }}" {% if upload.selected %}selected{% endif %}>
-          {{ upload.dataset_name }} · {{ upload.run_id }} · MAPIR {{ upload.mapir_count }} / RGB {{ upload.rgb_count }}
+          {{ upload.dataset_name }} - {{ upload.run_id }} - MAPIR {{ upload.mapir_count }} / RGB {{ upload.rgb_count }}
         </option>
         {% endfor %}
       </select>
     </label>
-    <label>Run name (optional)<input type="text" name="run_name" /></label>
+    <label>Run name (optional)<input type="text" name="run_name" value="{{ form_values.get('run_name', '') }}" /></label>
+
+    <fieldset>
+      <legend>Run mode</legend>
+      <label><input type="radio" name="run_mode" value="full_odm" {% if form_values.get('run_mode', 'full_odm') != 'existing_orthos' %}checked{% endif %} /> Full ODM run</label>
+      <label><input type="radio" name="run_mode" value="existing_orthos" {% if form_values.get('run_mode') == 'existing_orthos' %}checked{% endif %} /> Use existing orthophotos</label>
+    </fieldset>
+
     <fieldset>
       <legend>Processing steps</legend>
-      <label><input type="checkbox" name="resize_images" value="true" /> Resize images</label>
-      <label><input type="checkbox" name="run_odm" value="true" checked /> Run ODM</label>
-      <label><input type="checkbox" name="fetch_weather" value="true" checked /> Fetch weather</label>
-      <label><input type="checkbox" name="run_pdm" value="true" {% if pdm_enabled_by_default %}checked{% endif %} /> Run Pest &amp; Disease</label>
-      <label><input type="checkbox" name="generate_report" value="true" checked /> Generate report</label>
+      <label><input type="checkbox" name="resize_images" value="true" {% if form_values.get('resize_images') %}checked{% endif %} /> Resize images</label>
+      <label><input id="run-odm-checkbox" type="checkbox" name="run_odm" value="true" {% if form_values.get('run_odm', True) %}checked{% endif %} /> Run ODM</label>
+      <label><input type="checkbox" name="fetch_weather" value="true" {% if form_values.get('fetch_weather', True) %}checked{% endif %} /> Fetch weather</label>
+      <label><input type="checkbox" name="run_pdm" value="true" {% if form_values.get('run_pdm', pdm_enabled_by_default) %}checked{% endif %} /> Run Pest &amp; Disease</label>
+      <label><input type="checkbox" name="generate_report" value="true" {% if form_values.get('generate_report', True) %}checked{% endif %} /> Generate report</label>
     </fieldset>
+
     <fieldset>
       <legend>Pest &amp; Disease</legend>
       <label>Crop
         <select name="pdm_crop" id="pdm-crop-select">
-          <option value="grapevine" {% if pdm_default_crop == 'grapevine' %}selected{% endif %}>grapevine</option>
-          <option value="olive" {% if pdm_default_crop == 'olive' %}selected{% endif %}>olive</option>
+          <option value="grapevine" {% if form_values.get('pdm_crop', pdm_default_crop) == 'grapevine' %}selected{% endif %}>grapevine</option>
+          <option value="olive" {% if form_values.get('pdm_crop', pdm_default_crop) == 'olive' %}selected{% endif %}>olive</option>
         </select>
       </label>
       <label>Predefined model
         <select name="pdm_model_key" id="pdm-model-select">
           {% for item in pdm_model_catalog %}
-          <option value="{{ item.key }}" data-crop="{{ item.crop }}" {% if item.key == pdm_default_model_key %}selected{% endif %}>{{ item.crop }} · {{ item.label }}</option>
+          <option value="{{ item.key }}" data-crop="{{ item.crop }}" {% if item.key == form_values.get('pdm_model_key', pdm_default_model_key) %}selected{% endif %}>{{ item.crop }} - {{ item.label }}</option>
           {% endfor %}
         </select>
       </label>
     </fieldset>
+
+    <div class="preflight-results" id="preflight-results" aria-live="polite"></div>
+    <button class="secondary-button" type="button" id="preflight-button">Check run</button>
     <button type="submit">Launch run</button>
   </form>
 </section>
+
 <script>
 (function() {
   const cropSelect = document.getElementById('pdm-crop-select');
@@ -68,6 +103,79 @@
   }
   cropSelect.addEventListener('change', filterModels);
   filterModels();
+})();
+
+(function() {
+  const form = document.querySelector('form[action="/ui/runs"]');
+  const preflightButton = document.getElementById('preflight-button');
+  const results = document.getElementById('preflight-results');
+  const odmCheckbox = document.getElementById('run-odm-checkbox');
+  if (!form || !preflightButton || !results || !odmCheckbox) return;
+
+  function syncRunMode() {
+    const mode = new FormData(form).get('run_mode');
+    const existing = mode === 'existing_orthos';
+    odmCheckbox.checked = !existing;
+    odmCheckbox.disabled = existing;
+  }
+
+  function payloadFromForm() {
+    const data = new FormData(form);
+    const runMode = data.get('run_mode');
+    return {
+      run_name: data.get('run_name') || null,
+      dataset_name: form.querySelector('select[name="upload_run_id"] option:checked')?.textContent?.split('-')[0]?.trim() || 'Dataset',
+      upload_run_id: data.get('upload_run_id'),
+      selected_steps: {
+        resize_images: data.has('resize_images'),
+        run_odm: runMode !== 'existing_orthos' && data.has('run_odm'),
+        fetch_weather: data.has('fetch_weather'),
+        run_pdm: data.has('run_pdm'),
+        generate_report: data.has('generate_report')
+      },
+      parameters: {
+        pdm_crop: data.get('pdm_crop'),
+        pdm_model_key: data.get('pdm_model_key')
+      }
+    };
+  }
+
+  function renderPreflight(payload) {
+    const rows = (payload.checks || []).map((item) => (
+      `<li class="preflight-${item.state}"><strong>${item.name}</strong><span>${item.detail}</span></li>`
+    )).join('');
+    const blockers = (payload.blockers || []).map((item) => `<li>${item}</li>`).join('');
+    const warnings = (payload.warnings || []).map((item) => `<li>${item}</li>`).join('');
+    results.innerHTML = `
+      <div class="validation-panel validation-${payload.ok ? 'ok' : 'error'}">
+        <strong>${payload.ok ? 'Preflight passed' : 'Run cannot start yet'}</strong>
+        ${blockers ? `<ul>${blockers}</ul>` : ''}
+        ${warnings ? `<strong>Warnings</strong><ul>${warnings}</ul>` : ''}
+        <ul class="preflight-checks">${rows}</ul>
+      </div>
+    `;
+  }
+
+  async function checkRun() {
+    syncRunMode();
+    preflightButton.disabled = true;
+    preflightButton.textContent = 'Checking...';
+    try {
+      const response = await fetch('/runs/validate', {
+        method: 'POST',
+        headers: {'content-type': 'application/json', 'accept': 'application/json'},
+        body: JSON.stringify(payloadFromForm())
+      });
+      if (response.ok) renderPreflight(await response.json());
+    } finally {
+      preflightButton.disabled = false;
+      preflightButton.textContent = 'Check run';
+    }
+  }
+
+  form.querySelectorAll('input[name="run_mode"]').forEach((item) => item.addEventListener('change', syncRunMode));
+  preflightButton.addEventListener('click', checkRun);
+  syncRunMode();
 })();
 </script>
 {% endblock %}

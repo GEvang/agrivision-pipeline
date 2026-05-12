@@ -21,6 +21,7 @@ from agrivision.config import get_project_root, load_config
 from agrivision.config.settings import load_local_env
 from agrivision.services.report_service import ReportService
 from agrivision.services.run_service import RunService
+from agrivision.services.preflight_service import PreflightService
 from agrivision.services.settings_service import SettingsService
 from agrivision.services.storage_service import StorageService
 from agrivision.services.pdm.catalog import PDM_MODEL_CATALOG, get_models_for_crop
@@ -32,6 +33,7 @@ app.mount('/static', StaticFiles(directory=str(Path(__file__).parent / 'web' / '
 storage_service = StorageService()
 run_service = RunService(storage_service)
 report_service = ReportService(run_service=run_service)
+preflight_service = PreflightService(storage_service)
 settings_service = SettingsService()
 TEMPLATES = Jinja2Templates(directory=str(Path(__file__).parent / 'web' / 'templates'))
 
@@ -168,6 +170,16 @@ def dashboard(request: Request) -> HTMLResponse:
 
 @app.get('/runs/new', response_class=HTMLResponse)
 def new_run_page(request: Request, upload_run_id: str | None = None) -> HTMLResponse:
+    return _render_new_run_page(request, upload_run_id=upload_run_id)
+
+
+def _render_new_run_page(
+    request: Request,
+    *,
+    upload_run_id: str | None = None,
+    validation_result: dict[str, object] | None = None,
+    form_values: dict[str, object] | None = None,
+) -> HTMLResponse:
     uploads: list[dict[str, object]] = []
     for path in sorted(storage_service.layout.uploads_root.iterdir(), reverse=True):
         if not path.is_dir():
@@ -193,6 +205,8 @@ def new_run_page(request: Request, upload_run_id: str | None = None) -> HTMLResp
         {
             'uploads': uploads,
             'selected_upload_run_id': upload_run_id,
+            'validation_result': validation_result,
+            'form_values': form_values or {},
             'pdm_model_catalog': model_catalog,
             'pdm_models_by_crop': models_by_crop,
             'pdm_default_crop': settings_view['non_secret'].get('pdm_default_crop', 'grapevine'),
@@ -231,6 +245,11 @@ def create_run(request: RunCreateRequest) -> dict[str, str]:
     record = run_service.create_run_record(request)
     result = run_service.start_run(record.run_id)
     return {'run_id': result.run_id, 'status': result.status, 'redirect': f'/runs/{result.run_id}'}
+
+
+@app.post('/runs/validate')
+def validate_run(request: RunCreateRequest) -> dict[str, object]:
+    return preflight_service.validate(request)
 
 
 @app.get('/runs/{run_id}/status')
@@ -467,8 +486,10 @@ async def upload_images_ui(
 
 @app.post('/ui/runs')
 def create_run_ui(
+    request: Request,
     upload_run_id: str = Form(...),
     run_name: str = Form(''),
+    run_mode: str = Form('full_odm'),
     resize_images: bool = Form(False),
     run_odm: bool = Form(False),
     fetch_weather: bool = Form(False),
@@ -476,18 +497,19 @@ def create_run_ui(
     pdm_crop: str = Form('grapevine'),
     pdm_model_key: str = Form('grapevine_powdery_mildew_risk_v1'),
     generate_report: bool = Form(False),
-) -> RedirectResponse:
+):
     manifest = storage_service.read_json(storage_service.upload_dir(upload_run_id) / 'manifest.json')
     dataset_name = str(manifest.get('dataset_name') or upload_run_id)
     normalized_run_name = run_name.strip() if run_name.strip() else None
-    request = RunCreateRequest.model_validate(
+    normalized_run_odm = run_mode != 'existing_orthos' and run_odm
+    run_request = RunCreateRequest.model_validate(
         {
             'run_name': normalized_run_name,
             'dataset_name': dataset_name,
             'upload_run_id': upload_run_id,
             'selected_steps': {
                 'resize_images': resize_images,
-                'run_odm': run_odm,
+                'run_odm': normalized_run_odm,
                 'fetch_weather': fetch_weather,
                 'run_pdm': run_pdm,
                 'generate_report': generate_report,
@@ -498,7 +520,25 @@ def create_run_ui(
             },
         }
     )
-    created = create_run(request)
+    validation = preflight_service.validate(run_request)
+    if not validation.get('ok'):
+        return _render_new_run_page(
+            request,
+            upload_run_id=upload_run_id,
+            validation_result=validation,
+            form_values={
+                'run_name': run_name,
+                'run_mode': run_mode,
+                'resize_images': resize_images,
+                'run_odm': normalized_run_odm,
+                'fetch_weather': fetch_weather,
+                'run_pdm': run_pdm,
+                'pdm_crop': pdm_crop,
+                'pdm_model_key': pdm_model_key,
+                'generate_report': generate_report,
+            },
+        )
+    created = create_run(run_request)
     return RedirectResponse(url=created['redirect'], status_code=303)
 
 
