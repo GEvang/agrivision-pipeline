@@ -52,5 +52,8 @@ def test_dashboard_pages_render(tmp_path: Path, monkeypatch) -> None:
     client = TestClient(api.app)
     assert client.get('/', headers={'accept': 'text/html'}).status_code == 200
     assert client.get('/runs/new', headers={'accept': 'text/html'}).status_code == 200
+    runs_page = client.get('/runs', headers={'accept': 'text/html'})
+    assert runs_page.status_code == 200
+    assert 'Run History' in runs_page.text
     assert client.get('/runs/run-1', headers={'accept': 'text/html'}).status_code == 200
     assert client.get('/settings', headers={'accept': 'text/html'}).status_code == 200

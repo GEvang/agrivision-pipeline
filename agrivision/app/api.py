@@ -216,9 +216,50 @@ def _render_new_run_page(
     )
 
 
+def _run_mode_label(run) -> str:
+    return 'Full ODM' if run.selected_steps.run_odm else 'Existing orthos'
+
+
+def _filter_runs(runs, status: str | None = None, query: str | None = None, run_mode: str | None = None):
+    filtered = list(runs)
+    if status and status != 'all':
+        filtered = [run for run in filtered if run.status == status]
+    if run_mode and run_mode != 'all':
+        wants_odm = run_mode == 'full_odm'
+        filtered = [run for run in filtered if run.selected_steps.run_odm is wants_odm]
+    if query:
+        normalized = query.strip().lower()
+        if normalized:
+            filtered = [
+                run
+                for run in filtered
+                if normalized in run.run_id.lower()
+                or normalized in (run.run_name or '').lower()
+                or normalized in run.dataset_name.lower()
+                or normalized in (run.stage_message or '').lower()
+            ]
+    return filtered
+
+
 @app.get('/runs')
-def list_runs() -> list[dict]:
-    return [item.model_dump(mode='json') for item in run_service.list_runs()]
+def list_runs(request: Request, status: str = 'all', q: str = '', run_mode: str = 'all'):
+    runs = run_service.list_runs()
+    filtered_runs = _filter_runs(runs, status=status, query=q, run_mode=run_mode)
+    if 'text/html' in request.headers.get('accept', ''):
+        return TEMPLATES.TemplateResponse(
+            request,
+            'runs.html',
+            {
+                'runs': filtered_runs,
+                'total_runs': len(runs),
+                'filtered_count': len(filtered_runs),
+                'status_filter': status,
+                'query': q,
+                'run_mode_filter': run_mode,
+                'run_mode_label': _run_mode_label,
+            },
+        )
+    return [item.model_dump(mode='json') for item in filtered_runs]
 
 
 @app.get('/runs/{run_id}')
@@ -546,3 +587,31 @@ def create_run_ui(
 def stop_run_ui(run_id: str) -> RedirectResponse:
     stop_run(run_id)
     return RedirectResponse(url=f'/runs/{run_id}', status_code=303)
+
+
+@app.post('/ui/runs/{run_id}/delete')
+def delete_run_ui(run_id: str) -> RedirectResponse:
+    try:
+        run_service.delete_run(run_id)
+    except ValueError as exc:
+        raise HTTPException(status_code=409, detail=str(exc)) from exc
+    except FileNotFoundError as exc:
+        raise HTTPException(status_code=404, detail='Run not found.') from exc
+    return RedirectResponse(url='/runs', status_code=303)
+
+
+@app.post('/ui/runs/{run_id}/archive')
+def archive_run_ui(run_id: str) -> RedirectResponse:
+    try:
+        run_service.archive_run(run_id)
+    except ValueError as exc:
+        raise HTTPException(status_code=409, detail=str(exc)) from exc
+    except FileNotFoundError as exc:
+        raise HTTPException(status_code=404, detail='Run not found.') from exc
+    return RedirectResponse(url='/runs', status_code=303)
+
+
+@app.post('/ui/runs/clear-stuck')
+def clear_stuck_runs_ui() -> RedirectResponse:
+    run_service.clear_stuck_active_runs()
+    return RedirectResponse(url='/runs?status=cancelled', status_code=303)

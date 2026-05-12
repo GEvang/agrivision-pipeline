@@ -1,0 +1,87 @@
+{% extends 'base.html' %}
+{% block content %}
+<section class="dashboard-hero">
+  <div>
+    <h2>Run History</h2>
+    <p class="muted">{{ filtered_count }} shown from {{ total_runs }} total runs</p>
+  </div>
+  <div class="button-row">
+    <a class="button-link" href="/runs/new">New run</a>
+    <form method="post" action="/ui/runs/clear-stuck" onsubmit="return confirm('Clear queued/running runs that are not attached to a live dashboard worker?');">
+      <button class="button-link secondary" type="submit">Clear stuck</button>
+    </form>
+  </div>
+</section>
+
+<section class="panel">
+  <form class="history-filters" method="get" action="/runs">
+    <label>Status
+      <select name="status">
+        {% for item in ['all', 'queued', 'running', 'completed', 'failed', 'cancelled'] %}
+        <option value="{{ item }}" {% if status_filter == item %}selected{% endif %}>{{ item }}</option>
+        {% endfor %}
+      </select>
+    </label>
+    <label>Run mode
+      <select name="run_mode">
+        <option value="all" {% if run_mode_filter == 'all' %}selected{% endif %}>all</option>
+        <option value="full_odm" {% if run_mode_filter == 'full_odm' %}selected{% endif %}>Full ODM</option>
+        <option value="existing_orthos" {% if run_mode_filter == 'existing_orthos' %}selected{% endif %}>Existing orthos</option>
+      </select>
+    </label>
+    <label>Search
+      <input type="search" name="q" value="{{ query }}" placeholder="Run, dataset, message" />
+    </label>
+    <button type="submit">Apply filters</button>
+  </form>
+</section>
+
+<section class="panel">
+  <div class="table-wrap">
+    <table>
+      <thead>
+        <tr>
+          <th>Created</th>
+          <th>Name</th>
+          <th>Dataset</th>
+          <th>Status</th>
+          <th>Mode</th>
+          <th>Duration</th>
+          <th>Last message</th>
+          <th>Actions</th>
+        </tr>
+      </thead>
+      <tbody>
+      {% for run in runs %}
+        <tr>
+          <td>{{ run.created_at | system_datetime }}</td>
+          <td>{{ run.run_name or '-' }}</td>
+          <td>{{ run.dataset_name }}</td>
+          <td><span class="status-badge status-{{ run.status }}">{{ run.status }}</span></td>
+          <td>{{ run_mode_label(run) }}</td>
+          <td>{{ run.started_at | duration(run.finished_at) }}</td>
+          <td class="message-cell">{{ run.errors[-1] if run.errors else run.stage_message }}</td>
+          <td class="table-actions">
+            <a href="/runs/{{ run.run_id }}">View</a>
+            {% if run.status in ['queued', 'running'] %}
+            <form method="post" action="/ui/runs/{{ run.run_id }}/stop" onsubmit="return confirm('Stop this run?');">
+              <button class="link-button danger-text" type="submit">Stop</button>
+            </form>
+            {% else %}
+            <form method="post" action="/ui/runs/{{ run.run_id }}/archive" onsubmit="return confirm('Archive this run record?');">
+              <button class="link-button" type="submit">Archive</button>
+            </form>
+            <form method="post" action="/ui/runs/{{ run.run_id }}/delete" onsubmit="return confirm('Delete this run record from runtime/runs only?');">
+              <button class="link-button danger-text" type="submit">Delete</button>
+            </form>
+            {% endif %}
+          </td>
+        </tr>
+      {% else %}
+        <tr><td colspan="8">No runs match these filters.</td></tr>
+      {% endfor %}
+      </tbody>
+    </table>
+  </div>
+</section>
+{% endblock %}

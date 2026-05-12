@@ -68,6 +68,58 @@ def test_request_stop_marks_running_run_cancelled(tmp_path: Path, monkeypatch) -
     assert stopped.errors.count('Run stopped by operator.') == 1
 
 
+def test_delete_run_removes_only_runtime_run_dir(tmp_path: Path) -> None:
+    storage = StorageService(project_root=tmp_path)
+    upload_dir = storage.upload_dir('upload-seed')
+    (upload_dir / 'rgb').mkdir(parents=True, exist_ok=True)
+    (upload_dir / 'mapir').mkdir(parents=True, exist_ok=True)
+    output_dir = tmp_path / 'output' / 'runs' / 'kept'
+    output_dir.mkdir(parents=True)
+    (output_dir / 'report.html').write_text('keep', encoding='utf-8')
+    service = RunService(storage)
+    record = service.create_run_record(_request('upload-seed'))
+    service.update_status(record.run_id, status='completed')
+
+    service.delete_run(record.run_id)
+
+    assert not (storage.layout.runs_root / record.run_id).exists()
+    assert upload_dir.exists()
+    assert (output_dir / 'report.html').exists()
+
+
+def test_archive_run_moves_runtime_record(tmp_path: Path) -> None:
+    storage = StorageService(project_root=tmp_path)
+    upload_dir = storage.upload_dir('upload-seed')
+    (upload_dir / 'rgb').mkdir(parents=True, exist_ok=True)
+    (upload_dir / 'mapir').mkdir(parents=True, exist_ok=True)
+    service = RunService(storage)
+    record = service.create_run_record(_request('upload-seed'))
+    service.update_status(record.run_id, status='failed')
+
+    archived = service.archive_run(record.run_id)
+
+    assert archived == storage.layout.runtime_root / 'archived_runs' / record.run_id
+    assert archived.exists()
+    assert not (storage.layout.runs_root / record.run_id).exists()
+
+
+def test_clear_stuck_active_runs_cancels_runs_without_live_thread(tmp_path: Path) -> None:
+    storage = StorageService(project_root=tmp_path)
+    upload_dir = storage.upload_dir('upload-seed')
+    (upload_dir / 'rgb').mkdir(parents=True, exist_ok=True)
+    (upload_dir / 'mapir').mkdir(parents=True, exist_ok=True)
+    service = RunService(storage)
+    record = service.create_run_record(_request('upload-seed'))
+    service.update_status(record.run_id, status='running')
+
+    cleared = service.clear_stuck_active_runs()
+
+    assert [item.run_id for item in cleared] == [record.run_id]
+    loaded = service.load_run(record.run_id)
+    assert loaded.status == 'cancelled'
+    assert 'Cleared stale active run.' in loaded.errors
+
+
 def test_update_status_uses_storage_run_dir_for_legacy_record_paths(tmp_path: Path) -> None:
     storage = StorageService(project_root=tmp_path)
     service = RunService(storage)

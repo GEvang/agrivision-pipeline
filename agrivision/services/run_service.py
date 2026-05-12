@@ -120,6 +120,54 @@ class RunService:
         runs.sort(key=lambda item: item.created_at, reverse=True)
         return runs
 
+    def _existing_run_dir(self, run_id: str) -> Path:
+        candidate = (self.storage.layout.runs_root / run_id).resolve()
+        runs_root = self.storage.layout.runs_root.resolve()
+        if runs_root not in candidate.parents or not (candidate / 'status.json').exists():
+            raise FileNotFoundError(f'Run not found: {run_id}')
+        return candidate
+
+    def delete_run(self, run_id: str) -> None:
+        run_dir = self._existing_run_dir(run_id)
+        record = RunRecord.model_validate(self.storage.read_json(run_dir / 'status.json'))
+        if record.status in {'queued', 'running'}:
+            raise ValueError('Active runs must be stopped before deletion.')
+        shutil.rmtree(run_dir)
+
+    def archive_run(self, run_id: str) -> Path:
+        run_dir = self._existing_run_dir(run_id)
+        record = RunRecord.model_validate(self.storage.read_json(run_dir / 'status.json'))
+        if record.status in {'queued', 'running'}:
+            raise ValueError('Active runs must be stopped before archiving.')
+        archive_root = self.storage.layout.runtime_root / 'archived_runs'
+        archive_root.mkdir(parents=True, exist_ok=True)
+        destination = archive_root / run_id
+        if destination.exists():
+            shutil.rmtree(destination)
+        shutil.move(str(run_dir), str(destination))
+        return destination
+
+    def clear_stuck_active_runs(self) -> list[RunRecord]:
+        cleared: list[RunRecord] = []
+        for record in self.list_runs():
+            if record.status not in {'queued', 'running'}:
+                continue
+            thread = self._threads.get(record.run_id)
+            if thread is not None and thread.is_alive():
+                continue
+            cleared.append(
+                self.update_status(
+                    record.run_id,
+                    status='cancelled',
+                    current_stage='cancelled',
+                    stage_message='Cleared stale active run.',
+                    errors=self._append_unique_error(record.errors, 'Cleared stale active run.'),
+                    finished_at=datetime.now(timezone.utc),
+                    stages=self._cancel_stages(record.stages),
+                )
+            )
+        return cleared
+
     def update_status(
         self,
         run_id: str,
