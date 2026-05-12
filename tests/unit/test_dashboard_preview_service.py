@@ -45,3 +45,26 @@ def test_preview_service_creates_geotiff_preview_with_rasterio(tmp_path: Path) -
 
     assert generated == preview
     assert preview.exists()
+
+
+def test_preview_service_normalizes_masked_uint8_raster() -> None:
+    data = np.ma.array(
+        np.array(
+            [
+                [[0, 50], [100, 150]],
+                [[10, 60], [110, 160]],
+                [[20, 70], [120, 170]],
+            ],
+            dtype='uint8',
+        ),
+        mask=[
+            [[False, False], [False, True]],
+            [[False, False], [False, True]],
+            [[False, False], [False, True]],
+        ],
+    )
+
+    image = PreviewService()._normalize_raster(data)
+
+    assert image.shape == (2, 2, 3)
+    assert image.dtype == np.uint8

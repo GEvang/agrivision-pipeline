@@ -49,7 +49,7 @@ class PreviewService:
         return max(1, int(round(width * scale))), max(1, int(round(height * scale)))
 
     def _normalize_raster(self, data: np.ma.MaskedArray) -> np.ndarray:
-        arr = np.ma.filled(data, np.nan).astype('float32')
+        arr = np.ma.filled(data.astype('float32'), np.nan)
         if arr.shape[0] == 1:
             arr = np.repeat(arr, 3, axis=0)
         arr = arr[:3]
@@ -65,6 +65,7 @@ class PreviewService:
                 high = float(np.nanmax(band[valid]))
             if high <= low:
                 continue
-            out[idx] = np.clip((band - low) / (high - low) * 255.0, 0, 255).astype('uint8')
+            scaled = np.clip((band - low) / (high - low) * 255.0, 0, 255)
+            out[idx] = np.nan_to_num(scaled, nan=0.0).astype('uint8')
 
         return np.moveaxis(out, 0, -1)
