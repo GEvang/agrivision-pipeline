@@ -4,7 +4,8 @@ import subprocess
 import pytest
 
 from agrivision.services import runtime
-from agrivision.services.runtime import ServiceBootstrapError, update_env_file
+from agrivision.services.irrigation.runtime import _apply_compatibility_patches
+from agrivision.services.runtime import ServiceBootstrapError, base_env_values, update_env_file
 
 
 def test_update_env_file_reports_changed_keys(tmp_path: Path) -> None:
@@ -99,3 +100,21 @@ def test_run_compose_command_reports_missing_compose(monkeypatch, tmp_path: Path
 
     with pytest.raises(ServiceBootstrapError, match="Docker Compose was not found"):
         runtime._run_compose_command(compose_file, tmp_path, ["up", "-d"])
+
+
+def test_base_env_values_use_openagri_registry_by_default(monkeypatch) -> None:
+    monkeypatch.delenv("DOCKER_REGISTRY", raising=False)
+
+    assert base_env_values()["DOCKER_REGISTRY"] == "openagri-eu"
+
+
+def test_irrigation_compatibility_patch_adds_missing_imports(tmp_path: Path) -> None:
+    main_path = tmp_path / "app" / "main.py"
+    main_path.parent.mkdir()
+    main_path.write_text("from fastapi import FastAPI\nlogger = logging.getLogger(__name__)\n", encoding="utf-8")
+
+    _apply_compatibility_patches(tmp_path)
+
+    text = main_path.read_text(encoding="utf-8")
+    assert "import logging\n" in text
+    assert "import time\n" in text

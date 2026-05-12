@@ -7,6 +7,7 @@ from agrivision.services.runtime import (
     ServiceBootstrapError,
     ServiceRuntimeState,
     base_env_values,
+    clone_repo_if_missing,
     project_service_dir,
     reconcile_service_runtime,
     summarize_env_changes,
@@ -18,6 +19,23 @@ IRRIGATION_REPO_URL = "https://github.com/agstack/OpenAgri-IrrigationManagement.
 def _service_dir() -> Path:
     settings = get_settings()
     return project_service_dir(settings.irrigation.service_dir or "OpenAgri-IrrigationManagement")
+
+
+def _apply_compatibility_patches(repo_dir: Path) -> None:
+    main_path = repo_dir / "app" / "main.py"
+    if not main_path.exists():
+        return
+
+    text = main_path.read_text(encoding="utf-8")
+    imports: list[str] = []
+    if "import logging" not in text:
+        imports.append("import logging")
+    if "import time" not in text:
+        imports.append("import time")
+    if not imports:
+        return
+
+    main_path.write_text("\n".join(imports) + "\n" + text, encoding="utf-8")
 
 
 def _env_values() -> dict[str, str]:
@@ -49,18 +67,22 @@ def _env_values() -> dict[str, str]:
 
 def ensure_repo_and_env(timeout_seconds: int = 90) -> ServiceRuntimeState:
     settings = get_settings()
+    repo_dir = _service_dir()
+    clone_repo_if_missing(repo_dir, IRRIGATION_REPO_URL)
+    _apply_compatibility_patches(repo_dir)
     health_urls = [
         f"{settings.irrigation.base_url}/openapi.json",
         f"{settings.irrigation.base_url}/docs",
         f"{settings.irrigation.base_url}/api/v1/openapi.json",
     ]
     return reconcile_service_runtime(
-        repo_dir=_service_dir(),
+        repo_dir=repo_dir,
         repo_url=IRRIGATION_REPO_URL,
         env_values=_env_values(),
         compose_candidates=None,
         readiness_urls=health_urls,
         timeout_seconds=timeout_seconds,
+        build_on_recreate=True,
     )
 
 

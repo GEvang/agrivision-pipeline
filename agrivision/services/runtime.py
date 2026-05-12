@@ -283,6 +283,6 @@ def reconcile_service_runtime(
 
 def base_env_values() -> dict[str, str]:
     return {
-        "DOCKER_REGISTRY": os.getenv("DOCKER_REGISTRY", "ghcr.io"),
+        "DOCKER_REGISTRY": os.getenv("DOCKER_REGISTRY", "openagri-eu"),
         "TAG": os.getenv("TAG", "latest"),
     }
