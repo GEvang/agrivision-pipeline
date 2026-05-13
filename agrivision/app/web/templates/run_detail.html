@@ -81,6 +81,7 @@
     {% if report.report_path %}<li><a href="/artifacts/{{ run.run_id }}/report">Report</a></li>{% endif %}
     {% if report.orthophoto_path %}<li><a href="/artifacts/{{ run.run_id }}/orthophoto">Orthophoto</a></li>{% endif %}
     <li><a href="/artifacts/{{ run.run_id }}/log">Run log</a></li>
+    <li><a href="/runs/{{ run.run_id }}/package">Download run package</a></li>
   </ul>
 
   <h3>Logs</h3>

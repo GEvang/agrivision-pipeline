@@ -63,6 +63,9 @@
           <td class="message-cell">{{ run.errors[-1] if run.errors else run.stage_message }}</td>
           <td class="table-actions">
             <a href="/runs/{{ run.run_id }}">View</a>
+            {% if run.status in ['completed', 'failed', 'cancelled'] %}
+            <a href="/runs/{{ run.run_id }}/package">Package</a>
+            {% endif %}
             {% if run.status in ['queued', 'running'] %}
             <form method="post" action="/ui/runs/{{ run.run_id }}/stop" onsubmit="return confirm('Stop this run?');">
               <button class="link-button danger-text" type="submit">Stop</button>

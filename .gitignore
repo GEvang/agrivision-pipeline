@@ -49,6 +49,7 @@ Thumbs.db
 /data/
 /output/
 /runtime/runs/
+/runtime/exports/
 
 # -----------------------------
 # Cloned external service repos

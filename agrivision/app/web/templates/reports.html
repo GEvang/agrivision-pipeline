@@ -12,7 +12,10 @@
         <td><a href="/runs/{{ report.run_id }}">{{ report.dataset_name }}</a></td>
         <td>{{ report.status }}</td>
         <td>{% if report.quality %}<span class="quality-state quality-{{ report.quality.state }}">{{ report.quality.state }}</span>{% else %}-{% endif %}</td>
-        <td>{% if report.report_path %}<a href="/reports/{{ report.run_id }}/view">View report</a>{% else %}-{% endif %}</td>
+        <td>
+          {% if report.report_path %}<a href="/reports/{{ report.run_id }}/view">View report</a>{% else %}-{% endif %}
+          <a href="/runs/{{ report.run_id }}/package">Package</a>
+        </td>
       </tr>
       {% else %}
       <tr><td colspan="6">No reports available.</td></tr>

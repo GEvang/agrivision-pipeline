@@ -22,6 +22,7 @@ from agrivision.config.settings import load_local_env
 from agrivision.services.report_service import ReportService
 from agrivision.services.run_service import RunService
 from agrivision.services.preflight_service import PreflightService
+from agrivision.services.export_service import RunExportService
 from agrivision.services.service_control import ensure_service, restart_service, service_statuses
 from agrivision.services.settings_service import SettingsService
 from agrivision.services.storage_service import StorageService
@@ -35,6 +36,7 @@ storage_service = StorageService()
 run_service = RunService(storage_service)
 report_service = ReportService(run_service=run_service)
 preflight_service = PreflightService(storage_service)
+export_service = RunExportService(run_service=run_service, storage=storage_service)
 settings_service = SettingsService()
 TEMPLATES = Jinja2Templates(directory=str(Path(__file__).parent / 'web' / 'templates'))
 
@@ -550,6 +552,19 @@ def artifact(run_id: str, artifact_name: str):
             html = base_tag + html
         return HTMLResponse(content=html)
     return FileResponse(resolved)
+
+
+@app.get('/runs/{run_id}/package')
+def run_package(run_id: str) -> FileResponse:
+    try:
+        package_path = export_service.build_package(run_id)
+    except Exception as exc:
+        raise HTTPException(status_code=404, detail='Run package could not be built.') from exc
+    return FileResponse(
+        package_path,
+        media_type='application/zip',
+        filename=f'{run_id}-package.zip',
+    )
 
 
 @app.post('/ui/uploads')
