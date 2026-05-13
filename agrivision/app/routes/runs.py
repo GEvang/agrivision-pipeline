@@ -19,20 +19,37 @@ def _render_new_run_page(
     validation_result: dict[str, object] | None = None,
     form_values: dict[str, object] | None = None,
 ) -> HTMLResponse:
+    odm_runs_by_upload: dict[str, object] = {}
+    for run in deps.run_service.list_runs():
+        upload_id = Path(run.input_path).name
+        if run.selected_steps.run_odm and run.status == 'completed':
+            odm_runs_by_upload.setdefault(upload_id, run)
+
     uploads: list[dict[str, object]] = []
     for path in sorted(deps.storage_service.layout.uploads_root.iterdir(), reverse=True):
         if not path.is_dir():
             continue
         manifest = deps.storage_service.read_json(path / 'manifest.json', default={})
+        odm_run = odm_runs_by_upload.get(path.name)
+        orthophoto_paths = []
+        if odm_run:
+            orthophoto_paths = [
+                value
+                for key, value in odm_run.outputs.items()
+                if key in {'orthophoto_rgb', 'orthophoto_mapir'} and value and Path(value).exists()
+            ]
         uploads.append(
             {
                 'run_id': path.name,
                 'dataset_name': manifest.get('dataset_name') or path.name,
                 'mapir_count': len(manifest.get('mapir_files', [])),
                 'rgb_count': len(manifest.get('rgb_files', [])),
+                'orthophoto_ready': bool(orthophoto_paths),
+                'orthophoto_run_id': getattr(odm_run, 'run_id', None),
                 'selected': path.name == upload_run_id,
             }
         )
+    orthophoto_uploads = [item for item in uploads if item['orthophoto_ready']]
     model_catalog = list(PDM_MODEL_CATALOG)
     models_by_crop = {}
     for item in model_catalog:
@@ -43,6 +60,7 @@ def _render_new_run_page(
         'new_run.html',
         {
             'uploads': uploads,
+            'orthophoto_uploads': orthophoto_uploads,
             'selected_upload_run_id': upload_run_id,
             'validation_result': validation_result,
             'form_values': form_values or {},
@@ -160,9 +178,6 @@ def create_run_ui(
     request: Request,
     upload_run_id: str = Form(...),
     run_name: str = Form(''),
-    run_mode: str = Form('full_odm'),
-    resize_images: bool = Form(False),
-    run_odm: bool = Form(False),
     fetch_weather: bool = Form(False),
     run_pdm: bool = Form(False),
     pdm_crop: str = Form('grapevine'),
@@ -172,15 +187,14 @@ def create_run_ui(
     manifest = deps.storage_service.read_json(deps.storage_service.upload_dir(upload_run_id) / 'manifest.json')
     dataset_name = str(manifest.get('dataset_name') or upload_run_id)
     normalized_run_name = run_name.strip() if run_name.strip() else None
-    normalized_run_odm = run_mode != 'existing_orthos' and run_odm
     run_request = RunCreateRequest.model_validate(
         {
             'run_name': normalized_run_name,
             'dataset_name': dataset_name,
             'upload_run_id': upload_run_id,
             'selected_steps': {
-                'resize_images': resize_images,
-                'run_odm': normalized_run_odm,
+                'resize_images': False,
+                'run_odm': False,
                 'fetch_weather': fetch_weather,
                 'run_pdm': run_pdm,
                 'generate_report': generate_report,
@@ -199,9 +213,6 @@ def create_run_ui(
             validation_result=validation,
             form_values={
                 'run_name': run_name,
-                'run_mode': run_mode,
-                'resize_images': resize_images,
-                'run_odm': normalized_run_odm,
                 'fetch_weather': fetch_weather,
                 'run_pdm': run_pdm,
                 'pdm_crop': pdm_crop,

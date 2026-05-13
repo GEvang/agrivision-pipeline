@@ -7,7 +7,7 @@ from fastapi.responses import RedirectResponse
 from PIL import Image, UnidentifiedImageError
 
 from agrivision.app import dependencies as deps
-from agrivision.app.schemas.runs import UploadManifest
+from agrivision.app.schemas.runs import RunCreateRequest, UploadManifest
 
 router = APIRouter()
 
@@ -87,3 +87,31 @@ async def upload_images_ui(
 ) -> RedirectResponse:
     manifest = await upload_images(dataset_name=dataset_name, mapir_files=mapir_files, rgb_files=rgb_files)
     return RedirectResponse(url=f"/runs/new?upload_run_id={manifest['run_id']}", status_code=303)
+
+
+@router.post('/ui/orthophotos')
+async def create_orthophotos_ui(
+    dataset_name: str = Form(...),
+    mapir_files: list[UploadFile] = File(...),
+    rgb_files: list[UploadFile] = File(...),
+    reduce_images: bool = Form(False),
+) -> RedirectResponse:
+    manifest = await upload_images(dataset_name=dataset_name, mapir_files=mapir_files, rgb_files=rgb_files)
+    run_request = RunCreateRequest.model_validate(
+        {
+            'run_name': f"{manifest['dataset_name']} orthophotos",
+            'dataset_name': manifest['dataset_name'],
+            'upload_run_id': manifest['run_id'],
+            'selected_steps': {
+                'resize_images': reduce_images,
+                'run_odm': True,
+                'fetch_weather': False,
+                'run_pdm': False,
+                'generate_report': False,
+            },
+            'parameters': {},
+        }
+    )
+    record = deps.run_service.create_run_record(run_request)
+    result = deps.run_service.start_run(record.run_id)
+    return RedirectResponse(url=f'/runs/{result.run_id}', status_code=303)
