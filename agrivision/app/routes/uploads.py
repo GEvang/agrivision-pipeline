@@ -1,0 +1,89 @@
+from __future__ import annotations
+
+from pathlib import Path
+
+from fastapi import APIRouter, File, Form, HTTPException, UploadFile
+from fastapi.responses import RedirectResponse
+from PIL import Image, UnidentifiedImageError
+
+from agrivision.app import dependencies as deps
+from agrivision.app.schemas.runs import UploadManifest
+
+router = APIRouter()
+
+
+@router.post('/uploads/images')
+async def upload_images(
+    dataset_name: str = Form(...),
+    mapir_files: list[UploadFile] = File(...),
+    rgb_files: list[UploadFile] = File(...),
+) -> dict[str, object]:
+    upload_run_id = deps.storage_service.new_run_id()
+    upload_dir = deps.storage_service.upload_dir(upload_run_id)
+    mapir_dir = upload_dir / 'mapir'
+    rgb_dir = upload_dir / 'rgb'
+    mapir_dir.mkdir(parents=True, exist_ok=True)
+    rgb_dir.mkdir(parents=True, exist_ok=True)
+
+    async def _store_images(kind: str, uploads: list[UploadFile], target_dir: Path) -> tuple[list[str], list[str]]:
+        seen_names: set[str] = set()
+        stored_files: list[str] = []
+        validation_errors: list[str] = []
+        for upload in uploads:
+            suffix = Path(upload.filename or '').suffix.lower()
+            name = Path(upload.filename or '').name
+            if suffix not in deps.ALLOWED_EXTENSIONS:
+                validation_errors.append(f'{kind} - {name}: unsupported file type')
+                continue
+            if not name or name in seen_names:
+                validation_errors.append(f'{kind} - {name or "<unnamed>"}: duplicate or invalid name')
+                continue
+            seen_names.add(name)
+            data = await upload.read()
+            if not data:
+                validation_errors.append(f'{kind} - {name}: empty file')
+                continue
+            target = target_dir / name
+            target.write_bytes(data)
+            try:
+                with Image.open(target) as image:
+                    image.verify()
+            except (UnidentifiedImageError, OSError):
+                target.unlink(missing_ok=True)
+                validation_errors.append(f'{kind} - {name}: unreadable or corrupt image')
+                continue
+            stored_files.append(name)
+        return stored_files, validation_errors
+
+    mapir_stored_files, mapir_errors = await _store_images('MAPIR', mapir_files, mapir_dir)
+    rgb_stored_files, rgb_errors = await _store_images('RGB', rgb_files, rgb_dir)
+    errors = [*mapir_errors, *rgb_errors]
+
+    if len(mapir_stored_files) < deps.MINIMUM_DATASET_IMAGES:
+        errors.append(f'MAPIR: at least {deps.MINIMUM_DATASET_IMAGES} valid images are required.')
+    if len(rgb_stored_files) < deps.MINIMUM_DATASET_IMAGES:
+        errors.append(f'RGB: at least {deps.MINIMUM_DATASET_IMAGES} valid images are required.')
+    if errors:
+        raise HTTPException(status_code=400, detail=errors)
+
+    manifest = UploadManifest(
+        run_id=upload_run_id,
+        dataset_name=dataset_name,
+        upload_dir=str(upload_dir),
+        files=sorted([f'mapir/{name}' for name in mapir_stored_files] + [f'rgb/{name}' for name in rgb_stored_files]),
+        mapir_files=sorted(mapir_stored_files),
+        rgb_files=sorted(rgb_stored_files),
+        created_at=__import__('datetime').datetime.now(__import__('datetime').timezone.utc),
+    )
+    deps.storage_service.write_json(upload_dir / 'manifest.json', manifest.model_dump(mode='json'))
+    return manifest.model_dump(mode='json')
+
+
+@router.post('/ui/uploads')
+async def upload_images_ui(
+    dataset_name: str = Form(...),
+    mapir_files: list[UploadFile] = File(...),
+    rgb_files: list[UploadFile] = File(...),
+) -> RedirectResponse:
+    manifest = await upload_images(dataset_name=dataset_name, mapir_files=mapir_files, rgb_files=rgb_files)
+    return RedirectResponse(url=f"/runs/new?upload_run_id={manifest['run_id']}", status_code=303)

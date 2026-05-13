@@ -4,9 +4,11 @@
   <div class="run-header">
     <div>
       <h2>{{ run.run_name or run.dataset_name }}</h2>
-      <p>Status: <strong id="run-status">{{ run.status }}</strong></p>
-      <p>Current stage: <span id="current-stage">{{ run.stage_message }}</span></p>
-      <p>Elapsed: <strong id="elapsed-timer">--:--</strong></p>
+      <div class="run-meta-grid">
+        <div><span>Status</span><strong id="run-status">{{ run.status }}</strong></div>
+        <div><span>Elapsed</span><strong id="elapsed-timer">--:--</strong></div>
+      </div>
+      <p class="muted">Current stage: <span id="current-stage">{{ run.stage_message }}</span></p>
       <form id="stop-run-form" class="inline-action" method="post" action="/ui/runs/{{ run.run_id }}/stop" {% if run.status not in ['queued', 'running'] %}hidden{% endif %}>
         <button class="danger-button" type="submit">Stop run</button>
       </form>
@@ -21,8 +23,10 @@
     </div>
   </div>
 
-  <p>Created: {{ run.created_at }}</p>
-  <p>Dataset: {{ run.dataset_name }}</p>
+  <div class="subtle-strip">
+    <span>Created: {{ run.created_at | system_datetime }}</span>
+    <span>Dataset: {{ run.dataset_name }}</span>
+  </div>
 
   <h3>Pipeline Stages</h3>
   <div class="stage-list" id="stage-list">
@@ -77,12 +81,12 @@
   {% endif %}
 
   <h3>Artifacts</h3>
-  <ul id="artifact-list">
-    {% if report.report_path %}<li><a href="/artifacts/{{ run.run_id }}/report">Report</a></li>{% endif %}
-    {% if report.orthophoto_path %}<li><a href="/artifacts/{{ run.run_id }}/orthophoto">Orthophoto</a></li>{% endif %}
-    <li><a href="/artifacts/{{ run.run_id }}/log">Run log</a></li>
-    <li><a href="/runs/{{ run.run_id }}/package">Download run package</a></li>
-  </ul>
+  <div class="artifact-actions" id="artifact-list">
+    {% if report.report_path %}<a class="action-chip" href="/artifacts/{{ run.run_id }}/report">Report</a>{% endif %}
+    {% if report.orthophoto_path %}<a class="action-chip" href="/artifacts/{{ run.run_id }}/orthophoto">Orthophoto</a>{% endif %}
+    <a class="action-chip" href="/artifacts/{{ run.run_id }}/log">Run log</a>
+    <a class="action-chip" href="/runs/{{ run.run_id }}/package">Package</a>
+  </div>
 
   <h3>Logs</h3>
   <pre class="log-box" id="run-logs">{{ logs }}</pre>
@@ -128,12 +132,13 @@ function renderStages(stages) {
 function renderArtifacts(report) {
   artifactListEl.innerHTML = '';
   if (report?.report_path) {
-    artifactListEl.innerHTML += `<li><a href="/artifacts/${runId}/report">Report</a></li>`;
+    artifactListEl.innerHTML += `<a class="action-chip" href="/artifacts/${runId}/report">Report</a>`;
   }
   if (report?.orthophoto_path) {
-    artifactListEl.innerHTML += `<li><a href="/artifacts/${runId}/orthophoto">Orthophoto</a></li>`;
+    artifactListEl.innerHTML += `<a class="action-chip" href="/artifacts/${runId}/orthophoto">Orthophoto</a>`;
   }
-  artifactListEl.innerHTML += `<li><a href="/artifacts/${runId}/log">Run log</a></li>`;
+  artifactListEl.innerHTML += `<a class="action-chip" href="/artifacts/${runId}/log">Run log</a>`;
+  artifactListEl.innerHTML += `<a class="action-chip" href="/runs/${runId}/package">Package</a>`;
 }
 
 function renderPayload(payload) {

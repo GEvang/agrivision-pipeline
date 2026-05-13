@@ -7,6 +7,7 @@ from fastapi.testclient import TestClient
 from PIL import Image
 
 from agrivision.app import api
+from agrivision.app import dependencies as deps
 from agrivision.services.report_service import ReportService
 from agrivision.services.run_service import RunService
 from agrivision.services.settings_service import SettingsService
@@ -27,10 +28,10 @@ def test_api_create_run_upload_reports_and_settings(tmp_path: Path, monkeypatch)
     config_path.write_text('weather:\n  base_url: http://example\n', encoding='utf-8')
     settings_service = SettingsService(config_path=config_path, env_path=tmp_path / '.env')
 
-    monkeypatch.setattr(api, 'storage_service', storage)
-    monkeypatch.setattr(api, 'run_service', run_service)
-    monkeypatch.setattr(api, 'report_service', report_service)
-    monkeypatch.setattr(api, 'settings_service', settings_service)
+    monkeypatch.setattr(deps, 'storage_service', storage)
+    monkeypatch.setattr(deps, 'run_service', run_service)
+    monkeypatch.setattr(deps, 'report_service', report_service)
+    monkeypatch.setattr(deps, 'settings_service', settings_service)
 
     def fake_launch(run_id: str):
         report_path = tmp_path / 'output' / 'report' / 'index.html'

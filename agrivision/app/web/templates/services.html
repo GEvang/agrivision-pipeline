@@ -26,12 +26,12 @@
       <dt>Compose</dt><dd>{{ service.compose_file or '-' }}</dd>
     </dl>
     <div class="button-row">
-      <a class="button-link secondary" href="{{ service.docs_url }}" target="_blank" rel="noreferrer">Open docs</a>
+      <a class="button-link secondary compact" href="{{ service.docs_url }}" target="_blank" rel="noreferrer">Open docs</a>
       <form method="post" action="/ui/services/{{ service.key }}/start">
-        <button type="submit">Start/check</button>
+        <button class="compact" type="submit">Start/check</button>
       </form>
       <form method="post" action="/ui/services/{{ service.key }}/restart" onsubmit="return confirm('Restart {{ service.name }} service containers?');">
-        <button class="danger-button" type="submit">Restart</button>
+        <button class="danger-button compact" type="submit">Restart</button>
       </form>
     </div>
     <details>

@@ -5,6 +5,8 @@ from pathlib import Path
 from fastapi.testclient import TestClient
 
 from agrivision.app import api
+from agrivision.app import dependencies as deps
+from agrivision.app.routes import services as service_routes
 from agrivision.services.report_service import ReportService
 from agrivision.services.run_service import RunService
 from agrivision.services.settings_service import SettingsService
@@ -19,10 +21,10 @@ def test_dashboard_pages_render(tmp_path: Path, monkeypatch) -> None:
     config_path.write_text('weather:\n  base_url: http://example\n', encoding='utf-8')
     settings_service = SettingsService(config_path=config_path, env_path=tmp_path / '.env')
 
-    monkeypatch.setattr(api, 'storage_service', storage)
-    monkeypatch.setattr(api, 'run_service', run_service)
-    monkeypatch.setattr(api, 'report_service', report_service)
-    monkeypatch.setattr(api, 'settings_service', settings_service)
+    monkeypatch.setattr(deps, 'storage_service', storage)
+    monkeypatch.setattr(deps, 'run_service', run_service)
+    monkeypatch.setattr(deps, 'report_service', report_service)
+    monkeypatch.setattr(deps, 'settings_service', settings_service)
 
     run_dir = storage.run_dir('run-1')
     storage.write_json(run_dir / 'status.json', {
@@ -56,6 +58,6 @@ def test_dashboard_pages_render(tmp_path: Path, monkeypatch) -> None:
     assert runs_page.status_code == 200
     assert 'Run History' in runs_page.text
     assert client.get('/runs/run-1', headers={'accept': 'text/html'}).status_code == 200
-    monkeypatch.setattr(api, 'service_statuses', lambda include_logs=False: [])
+    monkeypatch.setattr(service_routes, 'service_statuses', lambda include_logs=False: [])
     assert client.get('/services', headers={'accept': 'text/html'}).status_code == 200
     assert client.get('/settings', headers={'accept': 'text/html'}).status_code == 200

@@ -15,13 +15,14 @@
 <section class="metric-grid">
   {% for key, value in status_summary.items() %}
   <div class="metric">
+    <span class="metric-label">{{ key }}</span>
     <strong>{{ value }}</strong>
-    <span class="status-badge status-{{ key }}">{{ key }}</span>
+    <span class="status-dot status-dot-{{ key }}"></span>
   </div>
   {% else %}
   <div class="metric">
     <strong>0</strong>
-    <span>No runs</span>
+    <span class="metric-label">No runs</span>
   </div>
   {% endfor %}
 </section>
@@ -85,19 +86,19 @@
           <td class="muted">{{ step_summary(run) }}</td>
           <td class="message-cell">{{ run.errors[-1] if run.errors else run.stage_message }}</td>
           <td class="table-actions">
-            <a href="/runs/{{ run.run_id }}">View</a>
+            <a class="action-chip" href="/runs/{{ run.run_id }}">View</a>
             {% if run.status in ['completed', 'failed', 'cancelled'] %}
-            <a href="/runs/{{ run.run_id }}/package">Package</a>
+            <a class="action-chip" href="/runs/{{ run.run_id }}/package">Package</a>
             {% endif %}
             {% if run.status in ['queued', 'running'] %}
             <form method="post" action="/ui/runs/{{ run.run_id }}/stop">
-              <button class="link-button danger-text" type="submit">Stop</button>
+              <button class="action-chip danger-text" type="submit">Stop</button>
             </form>
             {% endif %}
           </td>
         </tr>
       {% else %}
-        <tr><td colspan="8">No runs yet.</td></tr>
+        <tr><td colspan="8"><div class="empty-state">No runs yet.</div></td></tr>
       {% endfor %}
       </tbody>
     </table>
