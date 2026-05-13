@@ -36,6 +36,46 @@
   <img class="preview" src="/artifacts/{{ run.run_id }}/preview" alt="Orthophoto preview" />
   {% endif %}
 
+  {% if report.quality %}
+  <h3>Result Quality</h3>
+  <div class="report-summary">
+    <div>
+      <span class="summary-label">Quality</span>
+      <strong class="quality-state quality-{{ report.quality.state }}">{{ report.quality.state }}</strong>
+    </div>
+    <div>
+      <span class="summary-label">Source</span>
+      <strong>{{ report.quality.source_dataset or '-' }} / {{ report.quality.index_mode or '-' }}</strong>
+    </div>
+    <div>
+      <span class="summary-label">Valid Pixels</span>
+      <strong>{{ '%.1f'|format(report.quality.valid_percent) if report.quality.valid_percent is not none else '-' }}%</strong>
+    </div>
+    <div>
+      <span class="summary-label">Mean / Median</span>
+      <strong>{{ '%.3f'|format(report.quality.mean) if report.quality.mean is not none else '-' }} / {{ '%.3f'|format(report.quality.median) if report.quality.median is not none else '-' }}</strong>
+    </div>
+    <div>
+      <span class="summary-label">Thresholds</span>
+      <strong>{{ '%.3f'|format(report.quality.poor_max) if report.quality.poor_max is not none else '-' }} / {{ '%.3f'|format(report.quality.medium_max) if report.quality.medium_max is not none else '-' }}</strong>
+    </div>
+    <div>
+      <span class="summary-label">Classification</span>
+      <strong>{{ report.quality.classification_mode or '-' }}</strong>
+    </div>
+  </div>
+  {% if report.quality.flags %}
+  <div class="quality-alert">
+    <strong>Quality warnings</strong>
+    <ul>
+      {% for flag in report.quality.flags %}
+      <li>{{ flag }}</li>
+      {% endfor %}
+    </ul>
+  </div>
+  {% endif %}
+  {% endif %}
+
   <h3>Artifacts</h3>
   <ul id="artifact-list">
     {% if report.report_path %}<li><a href="/artifacts/{{ run.run_id }}/report">Report</a></li>{% endif %}

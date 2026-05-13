@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import json
 from pathlib import Path
 
 from PIL import Image
@@ -63,3 +64,65 @@ def test_latest_report_skips_preview_generation_by_default(tmp_path: Path) -> No
     assert latest is not None
     assert latest.run_id == record.run_id
     assert latest.preview_path is None
+
+
+def test_report_quality_summary_reads_metadata(tmp_path: Path) -> None:
+    storage = StorageService(project_root=tmp_path)
+    upload_dir = storage.upload_dir('upload-seed')
+    (upload_dir / 'a.jpg').write_bytes(b'123')
+    service = RunService(storage)
+    record = service.create_run_record(
+        RunCreateRequest.model_validate(
+            {
+                'run_name': 'Report Run',
+                'dataset_name': 'Dataset R',
+                'upload_run_id': 'upload-seed',
+                'selected_steps': {},
+                'parameters': {},
+            }
+        )
+    )
+    ndvi_meta = tmp_path / 'metadata.json'
+    grid_meta = tmp_path / 'grid_metadata.json'
+    ndvi_meta.write_text(
+        json.dumps(
+            {
+                'source': {'dataset': 'MAPIR'},
+                'index': {'index_name': 'Vegetation Index', 'index_mode': 'nir_green'},
+                'valid_pixels': {'percent': 42.5},
+                'distribution': {
+                    'mean': 0.1,
+                    'median': 0.09,
+                    'saturated_high_percent': 0.0,
+                    'saturated_low_percent': 0.0,
+                },
+                'quality_flags': [],
+            }
+        ),
+        encoding='utf-8',
+    )
+    grid_meta.write_text(
+        json.dumps(
+            {
+                'classification_mode': 'percentile_calibrated',
+                'thresholds_used': {'poor_max': 0.02, 'medium_max': 0.04},
+            }
+        ),
+        encoding='utf-8',
+    )
+    service.update_status(
+        record.run_id,
+        status='completed',
+        outputs={
+            'report_html': str(tmp_path / 'report.html'),
+            'ndvi_metadata': str(ndvi_meta),
+            'grid_metadata': str(grid_meta),
+        },
+    )
+    report = ReportService(run_service=service).get_report(record.run_id)
+
+    assert report.quality['state'] == 'warn'
+    assert report.quality['source_dataset'] == 'MAPIR'
+    assert report.quality['classification_mode'] == 'percentile_calibrated'
+    assert report.quality['poor_max'] == 0.02
+    assert 'Low valid vegetation-index coverage.' in report.quality['flags']

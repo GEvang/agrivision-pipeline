@@ -447,6 +447,8 @@ class RunService:
         ]
         candidates = {
             'ndvi_tif': project_root / config['paths']['ndvi_output'] / 'ndvi.tif',
+            'ndvi_metadata': project_root / config['paths']['ndvi_output'] / 'metadata.json',
+            'grid_metadata': project_root / config['paths']['ndvi_output'] / 'grid_metadata.json',
             'orthophoto_rgb': project_root / config['paths']['odm_project_root_rgb'] / 'project' / 'odm_orthophoto' / 'odm_orthophoto.tif',
             'orthophoto_mapir': project_root / config['paths']['odm_project_root_mapir'] / 'project' / 'odm_orthophoto' / 'odm_orthophoto.tif',
         }

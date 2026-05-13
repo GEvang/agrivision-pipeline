@@ -381,7 +381,7 @@ async def upload_images(
 
 @app.get('/reports')
 def reports(request: Request):
-    report_items = report_service.list_reports()
+    report_items = report_service.list_reports(generate_previews=False)
     if 'text/html' in request.headers.get('accept', ''):
         return TEMPLATES.TemplateResponse(request, 'reports.html', {'reports': report_items})
     return [item.model_dump(mode='json') for item in report_items]

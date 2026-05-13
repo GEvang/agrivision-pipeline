@@ -109,6 +109,7 @@ class ReportItem(BaseModel):
     report_path: str | None = None
     orthophoto_path: str | None = None
     preview_path: str | None = None
+    quality: dict[str, Any] = Field(default_factory=dict)
 
 
 class ArtifactLink(BaseModel):
