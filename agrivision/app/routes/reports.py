@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from fastapi import APIRouter, HTTPException, Request
-from fastapi.responses import HTMLResponse
+from fastapi.responses import HTMLResponse, RedirectResponse
 
 from agrivision.app import dependencies as deps
 
@@ -10,9 +10,9 @@ router = APIRouter()
 
 @router.get('/reports')
 def reports(request: Request):
-    report_items = deps.report_service.list_reports(generate_previews=False)
     if 'text/html' in request.headers.get('accept', ''):
-        return deps.templates.TemplateResponse(request, 'reports.html', {'reports': report_items})
+        return RedirectResponse(url='/runs', status_code=303)
+    report_items = deps.report_service.list_reports(generate_previews=False)
     return [item.model_dump(mode='json') for item in report_items]
 
 

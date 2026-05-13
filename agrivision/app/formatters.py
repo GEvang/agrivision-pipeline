@@ -42,6 +42,7 @@ def step_summary(run) -> str:
     parts = [
         'ODM' if selected.run_odm else 'Existing orthos',
         'Weather' if selected.fetch_weather else 'No weather',
+        'Irrigation' if selected.run_irrigation else 'No irrigation',
         'PDM' if selected.run_pdm else 'No PDM',
     ]
     if selected.resize_images:

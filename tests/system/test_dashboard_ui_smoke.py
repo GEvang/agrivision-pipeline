@@ -6,6 +6,7 @@ from fastapi.testclient import TestClient
 
 from agrivision.app import api
 from agrivision.app import dependencies as deps
+from agrivision.app.routes import settings as settings_routes
 from agrivision.app.routes import services as service_routes
 from agrivision.services.report_service import ReportService
 from agrivision.services.run_service import RunService
@@ -56,8 +57,9 @@ def test_dashboard_pages_render(tmp_path: Path, monkeypatch) -> None:
     assert client.get('/runs/new', headers={'accept': 'text/html'}).status_code == 200
     runs_page = client.get('/runs', headers={'accept': 'text/html'})
     assert runs_page.status_code == 200
-    assert 'Run History' in runs_page.text
+    assert 'Reports' in runs_page.text
     assert client.get('/runs/run-1', headers={'accept': 'text/html'}).status_code == 200
     monkeypatch.setattr(service_routes, 'service_statuses', lambda include_logs=False: [])
-    assert client.get('/services', headers={'accept': 'text/html'}).status_code == 200
+    monkeypatch.setattr(settings_routes, 'service_statuses', lambda include_logs=False: [])
+    assert client.get('/services', headers={'accept': 'text/html'}, follow_redirects=False).status_code == 303
     assert client.get('/settings', headers={'accept': 'text/html'}).status_code == 200

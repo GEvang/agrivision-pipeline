@@ -1,40 +1,125 @@
 {% extends 'base.html' %}
 {% block content %}
-<section class="grid two-col">
-  <form class="panel" method="post" action="/ui/settings">
-    <h2>Non-secret Settings</h2>
-    <label>Location name<input type="text" name="location_name" value="{{ non_secret.location_name }}" /></label>
-    <div class="inline-fields">
-      <label>Location latitude<input type="number" step="any" name="location_lat" value="{{ non_secret.location_lat }}" /></label>
-      <label>Location longitude<input type="number" step="any" name="location_lon" value="{{ non_secret.location_lon }}" /></label>
+<section class="dashboard-hero">
+  <div>
+    <h2>Settings</h2>
+    <p class="muted">Pipeline configuration, credentials, and OpenAgri service controls.</p>
+  </div>
+</section>
+
+<section class="settings-layout">
+  <form class="panel settings-card settings-main" method="post" action="/ui/settings">
+    <div class="settings-section-head">
+      <h2>Pipeline</h2>
+      <p class="muted">Core defaults used by new runs.</p>
     </div>
-    <label>Weather base URL<input type="text" name="weather_base_url" value="{{ non_secret.weather_base_url }}" /></label>
-    <label>Irrigation base URL<input type="text" name="irrigation_base_url" value="{{ non_secret.irrigation_base_url }}" /></label>
-    <label>PDM base URL<input type="text" name="pdm_base_url" value="{{ non_secret.pdm_base_url }}" /></label>
-    <label><input type="checkbox" name="pdm_enabled_by_default" value="true" {% if non_secret.pdm_enabled_by_default %}checked{% endif %} /> Enable PDM by default</label>
-    <label>PDM default crop
-      <select name="pdm_default_crop">
-        <option value="grapevine" {% if non_secret.pdm_default_crop == 'grapevine' %}selected{% endif %}>grapevine</option>
-        <option value="olive" {% if non_secret.pdm_default_crop == 'olive' %}selected{% endif %}>olive</option>
-      </select>
-    </label>
-    <label>PDM default model key<input type="text" name="pdm_default_model_key" value="{{ non_secret.pdm_default_model_key }}" /></label>
-    <label>Resize max long edge<input type="number" name="resize_max_long_edge" value="{{ non_secret.resize_max_long_edge }}" /></label>
-    <label>Orthophoto resolution (cm)<input type="number" name="orthophoto_resolution_cm" value="{{ non_secret.orthophoto_resolution_cm }}" /></label>
+
+    <div class="settings-group">
+      <h3>Location</h3>
+      <label>Location name<input type="text" name="location_name" value="{{ non_secret.location_name }}" /></label>
+      <div class="inline-fields">
+        <label>Latitude<input type="number" step="any" name="location_lat" value="{{ non_secret.location_lat }}" /></label>
+        <label>Longitude<input type="number" step="any" name="location_lon" value="{{ non_secret.location_lon }}" /></label>
+      </div>
+      <p class="muted">Image-coordinate location detection is planned; manual coordinates remain the fallback for now.</p>
+    </div>
+
+    <div class="settings-group">
+      <h3>Service endpoints</h3>
+      <label>Weather base URL<input type="text" name="weather_base_url" value="{{ non_secret.weather_base_url }}" /></label>
+      <label>Irrigation base URL<input type="text" name="irrigation_base_url" value="{{ non_secret.irrigation_base_url }}" /></label>
+      <label>Pest &amp; Disease base URL<input type="text" name="pdm_base_url" value="{{ non_secret.pdm_base_url }}" /></label>
+    </div>
+
+    <div class="settings-group">
+      <h3>Pest &amp; Disease defaults</h3>
+      <label class="toggle-line"><input type="checkbox" name="pdm_enabled_by_default" value="true" {% if non_secret.pdm_enabled_by_default %}checked{% endif %} /> Enable by default</label>
+      <div class="inline-fields">
+        <label>Default crop
+          <select name="pdm_default_crop">
+            <option value="grapevine" {% if non_secret.pdm_default_crop == 'grapevine' %}selected{% endif %}>grapevine</option>
+            <option value="olive" {% if non_secret.pdm_default_crop == 'olive' %}selected{% endif %}>olive</option>
+          </select>
+        </label>
+        <label>Default model key<input type="text" name="pdm_default_model_key" value="{{ non_secret.pdm_default_model_key }}" /></label>
+      </div>
+    </div>
+
+    <div class="settings-group">
+      <h3>Processing</h3>
+      <div class="inline-fields">
+        <label>Resize max long edge<input type="number" name="resize_max_long_edge" value="{{ non_secret.resize_max_long_edge }}" /></label>
+        <label>Orthophoto resolution (cm)<input type="number" name="orthophoto_resolution_cm" value="{{ non_secret.orthophoto_resolution_cm }}" /></label>
+      </div>
+    </div>
+
     <button type="submit">Save settings</button>
   </form>
-  <form class="panel" method="post" action="/ui/settings/credentials">
-    <h2>Credentials</h2>
-    <p>Existing values stay masked unless you replace them.</p>
-    <ul>
-      <li><strong>shared_username</strong>: {{ credentials.shared_username }}</li>
-      <li><strong>shared_password</strong>: {{ credentials.shared_password }}</li>
-      <li><strong>openweather_api_key</strong>: {{ credentials.openweather_api_key }}</li>
-    </ul>
-    <label>Shared username / email<input type="text" name="shared_username" /></label>
-    <label>Shared password<input type="password" name="shared_password" /></label>
-    <label>OpenWeather API key<input type="password" name="openweather_api_key" /></label>
-    <button type="submit">Save credentials</button>
-  </form>
+
+  <aside class="settings-side">
+    <form class="panel settings-card" method="post" action="/ui/settings/credentials">
+      <div class="settings-section-head">
+        <h2>Credentials</h2>
+        <p class="muted">Existing values stay masked unless replaced.</p>
+      </div>
+      <div class="credential-list">
+        <span>Shared username</span><strong>{{ credentials.shared_username }}</strong>
+        <span>Shared password</span><strong>{{ credentials.shared_password }}</strong>
+        <span>OpenWeather key</span><strong>{{ credentials.openweather_api_key }}</strong>
+      </div>
+      <label>Shared username / email<input type="text" name="shared_username" /></label>
+      <label>Shared password<input type="password" name="shared_password" /></label>
+      <label>OpenWeather API key<input type="password" name="openweather_api_key" /></label>
+      <button type="submit">Save credentials</button>
+    </form>
+  </aside>
+</section>
+
+<section class="panel" id="services">
+  <div class="panel-header">
+    <div>
+      <h2>Services</h2>
+      <p class="muted">OpenAgri dependency status and controls.</p>
+    </div>
+  </div>
+  <div class="service-diagnostics compact-services">
+    {% for service in services %}
+    <article class="service-card embedded-service-card">
+      <div class="panel-header">
+        <div>
+          <h3>{{ service.name }}</h3>
+          <p class="muted">{{ service.base_url }}</p>
+        </div>
+        <span class="status-badge status-{{ 'completed' if service.state == 'ok' else 'failed' if service.state in ['warn', 'missing'] else service.state }}">{{ service.state }}</span>
+      </div>
+      <dl class="service-details">
+        <dt>Detail</dt><dd>{{ service.detail }}</dd>
+        <dt>Repository</dt><dd>{{ service.repo_dir }}</dd>
+        <dt>Compose</dt><dd>{{ service.compose_file or '-' }}</dd>
+      </dl>
+      <div class="button-row">
+        <a class="button-link secondary compact" href="{{ service.docs_url }}" target="_blank" rel="noreferrer">Open docs</a>
+        <form method="post" action="/ui/services/{{ service.key }}/start">
+          <button class="compact" type="submit">Start/check</button>
+        </form>
+        <form method="post" action="/ui/services/{{ service.key }}/restart" onsubmit="return confirm('Restart {{ service.name }} service containers?');">
+          <button class="danger-button compact" type="submit">Restart</button>
+        </form>
+      </div>
+      <details>
+        <summary>Readiness URLs</summary>
+        <ul>
+          {% for url in service.readiness_urls %}
+          <li>{{ url }}</li>
+          {% endfor %}
+        </ul>
+      </details>
+      <details>
+        <summary>Log tail</summary>
+        <pre class="log-box">{{ service.logs or 'No compose logs available.' }}</pre>
+      </details>
+    </article>
+    {% endfor %}
+  </div>
 </section>
 {% endblock %}

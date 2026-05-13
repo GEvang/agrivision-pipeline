@@ -179,6 +179,7 @@ def create_run_ui(
     upload_run_id: str = Form(...),
     run_name: str = Form(''),
     fetch_weather: bool = Form(False),
+    run_irrigation: bool = Form(False),
     run_pdm: bool = Form(False),
     pdm_crop: str = Form('grapevine'),
     pdm_model_key: str = Form('grapevine_powdery_mildew_risk_v1'),
@@ -196,6 +197,7 @@ def create_run_ui(
                 'resize_images': False,
                 'run_odm': False,
                 'fetch_weather': fetch_weather,
+                'run_irrigation': run_irrigation,
                 'run_pdm': run_pdm,
                 'generate_report': generate_report,
             },
@@ -214,6 +216,7 @@ def create_run_ui(
             form_values={
                 'run_name': run_name,
                 'fetch_weather': fetch_weather,
+                'run_irrigation': run_irrigation,
                 'run_pdm': run_pdm,
                 'pdm_crop': pdm_crop,
                 'pdm_model_key': pdm_model_key,

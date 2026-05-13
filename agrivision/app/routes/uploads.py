@@ -106,6 +106,7 @@ async def create_orthophotos_ui(
                 'resize_images': reduce_images,
                 'run_odm': True,
                 'fetch_weather': False,
+                'run_irrigation': False,
                 'run_pdm': False,
                 'generate_report': False,
             },

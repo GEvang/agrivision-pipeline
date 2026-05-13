@@ -48,7 +48,8 @@ class PreflightService:
         if request.selected_steps.fetch_weather:
             self._append_service_check(checks, blockers, 'Weather', config.get('weather', {}).get('base_url', ''))
 
-        self._append_service_check(checks, warnings, 'Irrigation', config.get('irrigation', {}).get('base_url', ''))
+        if request.selected_steps.run_irrigation:
+            self._append_service_check(checks, warnings, 'Irrigation', config.get('irrigation', {}).get('base_url', ''))
 
         if request.selected_steps.run_pdm:
             self._append_service_check(checks, blockers, 'PDM', config.get('pdm', {}).get('base_url', ''))

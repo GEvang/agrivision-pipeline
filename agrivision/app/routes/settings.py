@@ -5,6 +5,7 @@ from fastapi.responses import RedirectResponse
 
 from agrivision.app import dependencies as deps
 from agrivision.app.schemas.settings import CredentialsUpdateRequest, SettingsUpdateRequest
+from agrivision.services.service_control import service_statuses
 
 router = APIRouter()
 
@@ -12,6 +13,7 @@ router = APIRouter()
 @router.get('/settings')
 def settings_page(request: Request):
     view = deps.settings_service.get_settings_view()
+    view['services'] = service_statuses(include_logs=True)
     if 'text/html' in request.headers.get('accept', ''):
         return deps.templates.TemplateResponse(request, 'settings.html', view)
     return view

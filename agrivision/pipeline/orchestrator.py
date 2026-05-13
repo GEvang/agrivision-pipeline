@@ -30,6 +30,7 @@ def run_full_pipeline(
     skip_odm_mapir: bool = False,
     skip_ndvi: bool = False,
     skip_weather: bool = False,
+    skip_irrigation: bool = False,
     skip_pdm: bool = False,
     skip_report: bool = False,
     pdm_crop: str | None = None,
@@ -44,6 +45,7 @@ def run_full_pipeline(
     print(f"  skip_odm_mapir  = {skip_odm_mapir}")
     print(f"  skip_ndvi       = {skip_ndvi}")
     print(f"  skip_weather    = {skip_weather}")
+    print(f"  skip_irrigation = {skip_irrigation}")
     print(f"  skip_pdm        = {skip_pdm}")
     print(f"  skip_report     = {skip_report}")
     print()
@@ -143,19 +145,23 @@ def run_full_pipeline(
         if progress_callback:
             progress_callback('fetch_weather', 'Weather enrichment complete', 'completed')
 
-    if progress_callback:
-        progress_callback('irrigation_enrichment', 'Running irrigation enrichment', 'running')
-    print('\n[AgriVision] Running Irrigation integration (config-driven ETo) ...')
-    irrigation_summary = run_irrigation_enrichment(
-        config.get('irrigation', {}).get('base_url', '')
-    )
-    if irrigation_summary.get('authenticated') or irrigation_summary.get('enabled'):
-        print('[AgriVision] ✅ Irrigation integration completed')
+    if skip_irrigation:
+        print('\n[AgriVision] Skipping Irrigation integration (--skip-irrigation).')
+        irrigation_summary = {'enabled': False, 'notes': ['Skipped by configuration.']}
     else:
-        print('[AgriVision] ⚠️ Irrigation integration failed (continuing pipeline).')
-        print(f"[AgriVision] Reason: {irrigation_summary.get('notes', [''])[0]}")
-    if progress_callback:
-        progress_callback('irrigation_enrichment', 'Irrigation enrichment complete', 'completed')
+        if progress_callback:
+            progress_callback('irrigation_enrichment', 'Running irrigation enrichment', 'running')
+        print('\n[AgriVision] Running Irrigation integration (config-driven ETo) ...')
+        irrigation_summary = run_irrigation_enrichment(
+            config.get('irrigation', {}).get('base_url', '')
+        )
+        if irrigation_summary.get('authenticated') or irrigation_summary.get('enabled'):
+            print('[AgriVision] Irrigation integration completed')
+        else:
+            print('[AgriVision] Irrigation integration failed (continuing pipeline).')
+            print(f"[AgriVision] Reason: {irrigation_summary.get('notes', [''])[0]}")
+        if progress_callback:
+            progress_callback('irrigation_enrichment', 'Irrigation enrichment complete', 'completed')
 
     pdm_cfg = config.get('pdm', {}) if isinstance(config.get('pdm'), dict) else {}
     resolved_pdm_crop = (pdm_crop or pdm_cfg.get('default_crop') or 'grapevine')

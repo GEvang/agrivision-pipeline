@@ -2,11 +2,11 @@
 {% block content %}
 <section class="dashboard-hero">
   <div>
-    <h2>Run History</h2>
+    <h2>Reports</h2>
     <p class="muted">{{ filtered_count }} shown from {{ total_runs }} total runs</p>
   </div>
   <div class="button-row">
-    <a class="button-link" href="/runs/new">New run</a>
+    <a class="button-link" href="/runs/new">Start Processing</a>
     <form method="post" action="/ui/runs/clear-stuck" onsubmit="return confirm('Clear queued/running runs that are not attached to a live dashboard worker?');">
       <button class="button-link secondary" type="submit">Clear stuck</button>
     </form>

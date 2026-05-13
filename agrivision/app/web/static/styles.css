@@ -144,6 +144,22 @@ button.action-chip { font-family:inherit; }
 .form-grid label { margin-bottom:0; }
 .compact-fieldset { max-width:320px; }
 .button-row button { width:auto; min-width:150px; margin:0; }
+.settings-layout { display:grid; grid-template-columns:minmax(0, 1fr) minmax(280px, 380px); gap:1rem; align-items:start; }
+.settings-card { display:grid; gap:1rem; }
+.settings-main { align-content:start; }
+.settings-side { display:grid; gap:1rem; }
+.settings-section-head h2, .settings-group h3, .embedded-service-card h3 { margin:0 0 0.25rem; }
+.settings-section-head p, .settings-group p, .embedded-service-card p { margin:0; }
+.settings-group { border-top:1px solid #e2e8f0; padding-top:1rem; display:grid; gap:0.75rem; }
+.settings-group label, .settings-card label { margin-bottom:0; }
+.toggle-line { display:flex; align-items:center; gap:0.5rem; }
+.toggle-line input { width:auto; margin:0; }
+.credential-list { display:grid; grid-template-columns:auto minmax(0, 1fr); gap:0.45rem 0.75rem; padding:0.75rem; border:1px solid #e2e8f0; border-radius:8px; background:#f8fafc; }
+.credential-list span { color:#64748b; }
+.credential-list strong { overflow-wrap:anywhere; text-align:right; }
+.compact-services { grid-template-columns:repeat(auto-fit, minmax(320px, 1fr)); }
+.embedded-service-card { border:1px solid #e2e8f0; border-radius:8px; padding:1rem; background:#f8fafc; }
+.embedded-service-card .log-box { max-height:220px; }
 
 @media (max-width: 760px) {
   .site-header, .dashboard-hero, .panel-header { flex-direction:column; align-items:flex-start; }
@@ -152,4 +168,6 @@ button.action-chip { font-family:inherit; }
   .filter-tabs { justify-content:flex-start; }
   .workflow-tabs { grid-template-columns:1fr; }
   .button-row button { width:100%; }
+  .settings-layout { grid-template-columns:1fr; }
+  .credential-list strong { text-align:left; }
 }

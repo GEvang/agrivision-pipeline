@@ -85,7 +85,8 @@ class RunService:
         ])
         if selected_steps.fetch_weather:
             stages.append(StageStatus(key='fetch_weather', label='Fetch weather'))
-        stages.append(StageStatus(key='irrigation_enrichment', label='Irrigation enrichment'))
+        if selected_steps.run_irrigation:
+            stages.append(StageStatus(key='irrigation_enrichment', label='Irrigation enrichment'))
         if selected_steps.run_pdm:
             stages.append(StageStatus(key='pdm_enrichment', label='Pest & disease enrichment'))
         if selected_steps.generate_report:
@@ -363,6 +364,7 @@ class RunService:
                         run_resize_step=selected.resize_images,
                         skip_odm=not selected.run_odm,
                         skip_weather=not selected.fetch_weather,
+                        skip_irrigation=not selected.run_irrigation,
                         skip_pdm=not selected.run_pdm,
                         skip_report=not selected.generate_report,
                         pdm_crop=record.parameters.get('pdm_crop'),

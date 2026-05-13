@@ -3,7 +3,7 @@
 <section class="panel run-workflow">
   <div class="panel-header">
     <div>
-      <h2>New Run</h2>
+      <h2>Start Processing</h2>
       <p class="muted">Create orthophotos first, then run parcel analysis from an orthophoto dataset.</p>
     </div>
   </div>
@@ -74,6 +74,7 @@
       <fieldset>
         <legend>Processing steps</legend>
         <label><input type="checkbox" name="fetch_weather" value="true" {% if form_values.get('fetch_weather', True) %}checked{% endif %} /> Fetch weather</label>
+        <label><input type="checkbox" name="run_irrigation" value="true" {% if form_values.get('run_irrigation', True) %}checked{% endif %} /> Run Irrigation</label>
         <label><input type="checkbox" name="run_pdm" value="true" {% if form_values.get('run_pdm', pdm_enabled_by_default) %}checked{% endif %} /> Run Pest &amp; Disease</label>
         <label><input type="checkbox" name="generate_report" value="true" {% if form_values.get('generate_report', True) %}checked{% endif %} /> Generate report</label>
       </fieldset>
@@ -145,6 +146,7 @@
         resize_images: false,
         run_odm: false,
         fetch_weather: data.has('fetch_weather'),
+        run_irrigation: data.has('run_irrigation'),
         run_pdm: data.has('run_pdm'),
         generate_report: data.has('generate_report')
       },

@@ -48,6 +48,37 @@ def test_run_record_creation_and_status_update(tmp_path: Path) -> None:
     assert updated.outputs['report_html'].endswith('index.html')
 
 
+def test_odm_only_run_does_not_include_services(tmp_path: Path) -> None:
+    storage = StorageService(project_root=tmp_path)
+    upload_dir = storage.upload_dir('upload-seed')
+    (upload_dir / 'rgb').mkdir(parents=True, exist_ok=True)
+    (upload_dir / 'mapir').mkdir(parents=True, exist_ok=True)
+    service = RunService(storage)
+    request = RunCreateRequest.model_validate(
+        {
+            'run_name': 'Orthophotos',
+            'dataset_name': 'Dataset 1',
+            'upload_run_id': 'upload-seed',
+            'selected_steps': {
+                'resize_images': False,
+                'run_odm': True,
+                'fetch_weather': False,
+                'run_irrigation': False,
+                'run_pdm': False,
+                'generate_report': False,
+            },
+        }
+    )
+
+    record = service.create_run_record(request)
+    stage_keys = [stage.key for stage in record.stages]
+
+    assert 'run_odm_rgb' in stage_keys
+    assert 'fetch_weather' not in stage_keys
+    assert 'irrigation_enrichment' not in stage_keys
+    assert 'pdm_enrichment' not in stage_keys
+
+
 def test_request_stop_marks_running_run_cancelled(tmp_path: Path, monkeypatch) -> None:
     storage = StorageService(project_root=tmp_path)
     upload_dir = storage.upload_dir('upload-seed')
