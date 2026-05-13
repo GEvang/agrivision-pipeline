@@ -192,6 +192,28 @@ def compose_up(
     _run_compose_command(compose_file, repo_dir, args)
 
 
+def compose_restart(compose_file: Path, repo_dir: Path) -> None:
+    _run_compose_command(compose_file, repo_dir, ["up", "-d", "--force-recreate"])
+
+
+def compose_logs(compose_file: Path, repo_dir: Path, *, tail: int = 100) -> str:
+    docker = shutil.which("docker")
+    docker_compose = shutil.which("docker-compose")
+    commands = []
+    if docker:
+        commands.append([docker, "compose", "-f", str(compose_file), "logs", "--tail", str(tail)])
+    if docker_compose:
+        commands.append([docker_compose, "-f", str(compose_file), "logs", "--tail", str(tail)])
+    for cmd in commands:
+        try:
+            result = subprocess.run(cmd, cwd=str(repo_dir), capture_output=True, text=True, timeout=15, check=False)
+            if result.stdout or result.stderr:
+                return (result.stdout + result.stderr)[-12000:]
+        except (FileNotFoundError, subprocess.TimeoutExpired):
+            continue
+    return ""
+
+
 def wait_for_any_url(urls: Iterable[str], timeout_seconds: int = 90) -> bool:
     deadline = time.time() + timeout_seconds
     url_list = list(urls)

@@ -92,6 +92,12 @@ th, td { padding:0.6rem; border-bottom:1px solid #e2e8f0; text-align:left; }
 .history-filters button { margin-top:0; }
 .dashboard-hero form { margin:0; }
 .dashboard-hero form .button-link { border:0; width:auto; margin:0; }
+.service-diagnostics { display:grid; gap:1rem; }
+.service-card .button-row form { margin:0; }
+.service-card .button-row button { margin:0; white-space:nowrap; }
+.service-details { display:grid; grid-template-columns: 110px minmax(0, 1fr); gap:0.4rem 0.75rem; }
+.service-details dt { color:#64748b; font-weight:700; }
+.service-details dd { margin:0; overflow-wrap:anywhere; }
 
 @media (max-width: 760px) {
   .site-header, .dashboard-hero, .panel-header { flex-direction:column; align-items:flex-start; }

@@ -22,6 +22,7 @@ from agrivision.config.settings import load_local_env
 from agrivision.services.report_service import ReportService
 from agrivision.services.run_service import RunService
 from agrivision.services.preflight_service import PreflightService
+from agrivision.services.service_control import ensure_service, restart_service, service_statuses
 from agrivision.services.settings_service import SettingsService
 from agrivision.services.storage_service import StorageService
 from agrivision.services.pdm.catalog import PDM_MODEL_CATALOG, get_models_for_crop
@@ -413,6 +414,20 @@ def settings_page(request: Request):
     return view
 
 
+@app.get('/services', response_class=HTMLResponse)
+def services_page(request: Request) -> HTMLResponse:
+    return TEMPLATES.TemplateResponse(
+        request,
+        'services.html',
+        {'services': service_statuses(include_logs=True), 'message': None},
+    )
+
+
+@app.get('/services/status')
+def services_status() -> list[dict[str, object]]:
+    return service_statuses(include_logs=False)
+
+
 @app.post('/settings')
 def update_settings(request: SettingsUpdateRequest) -> dict:
     return settings_service.update_non_secret_settings(request)
@@ -471,6 +486,28 @@ def update_credentials_ui(
         )
     )
     return RedirectResponse(url='/settings', status_code=303)
+
+
+@app.post('/ui/services/{service_key}/start')
+def start_service_ui(service_key: str) -> RedirectResponse:
+    if service_key not in {'weather', 'irrigation', 'pdm'}:
+        raise HTTPException(status_code=404, detail='Service not found.')
+    try:
+        ensure_service(service_key, timeout_seconds=90)
+    except Exception as exc:
+        raise HTTPException(status_code=500, detail=str(exc)) from exc
+    return RedirectResponse(url='/services', status_code=303)
+
+
+@app.post('/ui/services/{service_key}/restart')
+def restart_service_ui(service_key: str) -> RedirectResponse:
+    if service_key not in {'weather', 'irrigation', 'pdm'}:
+        raise HTTPException(status_code=404, detail='Service not found.')
+    try:
+        restart_service(service_key, timeout_seconds=90)
+    except Exception as exc:
+        raise HTTPException(status_code=500, detail=str(exc)) from exc
+    return RedirectResponse(url='/services', status_code=303)
 
 
 @app.get('/artifacts/{run_id}/report-assets/{asset_path:path}')

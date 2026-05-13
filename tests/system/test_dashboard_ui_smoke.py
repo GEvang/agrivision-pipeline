@@ -56,4 +56,6 @@ def test_dashboard_pages_render(tmp_path: Path, monkeypatch) -> None:
     assert runs_page.status_code == 200
     assert 'Run History' in runs_page.text
     assert client.get('/runs/run-1', headers={'accept': 'text/html'}).status_code == 200
+    monkeypatch.setattr(api, 'service_statuses', lambda include_logs=False: [])
+    assert client.get('/services', headers={'accept': 'text/html'}).status_code == 200
     assert client.get('/settings', headers={'accept': 'text/html'}).status_code == 200
