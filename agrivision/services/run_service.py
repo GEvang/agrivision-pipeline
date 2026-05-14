@@ -11,6 +11,7 @@ from pathlib import Path
 from agrivision.app.schemas.runs import RunCreateRequest, RunRecord, StageStatus
 from agrivision.config import get_project_root, load_config
 from agrivision.pipeline.orchestrator import run_full_pipeline
+from agrivision.services.failure_diagnostics import summarize_failure
 from agrivision.services.storage_service import StorageService
 
 
@@ -412,17 +413,21 @@ class RunService:
                     log_handle.write(f"\n[dashboard] Run cancelled: {exc}\n")
                 return
             outputs = self._discover_outputs(Path(record.run_dir))
-            self.update_stage(run_id, self.load_run(run_id).current_stage or 'pipeline', 'failed', str(exc))
+            raw_error = str(exc)
+            summary = summarize_failure(raw_error)
+            self.update_stage(run_id, self.load_run(run_id).current_stage or 'pipeline', 'failed', summary)
             self.update_status(
                 run_id,
                 status='failed',
                 outputs=outputs,
-                errors=[str(exc)],
+                errors=[summary],
                 finished_at=datetime.now(timezone.utc),
-                stage_message=str(exc),
+                stage_message=summary,
             )
             with log_path.open('a', encoding='utf-8') as log_handle:
-                log_handle.write(f"\n[dashboard] Run failed: {exc}\n")
+                log_handle.write(f"\n[dashboard] Run failed: {summary}\n")
+                if raw_error != summary:
+                    log_handle.write(f"[dashboard] Raw error: {raw_error}\n")
         finally:
             self._cancel_events.pop(run_id, None)
 

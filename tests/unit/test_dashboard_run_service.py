@@ -99,6 +99,31 @@ def test_request_stop_marks_running_run_cancelled(tmp_path: Path, monkeypatch) -
     assert stopped.errors.count('Run stopped by operator.') == 1
 
 
+def test_failed_run_stores_diagnostic_summary_and_raw_log(tmp_path: Path, monkeypatch) -> None:
+    storage = StorageService(project_root=tmp_path)
+    upload_dir = storage.upload_dir('upload-seed')
+    (upload_dir / 'rgb').mkdir(parents=True, exist_ok=True)
+    (upload_dir / 'mapir').mkdir(parents=True, exist_ok=True)
+    service = RunService(storage)
+    record = service.create_run_record(_request('upload-seed'))
+
+    monkeypatch.setattr(service, 'stage_inputs_for_run', lambda run_id: None)
+    monkeypatch.setattr(service, '_discover_outputs', lambda run_dir: {})
+
+    def fail_pipeline(**kwargs) -> None:
+        raise RuntimeError('ODM-RGB failed with exit code 139. Docker mount args were --volumes-from app.')
+
+    monkeypatch.setattr('agrivision.services.run_service.run_full_pipeline', fail_pipeline)
+
+    failed = service.launch_run(record.run_id)
+    log_text = Path(failed.logs_path).read_text(encoding='utf-8')
+
+    assert failed.status == 'failed'
+    assert 'crashed during reconstruction' in failed.stage_message
+    assert failed.errors == [failed.stage_message]
+    assert 'Raw error: ODM-RGB failed with exit code 139' in log_text
+
+
 def test_delete_run_removes_only_runtime_run_dir(tmp_path: Path) -> None:
     storage = StorageService(project_root=tmp_path)
     upload_dir = storage.upload_dir('upload-seed')
