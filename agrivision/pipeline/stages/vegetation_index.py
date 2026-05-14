@@ -98,13 +98,41 @@ def _read_band(src: rasterio.io.DatasetReader, band_idx: int) -> np.ndarray:
     return src.read(band_idx).astype("float32")
 
 
-def _normalized_diff(a: np.ndarray, b: np.ndarray) -> np.ndarray:
+def _valid_source_mask(
+    src: rasterio.io.DatasetReader,
+    *bands: np.ndarray,
+) -> np.ndarray:
+    mask = np.ones(bands[0].shape, dtype=bool)
+    for band in bands:
+        mask &= np.isfinite(band)
+
+    if src.nodata is not None:
+        for band in bands:
+            mask &= band != src.nodata
+
+    if src.count >= 4:
+        alpha = src.read(4)
+        mask &= alpha > 0
+
+    return mask
+
+
+def _normalized_diff(
+    a: np.ndarray,
+    b: np.ndarray,
+    valid_mask: np.ndarray | None = None,
+) -> np.ndarray:
     """
     (a - b) / (a + b), with epsilon to avoid divide-by-zero.
     """
-    denom = a + b
     eps = 1e-6
-    idx = (a - b) / (denom + eps)
+    denom = a + b
+    valid = np.isfinite(a) & np.isfinite(b) & (denom > eps)
+    if valid_mask is not None:
+        valid &= valid_mask
+
+    idx = np.full(a.shape, np.nan, dtype="float32")
+    idx[valid] = (a[valid] - b[valid]) / denom[valid]
     return np.clip(idx, -1.0, 1.0)
 
 
@@ -132,6 +160,7 @@ def compute_index(
         red_idx = int(profile["red_band"])
         nir = _read_band(src, nir_idx)
         red = _read_band(src, red_idx)
+        valid_mask = _valid_source_mask(src, nir, red)
 
         meta = {
             "index_mode": "nir_red",
@@ -140,13 +169,14 @@ def compute_index(
             "band_mapping": {"nir_band": nir_idx, "red_band": red_idx},
         }
         print(f"[VI] {label} index_mode=nir_red → computing NDVI (true NDVI)")
-        return _normalized_diff(nir, red), meta
+        return _normalized_diff(nir, red, valid_mask), meta
 
     if mode == "nir_green":
         nir_idx = int(profile["nir_band"])
         green_idx = int(profile["green_band"])
         nir = _read_band(src, nir_idx)
         green = _read_band(src, green_idx)
+        valid_mask = _valid_source_mask(src, nir, green)
 
         meta = {
             "index_mode": "nir_green",
@@ -155,13 +185,14 @@ def compute_index(
             "band_mapping": {"nir_band": nir_idx, "green_band": green_idx},
         }
         print(f"[VI] {label} index_mode=nir_green → computing Vegetation Index")
-        return _normalized_diff(nir, green), meta
+        return _normalized_diff(nir, green, valid_mask), meta
 
     if mode == "pseudo":
         nir_idx = int(profile["nir_band"])
         red_idx = int(profile["red_band"])
         nir = _read_band(src, nir_idx)
         red = _read_band(src, red_idx)
+        valid_mask = _valid_source_mask(src, nir, red)
 
         meta = {
             "index_mode": "pseudo",
@@ -170,7 +201,7 @@ def compute_index(
             "band_mapping": {"band_a": nir_idx, "band_b": red_idx},
         }
         print(f"[VI] {label} index_mode=pseudo → computing pseudo vegetation index")
-        return _normalized_diff(nir, red), meta
+        return _normalized_diff(nir, red, valid_mask), meta
 
     raise ValueError(
         f"[VI] Unsupported index_mode '{mode}' for {label} profile. "
@@ -193,7 +224,7 @@ def save_geotiff(
     profile.update(
         dtype=rasterio.float32,
         count=1,
-        nodata=None,
+        nodata=np.nan,
     )
 
     with rasterio.open(out_path, "w", **profile) as dst:
@@ -235,6 +266,55 @@ def save_metadata(meta: Dict[str, Any], out_path: Path) -> None:
     print(f"[VI] Metadata saved: {out_path}")
 
 
+def summarize_index_quality(idx: np.ndarray) -> dict[str, Any]:
+    valid = np.isfinite(idx)
+    total = int(valid.size)
+    count = int(valid.sum())
+    if count == 0:
+        return {
+            "valid_pixels": {"count": 0, "total": total, "percent": 0.0},
+            "distribution": {},
+            "quality_flags": ["No valid vegetation-index pixels were produced."],
+        }
+
+    values = idx[valid]
+    percentiles = {
+        str(q): float(np.nanpercentile(values, q))
+        for q in (2, 10, 33, 50, 66, 90, 98)
+    }
+    saturated_high_percent = float(np.mean(values >= 0.95) * 100.0)
+    saturated_low_percent = float(np.mean(values <= -0.95) * 100.0)
+
+    flags: list[str] = []
+    if saturated_high_percent >= 50.0:
+        flags.append(
+            "Index distribution is highly saturated near 1.0; verify sensor band mapping and source calibration before agronomic interpretation."
+        )
+    if saturated_low_percent >= 50.0:
+        flags.append(
+            "Index distribution is highly saturated near -1.0; verify sensor band mapping and source calibration before agronomic interpretation."
+        )
+
+    return {
+        "valid_pixels": {
+            "count": count,
+            "total": total,
+            "percent": float(count / total * 100.0),
+        },
+        "distribution": {
+            "min": float(np.nanmin(values)),
+            "max": float(np.nanmax(values)),
+            "mean": float(np.nanmean(values)),
+            "median": float(np.nanmedian(values)),
+            "std": float(np.nanstd(values)),
+            "percentiles": percentiles,
+            "saturated_high_percent": saturated_high_percent,
+            "saturated_low_percent": saturated_low_percent,
+        },
+        "quality_flags": flags,
+    }
+
+
 # ---------------------------------------------------------------------
 # Public entry point
 # ---------------------------------------------------------------------
@@ -270,6 +350,7 @@ def run_ndvi() -> None:
 
     with rasterio.open(src_path) as src:
         idx, idx_meta = compute_index(src, label, profile)
+        quality = summarize_index_quality(idx)
         save_geotiff(src, idx, out_tif, out_dir)
         save_png(idx, out_png, title=idx_meta["index_name"], out_dir=out_dir)
 
@@ -285,6 +366,9 @@ def run_ndvi() -> None:
                 "poor_max": poor_max,
                 "medium_max": medium_max,
             },
+            "valid_pixels": quality["valid_pixels"],
+            "distribution": quality["distribution"],
+            "quality_flags": quality["quality_flags"],
             "artifacts": {
                 "geotiff": str(out_tif),
                 "png": str(out_png),

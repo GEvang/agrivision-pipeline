@@ -5,6 +5,7 @@ import warnings
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, Mapping
+from urllib.parse import urlsplit, urlunsplit
 
 import yaml
 
@@ -37,6 +38,11 @@ def _remove_yaml_secrets(config: dict[str, Any]) -> dict[str, Any]:
     irrigation_auth["email"] = ""
     irrigation_auth["password"] = ""
     irrigation["token"] = ""
+    pdm = config.setdefault("pdm", {})
+    pdm_auth = pdm.setdefault("auth", {})
+    pdm_auth["username"] = ""
+    pdm_auth["password"] = ""
+    pdm["token"] = ""
     return config
 
 
@@ -65,6 +71,9 @@ DEFAULT_CONFIG: dict[str, Any] = {
     "ndvi": {
         "poor_max": 0.25,
         "medium_max": 0.4,
+        "threshold_mode": "fixed",
+        "calibration_percentiles": [33, 66],
+        "min_cell_valid_fraction": 0.2,
         "grid_rows": 17,
         "grid_cols": 17,
         "mapir_profile": {
@@ -84,6 +93,7 @@ DEFAULT_CONFIG: dict[str, Any] = {
         "username": "",
         "password": "",
         "openweather_api_key": "",
+        "service_dir": "OpenAgri-WeatherService",
     },
     "irrigation": {
         "base_url": "http://127.0.0.1:8004",
@@ -104,6 +114,21 @@ DEFAULT_CONFIG: dict[str, Any] = {
         "odm_docker_image": "opendronemap/odm:latest",
         "orthophoto_resolution_cm": 1,
     },
+    "pdm": {
+        "enabled_by_default": True,
+        "base_url": "http://127.0.0.1:8006",
+        "auth": {
+            "username": "",
+            "password": "",
+        },
+        "token": "",
+        "timeout_seconds": 12,
+        "verify_ssl": False,
+        "default_crop": "grapevine",
+        "default_model_key": "grapevine_powdery_mildew_risk_v1",
+        "allow_per_run_override": True,
+        "service_dir": "OpenAgri-PestAndDiseaseManagement",
+    },
 }
 
 
@@ -114,6 +139,9 @@ _ENV_SECRET_OVERRIDES: tuple[tuple[tuple[str, ...], str, str], ...] = (
     (("irrigation", "auth", "email"), "IRRIGATION_EMAIL", "irrigation.auth.email"),
     (("irrigation", "auth", "password"), "IRRIGATION_PASSWORD", "irrigation.auth.password"),
     (("irrigation", "token"), "IRRIGATION_TOKEN", "irrigation.token"),
+    (("pdm", "auth", "username"), "PDM_USERNAME", "pdm.auth.username"),
+    (("pdm", "auth", "password"), "PDM_PASSWORD", "pdm.auth.password"),
+    (("pdm", "token"), "PDM_TOKEN", "pdm.token"),
 )
 
 
@@ -142,6 +170,7 @@ class WeatherSettings:
     username: str
     password: str
     openweather_api_key: str
+    service_dir: str
 
 
 @dataclass(frozen=True)
@@ -174,10 +203,33 @@ class IrrigationSettings:
     service_dir: str
 
 
+
+@dataclass(frozen=True)
+class PdmAuthSettings:
+    username: str
+    password: str
+
+
+@dataclass(frozen=True)
+class PdmSettings:
+    enabled_by_default: bool
+    base_url: str
+    auth: PdmAuthSettings
+    token: str
+    timeout_seconds: int
+    verify_ssl: bool
+    default_crop: str
+    default_model_key: str
+    allow_per_run_override: bool
+    service_dir: str
+
 @dataclass(frozen=True)
 class NdviSettings:
     poor_max: float
     medium_max: float
+    threshold_mode: str
+    calibration_percentiles: list[float]
+    min_cell_valid_fraction: float
     grid_rows: int
     grid_cols: int
     mapir_profile: dict[str, Any]
@@ -195,6 +247,7 @@ class AppSettings:
     weather: WeatherSettings
     location: LocationSettings
     irrigation: IrrigationSettings
+    pdm: PdmSettings
     ndvi: NdviSettings
     resize: ResizeSettings
     orthophoto: OrthophotoSettings
@@ -283,6 +336,26 @@ def _apply_env_overrides(config: dict[str, Any]) -> dict[str, Any]:
     return config
 
 
+def _rewrite_loopback_urls_for_container(config: dict[str, Any]) -> dict[str, Any]:
+    if not os.getenv("APP_CONTAINER_PROJECT_ROOT"):
+        return config
+    if os.getenv("AGRIVISION_REWRITE_LOOPBACK_URLS", "1").strip().lower() in {"0", "false", "no"}:
+        return config
+
+    for section in ("weather", "irrigation", "pdm"):
+        value = config.get(section, {}).get("base_url")
+        if not isinstance(value, str) or not value:
+            continue
+        parsed = urlsplit(value)
+        if parsed.hostname not in {"127.0.0.1", "localhost"}:
+            continue
+        port = f":{parsed.port}" if parsed.port is not None else ""
+        config[section]["base_url"] = urlunsplit(
+            (parsed.scheme, f"host.docker.internal{port}", parsed.path, parsed.query, parsed.fragment)
+        )
+    return config
+
+
 def load_raw_config(config_path: Path | None = None) -> dict[str, Any]:
     """Load raw YAML config as a dict. Missing config files return an empty mapping."""
     resolved = config_path or get_config_path()
@@ -304,6 +377,7 @@ def load_config() -> dict:
     config = _deep_merge(DEFAULT_CONFIG, load_raw_config())
     config = _remove_yaml_secrets(config)
     config = _apply_env_overrides(config)
+    config = _rewrite_loopback_urls_for_container(config)
     return config
 
 
@@ -342,6 +416,8 @@ def get_settings() -> AppSettings:
     irrigation_cfg = _as_dict(cfg.get("irrigation"))
     irrigation_auth_cfg = _as_dict(irrigation_cfg.get("auth"))
     irrigation_eto_cfg = _as_dict(irrigation_cfg.get("eto"))
+    pdm_cfg = _as_dict(cfg.get("pdm"))
+    pdm_auth_cfg = _as_dict(pdm_cfg.get("auth"))
     ndvi_cfg = _as_dict(cfg.get("ndvi"))
     resize_cfg = _as_dict(cfg.get("resize"))
     orthophoto_cfg = _as_dict(cfg.get("orthophoto"))
@@ -352,6 +428,8 @@ def get_settings() -> AppSettings:
     irrigation_defaults = _as_dict(defaults.get("irrigation"))
     irrigation_auth_defaults = _as_dict(irrigation_defaults.get("auth"))
     irrigation_eto_defaults = _as_dict(irrigation_defaults.get("eto"))
+    pdm_defaults = _as_dict(defaults.get("pdm"))
+    pdm_auth_defaults = _as_dict(pdm_defaults.get("auth"))
     ndvi_defaults = _as_dict(defaults.get("ndvi"))
     resize_defaults = _as_dict(defaults.get("resize"))
     orthophoto_defaults = _as_dict(defaults.get("orthophoto"))
@@ -390,6 +468,7 @@ def get_settings() -> AppSettings:
                 weather_cfg.get("openweather_api_key"),
                 _as_str(weather_defaults.get("openweather_api_key")),
             ),
+            service_dir=_as_str(weather_cfg.get("service_dir"), _as_str(weather_defaults.get("service_dir"), "OpenAgri-WeatherService")),
         ),
         location=LocationSettings(
             name=_as_str(location_cfg.get("name"), _as_str(location_defaults.get("name"))),
@@ -427,11 +506,44 @@ def get_settings() -> AppSettings:
             service_dir=_as_str(irrigation_cfg.get("service_dir"), _as_str(irrigation_defaults.get("service_dir"), "OpenAgri-IrrigationManagement")),
 
         ),
+        pdm=PdmSettings(
+            enabled_by_default=bool(pdm_cfg.get("enabled_by_default", pdm_defaults.get("enabled_by_default", True))),
+            base_url=_as_str(pdm_cfg.get("base_url"), _as_str(pdm_defaults.get("base_url"))),
+            auth=PdmAuthSettings(
+                username=_as_str(pdm_auth_cfg.get("username"), _as_str(pdm_auth_defaults.get("username"))),
+                password=_as_str(pdm_auth_cfg.get("password"), _as_str(pdm_auth_defaults.get("password"))),
+            ),
+            token=_as_str(pdm_cfg.get("token"), _as_str(pdm_defaults.get("token"))),
+            timeout_seconds=_as_int(pdm_cfg.get("timeout_seconds"), _as_int(pdm_defaults.get("timeout_seconds"), 12)),
+            verify_ssl=bool(pdm_cfg.get("verify_ssl", pdm_defaults.get("verify_ssl", False))),
+            default_crop=_as_str(pdm_cfg.get("default_crop"), _as_str(pdm_defaults.get("default_crop"), "grapevine")),
+            default_model_key=_as_str(pdm_cfg.get("default_model_key"), _as_str(pdm_defaults.get("default_model_key"), "grapevine_powdery_mildew_risk_v1")),
+            allow_per_run_override=bool(pdm_cfg.get("allow_per_run_override", pdm_defaults.get("allow_per_run_override", True))),
+            service_dir=_as_str(pdm_cfg.get("service_dir"), _as_str(pdm_defaults.get("service_dir"), "OpenAgri-PestAndDiseaseManagement")),
+        ),
         ndvi=NdviSettings(
             poor_max=_as_float(ndvi_cfg.get("poor_max"), _as_float(ndvi_defaults.get("poor_max"), 0.25)),
             medium_max=_as_float(
                 ndvi_cfg.get("medium_max"),
                 _as_float(ndvi_defaults.get("medium_max"), 0.4),
+            ),
+            threshold_mode=_as_str(
+                ndvi_cfg.get("threshold_mode"),
+                _as_str(ndvi_defaults.get("threshold_mode"), "fixed"),
+            ),
+            calibration_percentiles=[
+                _as_float(value, fallback)
+                for value, fallback in zip(
+                    ndvi_cfg.get(
+                        "calibration_percentiles",
+                        ndvi_defaults.get("calibration_percentiles", [33, 66]),
+                    ),
+                    [33, 66],
+                )
+            ],
+            min_cell_valid_fraction=_as_float(
+                ndvi_cfg.get("min_cell_valid_fraction"),
+                _as_float(ndvi_defaults.get("min_cell_valid_fraction"), 0.2),
             ),
             grid_rows=_as_int(ndvi_cfg.get("grid_rows"), _as_int(ndvi_defaults.get("grid_rows"), 17)),
             grid_cols=_as_int(ndvi_cfg.get("grid_cols"), _as_int(ndvi_defaults.get("grid_cols"), 17)),

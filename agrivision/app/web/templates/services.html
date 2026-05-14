@@ -1,0 +1,52 @@
+{% extends 'base.html' %}
+{% block content %}
+<section class="dashboard-hero">
+  <div>
+    <h2>Services</h2>
+    <p class="muted">Runtime diagnostics for OpenAgri service dependencies.</p>
+  </div>
+  <div class="button-row">
+    <a class="button-link secondary" href="/settings">Settings</a>
+  </div>
+</section>
+
+<section class="service-diagnostics">
+  {% for service in services %}
+  <article class="panel service-card">
+    <div class="panel-header">
+      <div>
+        <h2>{{ service.name }}</h2>
+        <p class="muted">{{ service.base_url }}</p>
+      </div>
+      <span class="status-badge status-{{ 'completed' if service.state == 'ok' else 'failed' if service.state in ['warn', 'missing'] else service.state }}">{{ service.state }}</span>
+    </div>
+    <dl class="service-details">
+      <dt>Detail</dt><dd>{{ service.detail }}</dd>
+      <dt>Repository</dt><dd>{{ service.repo_dir }}</dd>
+      <dt>Compose</dt><dd>{{ service.compose_file or '-' }}</dd>
+    </dl>
+    <div class="button-row">
+      <a class="button-link secondary compact" href="{{ service.docs_url }}" target="_blank" rel="noreferrer">Open docs</a>
+      <form method="post" action="/ui/services/{{ service.key }}/start">
+        <button class="compact" type="submit">Start/check</button>
+      </form>
+      <form method="post" action="/ui/services/{{ service.key }}/restart" onsubmit="return confirm('Restart {{ service.name }} service containers?');">
+        <button class="danger-button compact" type="submit">Restart</button>
+      </form>
+    </div>
+    <details>
+      <summary>Readiness URLs</summary>
+      <ul>
+        {% for url in service.readiness_urls %}
+        <li>{{ url }}</li>
+        {% endfor %}
+      </ul>
+    </details>
+    <details>
+      <summary>Log tail</summary>
+      <pre class="log-box">{{ service.logs or 'No compose logs available.' }}</pre>
+    </details>
+  </article>
+  {% endfor %}
+</section>
+{% endblock %}

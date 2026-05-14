@@ -20,7 +20,7 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     && echo "deb [arch=$(dpkg --print-architecture) signed-by=/etc/apt/keyrings/docker.asc] https://download.docker.com/linux/debian $(. /etc/os-release && echo "$VERSION_CODENAME") stable" \
         > /etc/apt/sources.list.d/docker.list \
     && apt-get update \
-    && apt-get install -y --no-install-recommends docker-ce-cli \
+    && apt-get install -y --no-install-recommends docker-ce-cli docker-compose-plugin \
     && rm -rf /var/lib/apt/lists/*
 
 COPY requirements.txt ./requirements.txt
@@ -37,7 +37,8 @@ COPY run.py ./run.py
 COPY config.yaml ./config.yaml
 COPY docker-entrypoint.sh ./docker-entrypoint.sh
 
-RUN chmod +x /app/docker-entrypoint.sh \
+RUN sed -i 's/\r$//' /app/docker-entrypoint.sh \
+    && chmod +x /app/docker-entrypoint.sh \
     && mkdir -p /workspace/data /workspace/output
 
 ENTRYPOINT ["/app/docker-entrypoint.sh"]

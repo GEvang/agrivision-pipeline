@@ -22,11 +22,17 @@ def get_grid_settings() -> dict[str, object]:
     grid_table_csv = ndvi_dir / "ndvi_grid_cells.csv"
     grid_categories_csv = ndvi_dir / "ndvi_grid_categories.csv"
     grid_meta_json = ndvi_dir / "grid_metadata.json"
+    ortho_rgb = (
+        project_root
+        / config["paths"]["odm_project_root_rgb"]
+        / "project/odm_orthophoto/odm_orthophoto.tif"
+    )
 
     return {
         "ndvi_dir": ndvi_dir,
         "ndvi_tif": ndvi_tif,
         "ndvi_meta_json": ndvi_meta_json,
+        "ortho_rgb": ortho_rgb,
         "grid_png": grid_png,
         "grid_table_csv": grid_table_csv,
         "grid_categories_csv": grid_categories_csv,
@@ -35,6 +41,9 @@ def get_grid_settings() -> dict[str, object]:
         "grid_cols": int(config["ndvi"]["grid_cols"]),
         "poor_max_cfg": float(config["ndvi"]["poor_max"]),
         "medium_max_cfg": float(config["ndvi"]["medium_max"]),
+        "threshold_mode": str(config["ndvi"].get("threshold_mode", "fixed")),
+        "calibration_percentiles": config["ndvi"].get("calibration_percentiles", [33, 66]),
+        "min_cell_valid_fraction": float(config["ndvi"].get("min_cell_valid_fraction", 0.2)),
     }
 
 
@@ -73,6 +82,7 @@ def save_cell_table_csv(
         "col_label",
         "mean_index",
         "mean_ndvi",
+        "valid_fraction",
         "class",
         "index_name",
         "index_mode",
@@ -92,6 +102,7 @@ def save_cell_table_csv(
                     "col_label": cell["col_label"],
                     "mean_index": mean_str,
                     "mean_ndvi": mean_str,
+                    "valid_fraction": f"{float(cell.get('valid_fraction', 0.0)):.4f}",
                     "class": cell["class"],
                     "index_name": index_name,
                     "index_mode": index_mode,
@@ -177,6 +188,9 @@ def save_grid_metadata(
     grid_cols: int,
     poor_max_cfg: float,
     medium_max_cfg: float,
+    threshold_mode: str = "fixed",
+    calibration_percentiles: list[float] | None = None,
+    min_cell_valid_fraction: float = 0.0,
 ) -> None:
     out_path.parent.mkdir(parents=True, exist_ok=True)
 
@@ -187,6 +201,9 @@ def save_grid_metadata(
         "source_dataset": source_dataset,
         "grid": {"rows": grid_rows, "cols": grid_cols},
         "classification_mode": classification_mode,
+        "threshold_mode_configured": threshold_mode,
+        "calibration_percentiles": calibration_percentiles or [],
+        "min_cell_valid_fraction": float(min_cell_valid_fraction),
         "thresholds_used": {
             "poor_max": float(poor_max_used),
             "medium_max": float(medium_max_used),

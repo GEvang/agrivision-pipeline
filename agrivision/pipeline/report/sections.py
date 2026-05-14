@@ -133,6 +133,9 @@ def render_methodology_section(meta: dict) -> str:
     thresholds = meta.get("classification_thresholds", {}) or {}
     source = meta.get("source", {}) or {}
     band_map = index.get("band_mapping", {}) or {}
+    valid_pixels = meta.get("valid_pixels", {}) or {}
+    distribution = meta.get("distribution", {}) or {}
+    quality_flags = meta.get("quality_flags", []) or []
 
     band_map_str = "N/A"
     if isinstance(band_map, dict) and band_map:
@@ -143,8 +146,19 @@ def render_methodology_section(meta: dict) -> str:
     if isinstance(notes, list) and notes:
         notes_html = "<ul>" + "".join(f"<li>{safe_html(n)}</li>" for n in notes) + "</ul>"
 
+    flags_html = ""
+    if isinstance(quality_flags, list) and quality_flags:
+        flags_html = (
+            "<div style='border:1px solid #b45309; background:#fff7ed; color:#7c2d12; "
+            "padding:10px; margin:12px 0;'>"
+            "<strong>Quality warning:</strong><ul>"
+            + "".join(f"<li>{safe_html(flag)}</li>" for flag in quality_flags)
+            + "</ul></div>"
+        )
+
     return f"""
 <h2>Vegetation Index Methodology</h2>
+{flags_html}
 <table border="1" cellpadding="6" cellspacing="0">
   <tr><th align="left">Index type</th><td>{safe_html(index.get("index_name", "Unknown"))}</td></tr>
   <tr><th align="left">Formula</th><td><code>{safe_html(index.get("formula", "N/A"))}</code></td></tr>
@@ -152,6 +166,9 @@ def render_methodology_section(meta: dict) -> str:
   <tr><th align="left">Band mapping</th><td>{band_map_str}</td></tr>
   <tr><th align="left">Configured poor threshold (max)</th><td>{safe_html(thresholds.get("poor_max", "N/A"))}</td></tr>
   <tr><th align="left">Configured medium threshold (max)</th><td>{safe_html(thresholds.get("medium_max", "N/A"))}</td></tr>
+  <tr><th align="left">Valid pixels used</th><td>{safe_html(valid_pixels.get("percent", "N/A"))}%</td></tr>
+  <tr><th align="left">Median index value</th><td>{safe_html(distribution.get("median", "N/A"))}</td></tr>
+  <tr><th align="left">Pixels >= 0.95</th><td>{safe_html(distribution.get("saturated_high_percent", "N/A"))}%</td></tr>
   <tr><th align="left">Generated at (UTC)</th><td>{safe_html(meta.get("generated_at_utc", "N/A"))}</td></tr>
 </table>
 {notes_html}
@@ -175,6 +192,8 @@ def render_grid_metadata_section(grid_meta: dict) -> str:
     mode_expl = "Unknown."
     if mode == "fixed":
         mode_expl = "Fixed thresholds from configuration were applied."
+    elif mode == "percentile_calibrated":
+        mode_expl = "Thresholds were calibrated from this run's valid grid-cell means."
     elif mode == "percentile_fallback":
         mode_expl = (
             "Percentile-based thresholds were applied because fixed thresholds produced "
@@ -222,6 +241,7 @@ def render_irrigation_section(
     eto_count = eto.get("count", None)
     eto_preview = eto.get("preview", "")
     eto_artifact_path = eto.get("artifact_path", "")
+    weather_debug = eto.get("weather_debug") or {}
 
     status_label = "OK" if authenticated else "Not authenticated / unavailable"
     status_color = "#2a5d34" if authenticated else "#a13a3a"
@@ -261,6 +281,39 @@ def render_irrigation_section(
             f"border:1px solid #ddd; padding:10px;'>{safe_html(eto_preview)}</pre>"
         )
 
+    weather_debug_html = ""
+    if isinstance(weather_debug, dict) and weather_debug:
+        debug_path = weather_debug.get("artifact_path", "")
+        debug_link_html = "<em>Not available</em>"
+        try:
+            weather_path = Path(debug_path)
+            if weather_path.exists():
+                href = rel_to_report(weather_path, output_dir)
+                debug_link_html = f'<a href="{safe_html(href)}">{safe_html(href)}</a>'
+        except Exception:
+            pass
+        debug_status = "OK" if weather_debug.get("ok") else "Failed"
+        debug_color = "#2a5d34" if weather_debug.get("ok") else "#a13a3a"
+        debug_preview = weather_debug.get("preview", "")
+        debug_preview_html = ""
+        if debug_preview:
+            debug_preview_html = (
+                "<pre style='white-space: pre-wrap; max-height: 220px; overflow:auto; "
+                f"border:1px solid #ddd; padding:10px;'>{safe_html(debug_preview)}</pre>"
+            )
+        weather_debug_html = f"""
+<h3>Weather debug probe</h3>
+<p>
+  Triggered automatically because ETo returned no values or failed. This calls the Weather Service history endpoint directly
+  for the same date range so you can confirm whether weather data is available independently of irrigation ingestion.
+</p>
+<table border="1" cellpadding="6" cellspacing="0">
+  <tr><th align="left">Probe status</th><td><span style="color:{debug_color}; font-weight:bold;">{safe_html(debug_status)}</span></td></tr>
+  <tr><th align="left">Artifact</th><td>{debug_link_html}</td></tr>
+</table>
+{debug_preview_html}
+""".strip()
+
     return f"""
 <h2>Irrigation Service Integration</h2>
 <p>
@@ -288,5 +341,59 @@ def render_irrigation_section(
 
 {eto_preview_html}
 
+{weather_debug_html}
+
+{notes_html}
+""".strip()
+
+
+def render_pdm_section(
+    pdm_summary: Optional[Dict[str, Any]],
+    output_dir: Path,
+) -> str:
+    if not pdm_summary:
+        return (
+            "<h2>Pest &amp; Disease</h2>"
+            "<p><em>No Pest &amp; Disease data provided for this run.</em></p>"
+        )
+
+    status = pdm_summary.get('status', 'unknown')
+    status_color = '#2a5d34' if status == 'success' else '#a13a3a' if status == 'failed' else '#8a6d1d'
+    notes = pdm_summary.get('notes', []) or []
+    reasons = pdm_summary.get('triggered_conditions', []) or []
+    notes_html = "<ul>" + "".join(f"<li>{safe_html(note)}</li>" for note in notes) + "</ul>" if notes else ''
+    reasons_html = "<ul>" + "".join(f"<li>{safe_html(reason)}</li>" for reason in reasons) + "</ul>" if reasons else '<p><em>No rule matches recorded.</em></p>'
+    artifact_row = _render_artifact_link_row('Raw summary artifact', str(pdm_summary.get('raw_payload_artifact', '')), output_dir)
+    bootstrap_row = _render_artifact_link_row('Bootstrap artifact', str(pdm_summary.get('bootstrap_artifact', '')), output_dir)
+    time_window = pdm_summary.get('time_window', {}) if isinstance(pdm_summary.get('time_window'), dict) else {}
+
+    return f"""
+<h2>Pest &amp; Disease</h2>
+<p>
+  This run includes a live OpenAgri Pest &amp; Disease Management service execution using the selected predefined remote model and parcel.
+</p>
+<table border="1" cellpadding="6" cellspacing="0">
+  <tr><th align="left">Status</th><td><span style="color:{status_color}; font-weight:bold;">{safe_html(status.title())}</span></td></tr>
+  <tr><th align="left">Crop</th><td>{safe_html(pdm_summary.get('crop', ''))}</td></tr>
+  <tr><th align="left">Model</th><td>{safe_html(pdm_summary.get('display_label', ''))}</td></tr>
+  <tr><th align="left">Model key</th><td>{safe_html(pdm_summary.get('selected_model_key', ''))}</td></tr>
+  <tr><th align="left">Organism</th><td>{safe_html(pdm_summary.get('organism_name', ''))}</td></tr>
+  <tr><th align="left">EPPO code</th><td>{safe_html(pdm_summary.get('eppo_code', ''))}</td></tr>
+  <tr><th align="left">Calculation type</th><td>{safe_html(pdm_summary.get('calculation_type', ''))}</td></tr>
+  <tr><th align="left">Evaluated window</th><td>{safe_html(time_window.get('start', 'N/A'))} -&gt; {safe_html(time_window.get('end', 'N/A'))}</td></tr>
+  <tr><th align="left">Observed at</th><td>{safe_html(time_window.get('observed_at', 'N/A'))}</td></tr>
+  <tr><th align="left">Remote latest timestamp</th><td>{safe_html(time_window.get('remote_latest_timestamp', 'N/A'))}</td></tr>
+  <tr><th align="left">Remote highest timestamp</th><td>{safe_html(time_window.get('remote_highest_timestamp', 'N/A'))}</td></tr>
+  <tr><th align="left">Risk level</th><td>{safe_html(pdm_summary.get('risk_level', 'Unavailable'))}</td></tr>
+  <tr><th align="left">Recommendation</th><td>{safe_html(pdm_summary.get('recommendation', pdm_summary.get('error_message', '')))}</td></tr>
+  <tr><th align="left">Service URL</th><td>{safe_html((pdm_summary.get('service_status') or {}).get('base_url', ''))}</td></tr>
+  <tr><th align="left">Service reachable</th><td>{safe_html((pdm_summary.get('service_status') or {}).get('reachable', False))}</td></tr>
+  <tr><th align="left">Remote parcel id</th><td>{safe_html(pdm_summary.get('remote_parcel_id', ''))}</td></tr>
+  <tr><th align="left">Remote model id</th><td>{safe_html(pdm_summary.get('remote_model_id', ''))}</td></tr>
+  {artifact_row}
+  {bootstrap_row}
+</table>
+<h3>Triggered conditions / reasons</h3>
+{reasons_html}
 {notes_html}
 """.strip()

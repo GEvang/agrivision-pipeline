@@ -48,6 +48,7 @@ def build_report_html(
     grid_overlay_html: str,
     grid_table_html: str,
     irrigation_html: str,
+    pdm_html: str,
 ) -> str:
     return f"""<!DOCTYPE html>
 <html lang="en">
@@ -122,6 +123,8 @@ def build_report_html(
   {grid_table_html}
 
   {irrigation_html}
+
+  {pdm_html}
 
 </body>
 </html>

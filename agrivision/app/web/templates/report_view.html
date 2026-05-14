@@ -1,17 +1,52 @@
 {% extends 'base.html' %}
-{% block title %}Report · {{ run.dataset_name }}{% endblock %}
+{% block title %}Report - {{ run.dataset_name }}{% endblock %}
 {% block content %}
 <section class="panel">
   <div class="panel-header">
     <div>
       <h2>{{ run.dataset_name }} Report</h2>
-      <p class="muted">Run {{ run.run_id }} · {{ run.status }}</p>
-    </div>
-    <div class="button-row">
-      <a class="button-link secondary" href="/runs/{{ run.run_id }}">Back to run</a>
-      <a class="button-link" href="/artifacts/{{ run.run_id }}/report" target="_blank" rel="noopener">Open standalone</a>
+      <p class="muted">Run {{ run.run_id }}</p>
     </div>
   </div>
+
+  <div class="run-meta-grid">
+    <div><span>Status</span><strong class="status-badge status-{{ run.status }}">{{ run.status }}</strong></div>
+    <div><span>Created</span><strong>{{ run.created_at | system_datetime }}</strong></div>
+    <div><span>Dataset</span><strong>{{ run.dataset_name }}</strong></div>
+  </div>
+
+  {% if report.quality %}
+  <h3>Result Quality</h3>
+  <div class="report-summary">
+    <div>
+      <span class="summary-label">Quality</span>
+      <strong class="quality-state quality-{{ report.quality.state }}">{{ report.quality.state }}</strong>
+    </div>
+    <div>
+      <span class="summary-label">Source</span>
+      <strong>{{ report.quality.source_dataset or '-' }} / {{ report.quality.index_mode or '-' }}</strong>
+    </div>
+    <div>
+      <span class="summary-label">Valid Pixels</span>
+      <strong>{{ '%.1f'|format(report.quality.valid_percent) if report.quality.valid_percent is not none else '-' }}%</strong>
+    </div>
+    <div>
+      <span class="summary-label">Classification</span>
+      <strong>{{ report.quality.classification_mode or '-' }}</strong>
+    </div>
+  </div>
+  {% if report.quality.flags %}
+  <div class="quality-alert">
+    <strong>Quality warnings</strong>
+    <ul>
+      {% for flag in report.quality.flags %}
+      <li>{{ flag }}</li>
+      {% endfor %}
+    </ul>
+  </div>
+  {% endif %}
+  {% endif %}
+
   <iframe class="report-frame report-frame-full" src="/artifacts/{{ run.run_id }}/report" title="Report for {{ run.dataset_name }}"></iframe>
 </section>
 {% endblock %}

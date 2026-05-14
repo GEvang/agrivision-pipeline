@@ -136,19 +136,44 @@ def detect_compose_file(repo_dir: Path, candidates: Iterable[str] | None = None)
 
 
 def _run_compose_command(compose_file: Path, repo_dir: Path, args: list[str]) -> None:
-    commands = [
-        ["docker", "compose", "-f", str(compose_file), *args],
-        ["sudo", "-n", "docker", "compose", "-f", str(compose_file), *args],
-    ]
+    docker = shutil.which("docker")
+    docker_compose = shutil.which("docker-compose")
+    if docker is None and docker_compose is None:
+        raise ServiceBootstrapError(
+            "Docker Compose was not found on PATH. Install Docker Desktop, Docker Engine "
+            "with the compose plugin, or standalone `docker-compose`."
+        )
+
+    commands = []
+    if docker:
+        commands.append([docker, "compose", "-f", str(compose_file), *args])
+    if docker_compose:
+        commands.append([docker_compose, "-f", str(compose_file), *args])
+
+    sudo = shutil.which("sudo")
+    sudo_enabled = os.getenv("AGRIVISION_ALLOW_SUDO_DOCKER", "1").strip().lower() not in {
+        "0",
+        "false",
+        "no",
+    }
+    if sudo and sudo_enabled:
+        if docker:
+            commands.append([sudo, "-n", docker, "compose", "-f", str(compose_file), *args])
+        if docker_compose:
+            commands.append([sudo, "-n", docker_compose, "-f", str(compose_file), *args])
+
     last_error: Exception | None = None
+    attempted = []
     for cmd in commands:
+        attempted.append(" ".join(cmd))
         try:
             subprocess.run(cmd, cwd=str(repo_dir), check=True)
             return
-        except Exception as exc:  # pragma: no cover
+        except (FileNotFoundError, subprocess.CalledProcessError) as exc:  # pragma: no cover
             last_error = exc
     raise ServiceBootstrapError(
-        f"Failed to run docker compose for {compose_file}: {last_error}"
+        f"Failed to run docker compose for {compose_file}: {last_error}. "
+        f"Attempted: {'; '.join(attempted)}"
     )
 
 
@@ -165,6 +190,28 @@ def compose_up(
     if force_recreate:
         args.append("--force-recreate")
     _run_compose_command(compose_file, repo_dir, args)
+
+
+def compose_restart(compose_file: Path, repo_dir: Path) -> None:
+    _run_compose_command(compose_file, repo_dir, ["up", "-d", "--force-recreate"])
+
+
+def compose_logs(compose_file: Path, repo_dir: Path, *, tail: int = 100) -> str:
+    docker = shutil.which("docker")
+    docker_compose = shutil.which("docker-compose")
+    commands = []
+    if docker:
+        commands.append([docker, "compose", "-f", str(compose_file), "logs", "--tail", str(tail)])
+    if docker_compose:
+        commands.append([docker_compose, "-f", str(compose_file), "logs", "--tail", str(tail)])
+    for cmd in commands:
+        try:
+            result = subprocess.run(cmd, cwd=str(repo_dir), capture_output=True, text=True, timeout=15, check=False)
+            if result.stdout or result.stderr:
+                return (result.stdout + result.stderr)[-12000:]
+        except (FileNotFoundError, subprocess.TimeoutExpired):
+            continue
+    return ""
 
 
 def wait_for_any_url(urls: Iterable[str], timeout_seconds: int = 90) -> bool:
@@ -258,6 +305,6 @@ def reconcile_service_runtime(
 
 def base_env_values() -> dict[str, str]:
     return {
-        "DOCKER_REGISTRY": os.getenv("DOCKER_REGISTRY", "ghcr.io"),
+        "DOCKER_REGISTRY": os.getenv("DOCKER_REGISTRY", "openagri-eu"),
         "TAG": os.getenv("TAG", "latest"),
     }

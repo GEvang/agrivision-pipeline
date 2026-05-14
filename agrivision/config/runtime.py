@@ -8,8 +8,11 @@ from agrivision.config.settings import get_project_root, get_settings
 def get_runtime_config() -> dict[str, Any]:
     settings = get_settings()
     return {
-        "project_root": str(get_project_root()),
-        "weather_base_url": settings.weather.base_url,
-        "irrigation_base_url": settings.irrigation.base_url,
-        "service_dir": settings.irrigation.service_dir,
+        'project_root': str(get_project_root()),
+        'weather_base_url': settings.weather.base_url,
+        'irrigation_base_url': settings.irrigation.base_url,
+        'pdm_base_url': settings.pdm.base_url,
+        'weather_service_dir': settings.weather.service_dir,
+        'irrigation_service_dir': settings.irrigation.service_dir,
+        'pdm_service_dir': settings.pdm.service_dir,
     }

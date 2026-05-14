@@ -9,6 +9,8 @@ from agrivision.config.settings import (
     NdviSettings,
     OrthophotoSettings,
     PathsSettings,
+    PdmAuthSettings,
+    PdmSettings,
     ResizeSettings,
     WeatherSettings,
 )
@@ -21,6 +23,8 @@ __all__ = [
     "LocationSettings",
     "NdviSettings",
     "OrthophotoSettings",
+    "PdmAuthSettings",
+    "PdmSettings",
     "PathsSettings",
     "ResizeSettings",
     "WeatherSettings",

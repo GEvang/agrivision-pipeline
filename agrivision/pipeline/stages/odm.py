@@ -80,6 +80,14 @@ def _container_project_root() -> Path | None:
     return Path(container_root).resolve()
 
 
+def _app_container_name() -> str | None:
+    return (
+        os.getenv("AGRIVISION_APP_CONTAINER_NAME", "").strip()
+        or os.getenv("HOSTNAME", "").strip()
+        or None
+    )
+
+
 def _resolve_odm_bind_source(project_root: Path) -> Path:
     host_root = _host_project_root()
     container_root = _container_project_root()
@@ -99,6 +107,32 @@ def _resolve_odm_bind_source(project_root: Path) -> Path:
 def _docker_run_prefix() -> list[str]:
     _require_docker_cli()
     return ["docker", "run", "--rm"]
+
+
+def _docker_user_args() -> list[str]:
+    if not hasattr(os, "getuid") or not hasattr(os, "getgid"):
+        return []
+    return ["-u", f"{os.getuid()}:{os.getgid()}"]
+
+
+def _odm_container_name(label: str) -> str:
+    normalized = "".join(ch.lower() if ch.isalnum() else "-" for ch in label).strip("-")
+    return f"agrivision-odm-{normalized or 'run'}"
+
+
+def _odm_dataset_mount_args(project_root: Path) -> tuple[list[str], str]:
+    container_root = _container_project_root()
+    app_container = _app_container_name()
+    if container_root and app_container:
+        try:
+            project_root.resolve().relative_to(container_root)
+        except ValueError:
+            pass
+        else:
+            return ["--volumes-from", app_container], str(project_root)
+
+    bind_source = _resolve_odm_bind_source(project_root)
+    return ["-v", f"{bind_source}:/datasets"], "/datasets"
 
 
 def _get_odm_settings() -> dict[str, object]:
@@ -210,19 +244,17 @@ def _run_odm_docker(
     """
     Execute the ODM Docker container for the project located under project_root.
     """
-    uid = os.getuid()
-    gid = os.getgid()
-    bind_source = _resolve_odm_bind_source(project_root)
+    mount_args, project_path = _odm_dataset_mount_args(project_root)
 
     cmd = [
         *_docker_run_prefix(),
-        "-u",
-        f"{uid}:{gid}",
-        "-v",
-        f"{bind_source}:/datasets",
+        *_docker_user_args(),
+        "--name",
+        _odm_container_name(label),
+        *mount_args,
         odm_docker_image,
         "--project-path",
-        "/datasets",
+        project_path,
         PROJECT_NAME,
         "--orthophoto-resolution",
         str(ortho_resolution_cm),
@@ -238,7 +270,7 @@ def _run_odm_docker(
     if result.returncode != 0:
         raise RuntimeError(
             f"ODM-{label} failed with exit code {result.returncode}. "
-            f"Docker bind source was {bind_source}."
+            f"Docker mount args were {' '.join(mount_args)}."
         )
 
     print(f"[ODM-{label}] ODM processing finished.")
@@ -251,7 +283,7 @@ def _run_odm_docker(
 # ---------------------------------------------------------------------
 # Public functions
 # ---------------------------------------------------------------------
-def run_odm_rgb() -> None:
+def run_odm_rgb(ortho_resolution_cm: int | None = None) -> None:
     """
     Run ODM for the RGB dataset.
 
@@ -269,7 +301,7 @@ def run_odm_rgb() -> None:
     images_resized_rgb = settings["images_resized_rgb"]
     odm_project_root_rgb = settings["odm_project_root_rgb"]
     odm_docker_image = settings["odm_docker_image"]
-    ortho_resolution_cm = settings["ortho_resolution_cm"]
+    resolved_resolution_cm = ortho_resolution_cm or settings["ortho_resolution_cm"]
 
     input_folder = _choose_input_folder(
         label="RGB",
@@ -287,11 +319,11 @@ def run_odm_rgb() -> None:
         project_root=odm_project_root_rgb,
         label="RGB",
         odm_docker_image=odm_docker_image,
-        ortho_resolution_cm=ortho_resolution_cm,
+        ortho_resolution_cm=resolved_resolution_cm,
     )
 
 
-def run_odm_mapir() -> None:
+def run_odm_mapir(ortho_resolution_cm: int | None = None) -> None:
     """
     Run ODM for the MAPIR dataset.
 
@@ -315,7 +347,7 @@ def run_odm_mapir() -> None:
     images_resized_mapir = settings["images_resized_mapir"]
     odm_project_root_mapir = settings["odm_project_root_mapir"]
     odm_docker_image = settings["odm_docker_image"]
-    ortho_resolution_cm = settings["ortho_resolution_cm"]
+    resolved_resolution_cm = ortho_resolution_cm or settings["ortho_resolution_cm"]
 
     input_folder = _choose_input_folder(
         label="MAPIR",
@@ -333,7 +365,7 @@ def run_odm_mapir() -> None:
         project_root=odm_project_root_mapir,
         label="MAPIR",
         odm_docker_image=odm_docker_image,
-        ortho_resolution_cm=ortho_resolution_cm,
+        ortho_resolution_cm=resolved_resolution_cm,
     )
 
 

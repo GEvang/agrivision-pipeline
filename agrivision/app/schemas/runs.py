@@ -6,14 +6,16 @@ from typing import Any, Literal
 
 from pydantic import BaseModel, Field, field_validator
 
-RunStatusValue = Literal['queued', 'running', 'completed', 'failed']
-StageStateValue = Literal['pending', 'running', 'completed', 'failed', 'skipped']
+RunStatusValue = Literal['queued', 'running', 'completed', 'failed', 'cancelled']
+StageStateValue = Literal['pending', 'running', 'completed', 'failed', 'skipped', 'cancelled']
 
 
 class StepSelection(BaseModel):
     resize_images: bool = False
     run_odm: bool = True
     fetch_weather: bool = True
+    run_irrigation: bool = True
+    run_pdm: bool = True
     generate_report: bool = True
 
 
@@ -21,6 +23,11 @@ class RunParameters(BaseModel):
     preset: str | None = None
     notes: str | None = None
     flight_date: date | None = None
+    orthophoto_preset: str | None = None
+    orthophoto_resolution_cm: int | None = Field(default=None, ge=1, le=20)
+    source_orthophoto_run_id: str | None = None
+    pdm_crop: str | None = None
+    pdm_model_key: str | None = None
 
 
 class StageStatus(BaseModel):
@@ -106,6 +113,7 @@ class ReportItem(BaseModel):
     report_path: str | None = None
     orthophoto_path: str | None = None
     preview_path: str | None = None
+    quality: dict[str, Any] = Field(default_factory=dict)
 
 
 class ArtifactLink(BaseModel):

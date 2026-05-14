@@ -22,6 +22,7 @@ from agrivision.pipeline.report.sections import (
     render_grid_metadata_section,
     render_irrigation_section,
     render_methodology_section,
+    render_pdm_section,
     render_weather_section,
 )
 from agrivision.pipeline.report.tables import render_grid_table
@@ -30,6 +31,7 @@ from agrivision.pipeline.report.tables import render_grid_table
 def run_report(
     irrigation_summary: Optional[Dict[str, Any]] = None,
     weather_summary: Optional[Dict[str, Any]] = None,
+    pdm_summary: Optional[Dict[str, Any]] = None,
 ) -> None:
     print("\n[AgriVision] Generating HTML report...")
 
@@ -57,6 +59,7 @@ def run_report(
     grid_rows = load_grid_cells(grid_cells_csv)
     grid_table_html = render_grid_table(index_title=index_title, rows=grid_rows)
     irrigation_html = render_irrigation_section(irrigation_summary, output_dir)
+    pdm_html = render_pdm_section(pdm_summary, output_dir)
 
     generated_at = datetime.utcnow().strftime("%Y-%m-%d %H:%M UTC")
 
@@ -83,6 +86,7 @@ def run_report(
         grid_overlay_html=render_image_if_exists("Grid Overlay", grid_overlay_png, output_dir),
         grid_table_html=grid_table_html,
         irrigation_html=irrigation_html,
+        pdm_html=pdm_html,
     )
 
     report_path.write_text(html_doc, encoding="utf-8")

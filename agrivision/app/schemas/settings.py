@@ -11,10 +11,14 @@ class SettingsUpdateRequest(BaseModel):
     location_lon: float | None = Field(default=None, ge=-180, le=180)
     weather_base_url: str | None = Field(default=None, max_length=500)
     irrigation_base_url: str | None = Field(default=None, max_length=500)
+    pdm_base_url: str | None = Field(default=None, max_length=500)
+    pdm_enabled_by_default: bool | None = None
+    pdm_default_crop: str | None = Field(default=None, max_length=120)
+    pdm_default_model_key: str | None = Field(default=None, max_length=120)
     resize_max_long_edge: int | None = Field(default=None, ge=256, le=12000)
     orthophoto_resolution_cm: int | None = Field(default=None, ge=1, le=50)
 
-    @field_validator('location_name', 'weather_base_url', 'irrigation_base_url')
+    @field_validator('location_name', 'weather_base_url', 'irrigation_base_url', 'pdm_base_url', 'pdm_default_crop', 'pdm_default_model_key')
     @classmethod
     def _clean_text(cls, value: str | None) -> str | None:
         if value is None:
@@ -24,12 +28,17 @@ class SettingsUpdateRequest(BaseModel):
 
 
 class CredentialsUpdateRequest(BaseModel):
+    shared_username: str | None = None
+    shared_password: str | None = None
+    openweather_api_key: str | None = None
+    irrigation_token: str | None = None
+    pdm_token: str | None = None
     weather_username: str | None = None
     weather_password: str | None = None
-    openweather_api_key: str | None = None
     irrigation_email: str | None = None
     irrigation_password: str | None = None
-    irrigation_token: str | None = None
+    pdm_username: str | None = None
+    pdm_password: str | None = None
 
 
 class SettingsView(BaseModel):

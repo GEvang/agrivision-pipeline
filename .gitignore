@@ -49,12 +49,18 @@ Thumbs.db
 /data/
 /output/
 /runtime/runs/
+/runtime/exports/
+/runtime/archived_runs/
 
 # -----------------------------
 # Cloned external service repos
 # -----------------------------
 /OpenAgri-IrrigationManagement/
 /OpenAgri-WeatherService/
+/OpenAgri-PestAndDiseaseManagement/
+
+# Malformed Windows-path runtime folders produced by older container path handling.
+/D*runtime*runs*/
 
 # -----------------------------
 # Local package metadata
