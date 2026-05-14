@@ -4,7 +4,6 @@ from pathlib import Path
 from typing import Any
 
 from agrivision.app.schemas.runs import ReportItem, RunRecord
-from agrivision.config import get_project_root, load_config
 from agrivision.services.preview_service import PreviewService
 from agrivision.services.run_service import RunService
 
@@ -100,15 +99,14 @@ class ReportService:
             'flags': list(dict.fromkeys(quality_flags)),
         }
 
-    def _metadata_path(self, run: RunRecord, output_key: str, filename: str) -> Path:
+    def _metadata_path(self, run: RunRecord, output_key: str, filename: str) -> Path | None:
         configured = run.outputs.get(output_key)
         if configured:
             return Path(configured)
-        config = load_config()
-        return get_project_root() / config['paths'].get('ndvi_output', 'output/ndvi') / filename
+        return None
 
-    def _read_json(self, path: Path) -> dict[str, Any]:
-        if not path.exists():
+    def _read_json(self, path: Path | None) -> dict[str, Any]:
+        if path is None or not path.exists():
             return {}
         try:
             import json

@@ -74,6 +74,8 @@ def test_odm_only_run_does_not_include_services(tmp_path: Path) -> None:
     stage_keys = [stage.key for stage in record.stages]
 
     assert 'run_odm_rgb' in stage_keys
+    assert 'compute_ndvi' not in stage_keys
+    assert 'generate_grid' not in stage_keys
     assert 'fetch_weather' not in stage_keys
     assert 'irrigation_enrichment' not in stage_keys
     assert 'pdm_enrichment' not in stage_keys
@@ -305,6 +307,70 @@ def test_discover_outputs_copies_report_to_per_run_output(tmp_path: Path, monkey
     assert saved_report.name == 'final-vineyard-report.html'
     assert Path(outputs['orthophoto_rgb']).parent == tmp_path / 'output' / 'runs' / 'run-1' / 'orthophotos'
     assert Path(outputs['orthophoto_mapir']).name == 'orthophoto_mapir.tif'
+
+
+def test_orthophoto_only_outputs_do_not_attach_stale_analysis_files(tmp_path: Path, monkeypatch) -> None:
+    storage = StorageService(project_root=tmp_path)
+    service = RunService(storage)
+    run_dir = storage.run_dir('ortho-only')
+    storage.write_json(run_dir / 'status.json', {
+        'run_id': 'ortho-only',
+        'created_at': '2026-03-29T00:00:00Z',
+        'updated_at': '2026-03-29T00:00:00Z',
+        'started_at': None,
+        'finished_at': None,
+        'dataset_name': 'Dataset 1',
+        'input_path': str(tmp_path / 'data' / 'uploads' / 'upload-seed'),
+        'status': 'running',
+        'progress_percent': 0,
+        'current_stage': 'run_odm_mapir',
+        'stage_message': 'Running ODM',
+        'selected_steps': {
+            'resize_images': False,
+            'run_odm': True,
+            'fetch_weather': False,
+            'run_irrigation': False,
+            'run_pdm': False,
+            'generate_report': False,
+        },
+        'parameters': {},
+        'outputs': {},
+        'errors': [],
+        'stages': [],
+        'logs_path': str(run_dir / 'run.log'),
+        'run_name': 'Orthos',
+        'field_name': None,
+        'run_dir': str(run_dir),
+    })
+    output_root = tmp_path / 'output'
+    (output_root / 'ndvi').mkdir(parents=True, exist_ok=True)
+    (output_root / 'report_latest.html').write_text('<html>stale</html>', encoding='utf-8')
+    (output_root / 'ndvi' / 'ndvi.tif').write_text('stale ndvi', encoding='utf-8')
+    (output_root / 'ndvi' / 'metadata.json').write_text('{}', encoding='utf-8')
+    (output_root / 'ndvi' / 'grid_metadata.json').write_text('{}', encoding='utf-8')
+    rgb_ortho = tmp_path / 'odm_rgb' / 'project' / 'odm_orthophoto' / 'odm_orthophoto.tif'
+    rgb_ortho.parent.mkdir(parents=True)
+    rgb_ortho.write_text('rgb', encoding='utf-8')
+    mapir_ortho = tmp_path / 'odm_mapir' / 'project' / 'odm_orthophoto' / 'odm_orthophoto.tif'
+    mapir_ortho.parent.mkdir(parents=True)
+    mapir_ortho.write_text('mapir', encoding='utf-8')
+
+    monkeypatch.setattr('agrivision.services.run_service.load_config', lambda: {
+        'paths': {
+            'output_root': 'output',
+            'runs_output': 'output/runs',
+            'ndvi_output': 'output/ndvi',
+            'odm_project_root_rgb': 'odm_rgb',
+            'odm_project_root_mapir': 'odm_mapir',
+            'images_full': 'images/full',
+            'images_full_mapir': 'images/full_mapir',
+        }
+    })
+
+    outputs = service._discover_outputs(run_dir)
+
+    assert sorted(outputs) == ['orthophoto_mapir', 'orthophoto_rgb']
+    assert Path(outputs['orthophoto_rgb']).parent == tmp_path / 'output' / 'runs' / 'ortho-only' / 'orthophotos'
 
 
 def test_stage_saved_orthophotos_for_run_restores_pipeline_inputs(tmp_path: Path, monkeypatch) -> None:

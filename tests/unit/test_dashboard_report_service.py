@@ -126,3 +126,44 @@ def test_report_quality_summary_reads_metadata(tmp_path: Path) -> None:
     assert report.quality['classification_mode'] == 'percentile_calibrated'
     assert report.quality['poor_max'] == 0.02
     assert 'Low valid vegetation-index coverage.' in report.quality['flags']
+
+
+def test_report_quality_summary_ignores_global_metadata_without_run_outputs(tmp_path: Path) -> None:
+    storage = StorageService(project_root=tmp_path)
+    upload_dir = storage.upload_dir('upload-seed')
+    (upload_dir / 'a.jpg').write_bytes(b'123')
+    service = RunService(storage)
+    record = service.create_run_record(
+        RunCreateRequest.model_validate(
+            {
+                'run_name': 'Orthophoto Run',
+                'dataset_name': 'Dataset R',
+                'upload_run_id': 'upload-seed',
+                'selected_steps': {
+                    'resize_images': False,
+                    'run_odm': True,
+                    'fetch_weather': False,
+                    'run_irrigation': False,
+                    'run_pdm': False,
+                    'generate_report': False,
+                },
+                'parameters': {},
+            }
+        )
+    )
+    global_ndvi = tmp_path / 'output' / 'ndvi'
+    global_ndvi.mkdir(parents=True)
+    (global_ndvi / 'metadata.json').write_text(
+        json.dumps({'valid_pixels': {'percent': 99}, 'distribution': {'mean': 0.9}}),
+        encoding='utf-8',
+    )
+    (global_ndvi / 'grid_metadata.json').write_text(
+        json.dumps({'classification_mode': 'percentile_calibrated'}),
+        encoding='utf-8',
+    )
+    service.update_status(record.run_id, status='completed', outputs={})
+
+    report = ReportService(run_service=service).get_report(record.run_id)
+
+    assert report.report_path is None
+    assert report.quality == {}

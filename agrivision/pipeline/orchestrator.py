@@ -29,6 +29,7 @@ def run_full_pipeline(
     skip_odm_rgb: bool = False,
     skip_odm_mapir: bool = False,
     skip_ndvi: bool = False,
+    skip_grid: bool = False,
     skip_weather: bool = False,
     skip_irrigation: bool = False,
     skip_pdm: bool = False,
@@ -45,6 +46,7 @@ def run_full_pipeline(
     print(f"  skip_odm_rgb    = {skip_odm_rgb}")
     print(f"  skip_odm_mapir  = {skip_odm_mapir}")
     print(f"  skip_ndvi       = {skip_ndvi}")
+    print(f"  skip_grid       = {skip_grid}")
     print(f"  skip_weather    = {skip_weather}")
     print(f"  skip_irrigation = {skip_irrigation}")
     print(f"  skip_pdm        = {skip_pdm}")
@@ -107,7 +109,7 @@ def run_full_pipeline(
 
     if skip_ndvi:
         print('\nStep 3/5: Skipping NDVI (--skip-ndvi).')
-        if not _ndvi_exists(ndvi_tif):
+        if not skip_grid and not _ndvi_exists(ndvi_tif):
             raise RuntimeError(
                 f'\n[ERROR] NDVI skipped but NDVI output missing:\n  {ndvi_tif}\n'
             )
@@ -121,12 +123,15 @@ def run_full_pipeline(
         if progress_callback:
             progress_callback('compute_ndvi', 'NDVI complete', 'completed')
 
-    if progress_callback:
-        progress_callback('generate_grid', 'Generating NDVI grid', 'running')
-    print('\nStep 4/5: Generating NDVI grid...')
-    run_grid_report()
-    if progress_callback:
-        progress_callback('generate_grid', 'NDVI grid complete', 'completed')
+    if skip_grid:
+        print('\nStep 4/5: Skipping NDVI grid (--skip-grid).')
+    else:
+        if progress_callback:
+            progress_callback('generate_grid', 'Generating NDVI grid', 'running')
+        print('\nStep 4/5: Generating NDVI grid...')
+        run_grid_report()
+        if progress_callback:
+            progress_callback('generate_grid', 'NDVI grid complete', 'completed')
 
     if skip_weather:
         print('\n[AgriVision] Skipping Weather integration (--skip-weather).')

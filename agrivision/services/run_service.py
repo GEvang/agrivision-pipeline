@@ -74,6 +74,17 @@ class RunService:
         self._write_record_files(record)
         return record
 
+    @staticmethod
+    def _is_orthophoto_creation_run(record_or_steps) -> bool:
+        selected = getattr(record_or_steps, 'selected_steps', record_or_steps)
+        return (
+            selected.run_odm
+            and not selected.fetch_weather
+            and not selected.run_irrigation
+            and not selected.run_pdm
+            and not selected.generate_report
+        )
+
     def _build_stages(self, selected_steps) -> list[StageStatus]:
         stages = [StageStatus(key='stage_inputs', label='Stage inputs')]
         if selected_steps.resize_images:
@@ -83,6 +94,8 @@ class RunService:
                 StageStatus(key='run_odm_rgb', label='Run ODM RGB'),
                 StageStatus(key='run_odm_mapir', label='Run ODM MAPIR'),
             ])
+        if self._is_orthophoto_creation_run(selected_steps):
+            return stages
         stages.extend([
             StageStatus(key='compute_ndvi', label='Compute NDVI'),
             StageStatus(key='generate_grid', label='Generate grid'),
@@ -432,6 +445,7 @@ class RunService:
             self._raise_if_cancelled(run_id)
 
             selected = record.selected_steps
+            orthophoto_creation_only = self._is_orthophoto_creation_run(record)
             def callback(stage_key: str, message: str, state: str = 'running') -> None:
                 self._raise_if_cancelled(run_id)
                 self.update_stage(run_id, stage_key, state, message)
@@ -441,6 +455,8 @@ class RunService:
                     run_full_pipeline(
                         run_resize_step=selected.resize_images,
                         skip_odm=not selected.run_odm,
+                        skip_ndvi=orthophoto_creation_only,
+                        skip_grid=orthophoto_creation_only,
                         skip_weather=not selected.fetch_weather,
                         skip_irrigation=not selected.run_irrigation,
                         skip_pdm=not selected.run_pdm,
@@ -534,16 +550,29 @@ class RunService:
         config = load_config()
         project_root = self.storage.layout.project_root
         record = RunRecord.model_validate(self.storage.read_json(run_dir / 'status.json'))
+        selected = record.selected_steps
         report_candidates = [
             project_root / config['paths']['output_root'] / 'report_latest.html',
             project_root / config['paths']['output_root'] / 'report' / 'index.html',
         ]
         candidates = {
-            'ndvi_tif': project_root / config['paths']['ndvi_output'] / 'ndvi.tif',
-            'ndvi_metadata': project_root / config['paths']['ndvi_output'] / 'metadata.json',
-            'grid_metadata': project_root / config['paths']['ndvi_output'] / 'grid_metadata.json',
-            'orthophoto_rgb': project_root / config['paths']['odm_project_root_rgb'] / 'project' / 'odm_orthophoto' / 'odm_orthophoto.tif',
-            'orthophoto_mapir': project_root / config['paths']['odm_project_root_mapir'] / 'project' / 'odm_orthophoto' / 'odm_orthophoto.tif',
+            **(
+                {
+                    'ndvi_tif': project_root / config['paths']['ndvi_output'] / 'ndvi.tif',
+                    'ndvi_metadata': project_root / config['paths']['ndvi_output'] / 'metadata.json',
+                    'grid_metadata': project_root / config['paths']['ndvi_output'] / 'grid_metadata.json',
+                }
+                if not self._is_orthophoto_creation_run(record)
+                else {}
+            ),
+            **(
+                {
+                    'orthophoto_rgb': project_root / config['paths']['odm_project_root_rgb'] / 'project' / 'odm_orthophoto' / 'odm_orthophoto.tif',
+                    'orthophoto_mapir': project_root / config['paths']['odm_project_root_mapir'] / 'project' / 'odm_orthophoto' / 'odm_orthophoto.tif',
+                }
+                if selected.run_odm
+                else {}
+            ),
         }
         outputs = {}
         for name, path in candidates.items():
@@ -556,7 +585,7 @@ class RunService:
             else:
                 outputs[name] = str(path)
         report_path = next((path for path in report_candidates if path.exists()), None)
-        if report_path is not None:
+        if selected.generate_report and report_path is not None:
             outputs['report_html'] = str(self._persist_report_for_run(record, report_path))
         self.storage.write_json(run_dir / 'outputs.json', outputs)
         return outputs
