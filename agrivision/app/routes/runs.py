@@ -11,6 +11,37 @@ from agrivision.services.pdm.catalog import PDM_MODEL_CATALOG
 
 router = APIRouter()
 
+ORTHOPHOTO_PRESETS = [
+    {
+        'key': 'preview',
+        'label': 'Preview',
+        'resolution_cm': 8,
+        'reduce_images': True,
+        'description': 'Fastest run for checking image coverage.',
+    },
+    {
+        'key': 'balanced',
+        'label': 'Balanced (recommended)',
+        'resolution_cm': 3,
+        'reduce_images': True,
+        'description': 'Good default for dashboard analysis and normal field reports.',
+    },
+    {
+        'key': 'high',
+        'label': 'High detail',
+        'resolution_cm': 2,
+        'reduce_images': False,
+        'description': 'More detail with longer ODM processing time.',
+    },
+    {
+        'key': 'maximum',
+        'label': 'Maximum detail',
+        'resolution_cm': 1,
+        'reduce_images': False,
+        'description': 'Slowest option for final orthophotos on capable hardware.',
+    },
+]
+
 
 def _render_new_run_page(
     request: Request,
@@ -19,37 +50,52 @@ def _render_new_run_page(
     validation_result: dict[str, object] | None = None,
     form_values: dict[str, object] | None = None,
 ) -> HTMLResponse:
-    odm_runs_by_upload: dict[str, object] = {}
+    orthophoto_runs: list[dict[str, object]] = []
+    odm_runs_by_upload: dict[str, list[object]] = {}
     for run in deps.run_service.list_runs():
         upload_id = Path(run.input_path).name
-        if run.selected_steps.run_odm and run.status == 'completed':
-            odm_runs_by_upload.setdefault(upload_id, run)
+        if not run.selected_steps.run_odm or run.status != 'completed':
+            continue
+        orthophoto_paths = {
+            key: value
+            for key, value in run.outputs.items()
+            if key in {'orthophoto_rgb', 'orthophoto_mapir'} and value and Path(value).exists()
+        }
+        if not orthophoto_paths:
+            continue
+        odm_runs_by_upload.setdefault(upload_id, []).append(run)
+        orthophoto_runs.append(
+            {
+                'run_id': run.run_id,
+                'upload_run_id': upload_id,
+                'dataset_name': run.dataset_name,
+                'run_name': run.run_name,
+                'created_at': run.created_at,
+                'mapir_ready': 'orthophoto_mapir' in orthophoto_paths,
+                'rgb_ready': 'orthophoto_rgb' in orthophoto_paths,
+                'preset': run.parameters.get('orthophoto_preset') or '-',
+                'resolution_cm': run.parameters.get('orthophoto_resolution_cm') or '-',
+            }
+        )
 
     uploads: list[dict[str, object]] = []
     for path in sorted(deps.storage_service.layout.uploads_root.iterdir(), reverse=True):
         if not path.is_dir():
             continue
         manifest = deps.storage_service.read_json(path / 'manifest.json', default={})
-        odm_run = odm_runs_by_upload.get(path.name)
-        orthophoto_paths = []
-        if odm_run:
-            orthophoto_paths = [
-                value
-                for key, value in odm_run.outputs.items()
-                if key in {'orthophoto_rgb', 'orthophoto_mapir'} and value and Path(value).exists()
-            ]
+        odm_runs = odm_runs_by_upload.get(path.name, [])
         uploads.append(
             {
                 'run_id': path.name,
                 'dataset_name': manifest.get('dataset_name') or path.name,
                 'mapir_count': len(manifest.get('mapir_files', [])),
                 'rgb_count': len(manifest.get('rgb_files', [])),
-                'orthophoto_ready': bool(orthophoto_paths),
-                'orthophoto_run_id': getattr(odm_run, 'run_id', None),
+                'orthophoto_ready': bool(odm_runs),
+                'orthophoto_run_id': getattr(odm_runs[0], 'run_id', None) if odm_runs else None,
                 'selected': path.name == upload_run_id,
             }
         )
-    orthophoto_uploads = [item for item in uploads if item['orthophoto_ready']]
+    orthophoto_uploads = orthophoto_runs
     model_catalog = list(PDM_MODEL_CATALOG)
     models_by_crop = {}
     for item in model_catalog:
@@ -61,6 +107,8 @@ def _render_new_run_page(
         {
             'uploads': uploads,
             'orthophoto_uploads': orthophoto_uploads,
+            'orthophoto_runs': orthophoto_runs,
+            'orthophoto_presets': ORTHOPHOTO_PRESETS,
             'selected_upload_run_id': upload_run_id,
             'validation_result': validation_result,
             'form_values': form_values or {},
@@ -176,7 +224,7 @@ def stop_run(run_id: str) -> dict:
 @router.post('/ui/runs')
 def create_run_ui(
     request: Request,
-    upload_run_id: str = Form(...),
+    source_orthophoto_run_id: str = Form(...),
     run_name: str = Form(''),
     fetch_weather: bool = Form(False),
     run_irrigation: bool = Form(False),
@@ -185,6 +233,8 @@ def create_run_ui(
     pdm_model_key: str = Form('grapevine_powdery_mildew_risk_v1'),
     generate_report: bool = Form(False),
 ):
+    source_run = deps.run_service.load_run(source_orthophoto_run_id)
+    upload_run_id = Path(source_run.input_path).name
     manifest = deps.storage_service.read_json(deps.storage_service.upload_dir(upload_run_id) / 'manifest.json')
     dataset_name = str(manifest.get('dataset_name') or upload_run_id)
     normalized_run_name = run_name.strip() if run_name.strip() else None
@@ -202,6 +252,7 @@ def create_run_ui(
                 'generate_report': generate_report,
             },
             'parameters': {
+                'source_orthophoto_run_id': source_orthophoto_run_id,
                 'pdm_crop': pdm_crop,
                 'pdm_model_key': pdm_model_key,
             },
@@ -255,7 +306,24 @@ def archive_run_ui(run_id: str) -> RedirectResponse:
     return RedirectResponse(url='/runs', status_code=303)
 
 
+@router.post('/ui/orthophotos/{run_id}/delete')
+def delete_orthophoto_ui(run_id: str) -> RedirectResponse:
+    try:
+        deps.run_service.delete_run(run_id)
+    except ValueError as exc:
+        raise HTTPException(status_code=409, detail=str(exc)) from exc
+    except FileNotFoundError as exc:
+        raise HTTPException(status_code=404, detail='Orthophoto set not found.') from exc
+    return RedirectResponse(url='/runs/new', status_code=303)
+
+
 @router.post('/ui/runs/clear-stuck')
 def clear_stuck_runs_ui() -> RedirectResponse:
     deps.run_service.clear_stuck_active_runs()
     return RedirectResponse(url='/runs?status=cancelled', status_code=303)
+
+
+@router.post('/ui/runs/clear-incomplete')
+def clear_incomplete_runs_ui() -> RedirectResponse:
+    deps.run_service.clear_incomplete_runs()
+    return RedirectResponse(url='/runs', status_code=303)

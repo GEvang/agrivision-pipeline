@@ -11,6 +11,13 @@ from agrivision.app.schemas.runs import RunCreateRequest, UploadManifest
 
 router = APIRouter()
 
+ORTHOPHOTO_PRESET_VALUES = {
+    'preview': {'resolution_cm': 8, 'reduce_images': True},
+    'balanced': {'resolution_cm': 3, 'reduce_images': True},
+    'high': {'resolution_cm': 2, 'reduce_images': False},
+    'maximum': {'resolution_cm': 1, 'reduce_images': False},
+}
+
 
 @router.post('/uploads/images')
 async def upload_images(
@@ -94,8 +101,11 @@ async def create_orthophotos_ui(
     dataset_name: str = Form(...),
     mapir_files: list[UploadFile] = File(...),
     rgb_files: list[UploadFile] = File(...),
-    reduce_images: bool = Form(False),
+    orthophoto_preset: str = Form('balanced'),
+    reduce_images: bool | None = Form(None),
 ) -> RedirectResponse:
+    preset = ORTHOPHOTO_PRESET_VALUES.get(orthophoto_preset, ORTHOPHOTO_PRESET_VALUES['balanced'])
+    should_reduce_images = preset['reduce_images'] if reduce_images is None else reduce_images
     manifest = await upload_images(dataset_name=dataset_name, mapir_files=mapir_files, rgb_files=rgb_files)
     run_request = RunCreateRequest.model_validate(
         {
@@ -103,14 +113,17 @@ async def create_orthophotos_ui(
             'dataset_name': manifest['dataset_name'],
             'upload_run_id': manifest['run_id'],
             'selected_steps': {
-                'resize_images': reduce_images,
+                'resize_images': should_reduce_images,
                 'run_odm': True,
                 'fetch_weather': False,
                 'run_irrigation': False,
                 'run_pdm': False,
                 'generate_report': False,
             },
-            'parameters': {},
+            'parameters': {
+                'orthophoto_preset': orthophoto_preset,
+                'orthophoto_resolution_cm': preset['resolution_cm'],
+            },
         }
     )
     record = deps.run_service.create_run_record(run_request)

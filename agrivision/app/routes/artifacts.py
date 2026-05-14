@@ -33,6 +33,8 @@ def artifact(run_id: str, artifact_name: str):
     options = {
         'report': report.report_path,
         'orthophoto': report.orthophoto_path,
+        'orthophoto-rgb': run.outputs.get('orthophoto_rgb'),
+        'orthophoto-mapir': run.outputs.get('orthophoto_mapir'),
         'preview': report.preview_path,
         'log': run.logs_path,
     }

@@ -7,8 +7,8 @@
   </div>
   <div class="button-row">
     <a class="button-link" href="/runs/new">Start Processing</a>
-    <form method="post" action="/ui/runs/clear-stuck" onsubmit="return confirm('Clear queued/running runs that are not attached to a live dashboard worker?');">
-      <button class="button-link secondary" type="submit">Clear stuck</button>
+    <form method="post" action="/ui/runs/clear-incomplete" onsubmit="return confirm('Delete failed, cancelled, and stale queued/running run records?');">
+      <button class="button-link secondary" type="submit">Clear incomplete</button>
     </form>
   </div>
 </section>

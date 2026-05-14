@@ -143,6 +143,43 @@ def test_delete_run_removes_only_runtime_run_dir(tmp_path: Path) -> None:
     assert (output_dir / 'report.html').exists()
 
 
+def test_delete_run_removes_matching_run_output_dir(tmp_path: Path) -> None:
+    storage = StorageService(project_root=tmp_path)
+    upload_dir = storage.upload_dir('upload-seed')
+    (upload_dir / 'rgb').mkdir(parents=True, exist_ok=True)
+    (upload_dir / 'mapir').mkdir(parents=True, exist_ok=True)
+    service = RunService(storage)
+    record = service.create_run_record(_request('upload-seed'))
+    service.update_status(record.run_id, status='completed')
+    run_output_dir = tmp_path / 'output' / 'runs' / record.run_id
+    run_output_dir.mkdir(parents=True)
+    (run_output_dir / 'artifact.txt').write_text('remove', encoding='utf-8')
+
+    service.delete_run(record.run_id)
+
+    assert not run_output_dir.exists()
+
+
+def test_clear_incomplete_removes_failed_and_cancelled_runs(tmp_path: Path) -> None:
+    storage = StorageService(project_root=tmp_path)
+    upload_dir = storage.upload_dir('upload-seed')
+    (upload_dir / 'rgb').mkdir(parents=True, exist_ok=True)
+    (upload_dir / 'mapir').mkdir(parents=True, exist_ok=True)
+    service = RunService(storage)
+    failed = service.create_run_record(_request('upload-seed'))
+    cancelled = service.create_run_record(_request('upload-seed'))
+    completed = service.create_run_record(_request('upload-seed'))
+    service.update_status(failed.run_id, status='failed')
+    service.update_status(cancelled.run_id, status='cancelled')
+    service.update_status(completed.run_id, status='completed')
+
+    removed = service.clear_incomplete_runs()
+
+    assert removed == 2
+    remaining = {run.run_id for run in service.list_runs()}
+    assert remaining == {completed.run_id}
+
+
 def test_archive_run_moves_runtime_record(tmp_path: Path) -> None:
     storage = StorageService(project_root=tmp_path)
     upload_dir = storage.upload_dir('upload-seed')
@@ -243,6 +280,12 @@ def test_discover_outputs_copies_report_to_per_run_output(tmp_path: Path, monkey
     ndvi_dir = output_root / 'ndvi'
     ndvi_dir.mkdir(parents=True, exist_ok=True)
     (ndvi_dir / 'ndvi.tif').write_text('x', encoding='utf-8')
+    rgb_ortho = tmp_path / 'odm_rgb' / 'project' / 'odm_orthophoto' / 'odm_orthophoto.tif'
+    rgb_ortho.parent.mkdir(parents=True)
+    rgb_ortho.write_text('rgb', encoding='utf-8')
+    mapir_ortho = tmp_path / 'odm_mapir' / 'project' / 'odm_orthophoto' / 'odm_orthophoto.tif'
+    mapir_ortho.parent.mkdir(parents=True)
+    mapir_ortho.write_text('mapir', encoding='utf-8')
 
     monkeypatch.setattr('agrivision.services.run_service.load_config', lambda: {
         'paths': {
@@ -260,6 +303,53 @@ def test_discover_outputs_copies_report_to_per_run_output(tmp_path: Path, monkey
     assert saved_report.exists()
     assert saved_report.parent == tmp_path / 'output' / 'runs' / 'run-1'
     assert saved_report.name == 'final-vineyard-report.html'
+    assert Path(outputs['orthophoto_rgb']).parent == tmp_path / 'output' / 'runs' / 'run-1' / 'orthophotos'
+    assert Path(outputs['orthophoto_mapir']).name == 'orthophoto_mapir.tif'
+
+
+def test_stage_saved_orthophotos_for_run_restores_pipeline_inputs(tmp_path: Path, monkeypatch) -> None:
+    storage = StorageService(project_root=tmp_path)
+    service = RunService(storage)
+    source_dir = storage.run_dir('ortho-run')
+    saved_rgb = tmp_path / 'output' / 'runs' / 'ortho-run' / 'orthophotos' / 'orthophoto_rgb.tif'
+    saved_mapir = tmp_path / 'output' / 'runs' / 'ortho-run' / 'orthophotos' / 'orthophoto_mapir.tif'
+    saved_rgb.parent.mkdir(parents=True)
+    saved_rgb.write_text('rgb', encoding='utf-8')
+    saved_mapir.write_text('mapir', encoding='utf-8')
+    storage.write_json(source_dir / 'status.json', {
+        'run_id': 'ortho-run',
+        'created_at': '2026-03-29T00:00:00Z',
+        'updated_at': '2026-03-29T00:00:00Z',
+        'started_at': None,
+        'finished_at': None,
+        'dataset_name': 'Dataset 1',
+        'input_path': str(tmp_path / 'data' / 'uploads' / 'upload-seed'),
+        'status': 'completed',
+        'progress_percent': 100,
+        'current_stage': 'completed',
+        'stage_message': 'Done',
+        'selected_steps': {'resize_images': False, 'run_odm': True, 'fetch_weather': False, 'generate_report': False},
+        'parameters': {},
+        'outputs': {'orthophoto_rgb': str(saved_rgb), 'orthophoto_mapir': str(saved_mapir)},
+        'errors': [],
+        'stages': [],
+        'logs_path': str(source_dir / 'run.log'),
+        'run_name': None,
+        'field_name': None,
+        'run_dir': str(source_dir),
+    })
+    monkeypatch.setattr('agrivision.services.run_service.get_project_root', lambda: tmp_path)
+    monkeypatch.setattr('agrivision.services.run_service.load_config', lambda: {
+        'paths': {
+            'odm_project_root_rgb': 'data/odm_project_rgb',
+            'odm_project_root_mapir': 'data/odm_project_mapir',
+        }
+    })
+
+    service.stage_saved_orthophotos_for_run('ortho-run')
+
+    assert (tmp_path / 'data' / 'odm_project_rgb' / 'project' / 'odm_orthophoto' / 'odm_orthophoto.tif').read_text(encoding='utf-8') == 'rgb'
+    assert (tmp_path / 'data' / 'odm_project_mapir' / 'project' / 'odm_orthophoto' / 'odm_orthophoto.tif').read_text(encoding='utf-8') == 'mapir'
 
 
 def test_report_filename_falls_back_to_system_timestamp(tmp_path: Path, monkeypatch) -> None:

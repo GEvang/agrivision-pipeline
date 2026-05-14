@@ -41,7 +41,8 @@ class PreflightService:
             if docker_check['state'] != 'ok':
                 blockers.append('Docker must be running to run ODM.')
         else:
-            ortho_checks = self._existing_orthophoto_checks(config)
+            source_run_id = request.parameters.source_orthophoto_run_id
+            ortho_checks = self._saved_orthophoto_checks(source_run_id) if source_run_id else self._existing_orthophoto_checks(config)
             checks.extend(ortho_checks)
             if not any(item['state'] == 'ok' for item in ortho_checks):
                 blockers.append('Existing orthophoto mode needs an RGB or MAPIR orthophoto already generated.')
@@ -118,4 +119,17 @@ class PreflightService:
             state = 'ok' if Path(path).exists() else 'error'
             detail = 'Found' if state == 'ok' else 'Missing'
             checks.append(self._check(name, state, detail))
+        return checks
+
+    def _saved_orthophoto_checks(self, run_id: str) -> list[dict[str, str]]:
+        status = self.storage.read_json(self.storage.run_dir(run_id) / 'status.json', default={})
+        outputs = status.get('outputs', {}) if isinstance(status, dict) else {}
+        candidates = (
+            ('Saved RGB orthophoto', outputs.get('orthophoto_rgb')),
+            ('Saved MAPIR orthophoto', outputs.get('orthophoto_mapir')),
+        )
+        checks: list[dict[str, str]] = []
+        for name, path in candidates:
+            exists = bool(path) and Path(str(path)).exists()
+            checks.append(self._check(name, 'ok' if exists else 'error', 'Found' if exists else 'Missing'))
         return checks

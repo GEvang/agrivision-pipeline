@@ -28,18 +28,6 @@
     <span>Dataset: {{ run.dataset_name }}</span>
   </div>
 
-  <h3>Pipeline Stages</h3>
-  <div class="stage-list" id="stage-list">
-    {% for stage in run.stages %}
-    <span class="stage-pill stage-{{ stage.state }}">{{ stage.label }}</span>
-    {% endfor %}
-  </div>
-
-  {% if report.preview_path %}
-  <h3>Orthophoto Preview</h3>
-  <img class="preview" src="/artifacts/{{ run.run_id }}/preview" alt="Orthophoto preview" />
-  {% endif %}
-
   {% if report.quality %}
   <h3>Result Quality</h3>
   <div class="report-summary">
@@ -80,12 +68,15 @@
   {% endif %}
   {% endif %}
 
-  <h3>Artifacts</h3>
-  <div class="artifact-actions" id="artifact-list">
-    {% if report.report_path %}<a class="action-chip" href="/artifacts/{{ run.run_id }}/report">Report</a>{% endif %}
-    {% if report.orthophoto_path %}<a class="action-chip" href="/artifacts/{{ run.run_id }}/orthophoto">Orthophoto</a>{% endif %}
-    <a class="action-chip" href="/artifacts/{{ run.run_id }}/log">Run log</a>
-    <a class="action-chip" href="/runs/{{ run.run_id }}/package">Package</a>
+  {% if report.report_path %}
+  <iframe class="report-frame report-frame-full" src="/artifacts/{{ run.run_id }}/report" title="Report for {{ run.dataset_name }}"></iframe>
+  {% endif %}
+
+  <h3>Pipeline Stages</h3>
+  <div class="stage-list" id="stage-list">
+    {% for stage in run.stages %}
+    <span class="stage-pill stage-{{ stage.state }}">{{ stage.label }}</span>
+    {% endfor %}
   </div>
 
   <h3>Logs</h3>
@@ -101,7 +92,6 @@ const barEl = document.getElementById('progress-bar');
 const timerEl = document.getElementById('elapsed-timer');
 const logsEl = document.getElementById('run-logs');
 const stageListEl = document.getElementById('stage-list');
-const artifactListEl = document.getElementById('artifact-list');
 const stopRunFormEl = document.getElementById('stop-run-form');
 let startedAtValue = {{ (run.started_at.isoformat() if run.started_at else None) | tojson }};
 let finishedAtValue = {{ (run.finished_at.isoformat() if run.finished_at else None) | tojson }};
@@ -129,18 +119,6 @@ function renderStages(stages) {
   }
 }
 
-function renderArtifacts(report) {
-  artifactListEl.innerHTML = '';
-  if (report?.report_path) {
-    artifactListEl.innerHTML += `<a class="action-chip" href="/artifacts/${runId}/report">Report</a>`;
-  }
-  if (report?.orthophoto_path) {
-    artifactListEl.innerHTML += `<a class="action-chip" href="/artifacts/${runId}/orthophoto">Orthophoto</a>`;
-  }
-  artifactListEl.innerHTML += `<a class="action-chip" href="/artifacts/${runId}/log">Run log</a>`;
-  artifactListEl.innerHTML += `<a class="action-chip" href="/runs/${runId}/package">Package</a>`;
-}
-
 function renderPayload(payload) {
   statusEl.textContent = payload.status;
   stageEl.textContent = payload.stage_message || payload.current_stage || 'Queued';
@@ -156,7 +134,6 @@ function renderPayload(payload) {
   button.disabled = false;
   button.textContent = 'Stop run';
   renderStages(payload.stages);
-  renderArtifacts(payload.report);
   return isActive;
 }
 

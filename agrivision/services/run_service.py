@@ -57,6 +57,9 @@ class RunService:
                 'preset': request.parameters.preset,
                 'notes': request.parameters.notes,
                 'flight_date': request.parameters.flight_date.isoformat() if request.parameters.flight_date else None,
+                'orthophoto_preset': request.parameters.orthophoto_preset,
+                'orthophoto_resolution_cm': request.parameters.orthophoto_resolution_cm,
+                'source_orthophoto_run_id': request.parameters.source_orthophoto_run_id,
                 'pdm_crop': request.parameters.pdm_crop,
                 'pdm_model_key': request.parameters.pdm_model_key,
             },
@@ -135,6 +138,10 @@ class RunService:
         if record.status in {'queued', 'running'}:
             raise ValueError('Active runs must be stopped before deletion.')
         shutil.rmtree(run_dir)
+        runs_output_root = self.storage.layout.project_root / load_config()['paths'].get('runs_output', 'output/runs')
+        run_output_dir = runs_output_root / run_id
+        if run_output_dir.exists():
+            shutil.rmtree(run_output_dir)
 
     def archive_run(self, run_id: str) -> Path:
         run_dir = self._existing_run_dir(run_id)
@@ -168,6 +175,31 @@ class RunService:
                     stages=self._cancel_stages(record.stages),
                 )
             )
+        return cleared
+
+    def clear_incomplete_runs(self) -> int:
+        cleared = 0
+        for record in self.list_runs():
+            if record.status in {'failed', 'cancelled'}:
+                self.delete_run(record.run_id)
+                cleared += 1
+                continue
+            if record.status not in {'queued', 'running'}:
+                continue
+            thread = self._threads.get(record.run_id)
+            if thread is not None and thread.is_alive():
+                continue
+            self.update_status(
+                record.run_id,
+                status='cancelled',
+                current_stage='cancelled',
+                stage_message='Cleared incomplete run.',
+                errors=self._append_unique_error(record.errors, 'Cleared incomplete run.'),
+                finished_at=datetime.now(timezone.utc),
+                stages=self._cancel_stages(record.stages),
+            )
+            self.delete_run(record.run_id)
+            cleared += 1
         return cleared
 
     def update_status(
@@ -287,6 +319,24 @@ class RunService:
         _copy_inputs(upload_dir / 'rgb', target_rgb)
         _copy_inputs(upload_dir / 'mapir', target_mapir)
 
+    def stage_saved_orthophotos_for_run(self, source_run_id: str) -> None:
+        source = self.load_run(source_run_id)
+        config = load_config()
+        project_root = get_project_root()
+        targets = {
+            'orthophoto_rgb': project_root / config['paths']['odm_project_root_rgb'] / 'project' / 'odm_orthophoto' / 'odm_orthophoto.tif',
+            'orthophoto_mapir': project_root / config['paths']['odm_project_root_mapir'] / 'project' / 'odm_orthophoto' / 'odm_orthophoto.tif',
+        }
+        for key, target in targets.items():
+            source_path = source.outputs.get(key)
+            if not source_path:
+                continue
+            source_file = Path(source_path)
+            if not source_file.exists():
+                continue
+            target.parent.mkdir(parents=True, exist_ok=True)
+            shutil.copy2(source_file, target)
+
     def start_run(self, run_id: str) -> RunRecord:
         record = self.load_run(run_id)
         if run_id in self._threads and self._threads[run_id].is_alive():
@@ -351,6 +401,9 @@ class RunService:
             self._raise_if_cancelled(run_id)
             self.update_stage(run_id, 'stage_inputs', 'running', 'Staging MAPIR and RGB inputs')
             self.stage_inputs_for_run(run_id)
+            source_orthophoto_run_id = record.parameters.get('source_orthophoto_run_id')
+            if source_orthophoto_run_id and not record.selected_steps.run_odm:
+                self.stage_saved_orthophotos_for_run(str(source_orthophoto_run_id))
             self.update_stage(run_id, 'stage_inputs', 'completed', 'Inputs staged')
             self._raise_if_cancelled(run_id)
 
@@ -368,6 +421,7 @@ class RunService:
                         skip_irrigation=not selected.run_irrigation,
                         skip_pdm=not selected.run_pdm,
                         skip_report=not selected.generate_report,
+                        orthophoto_resolution_cm=record.parameters.get('orthophoto_resolution_cm'),
                         pdm_crop=record.parameters.get('pdm_crop'),
                         pdm_model_key=record.parameters.get('pdm_model_key'),
                         progress_callback=callback,
@@ -444,6 +498,14 @@ class RunService:
         shutil.copy2(source_report, destination)
         return destination
 
+    def _persist_output_for_run(self, record: RunRecord, source_path: Path, filename: str) -> Path:
+        runs_output_root = self.storage.layout.project_root / load_config()['paths'].get('runs_output', 'output/runs')
+        run_output_dir = runs_output_root / record.run_id / 'orthophotos'
+        run_output_dir.mkdir(parents=True, exist_ok=True)
+        destination = run_output_dir / filename
+        shutil.copy2(source_path, destination)
+        return destination
+
     def _discover_outputs(self, run_dir: Path) -> dict[str, str]:
         config = load_config()
         project_root = self.storage.layout.project_root
@@ -459,7 +521,16 @@ class RunService:
             'orthophoto_rgb': project_root / config['paths']['odm_project_root_rgb'] / 'project' / 'odm_orthophoto' / 'odm_orthophoto.tif',
             'orthophoto_mapir': project_root / config['paths']['odm_project_root_mapir'] / 'project' / 'odm_orthophoto' / 'odm_orthophoto.tif',
         }
-        outputs = {name: str(path) for name, path in candidates.items() if path.exists()}
+        outputs = {}
+        for name, path in candidates.items():
+            if not path.exists():
+                continue
+            if name == 'orthophoto_rgb':
+                outputs[name] = str(self._persist_output_for_run(record, path, 'orthophoto_rgb.tif'))
+            elif name == 'orthophoto_mapir':
+                outputs[name] = str(self._persist_output_for_run(record, path, 'orthophoto_mapir.tif'))
+            else:
+                outputs[name] = str(path)
         report_path = next((path for path in report_candidates if path.exists()), None)
         if report_path is not None:
             outputs['report_html'] = str(self._persist_report_for_run(record, report_path))

@@ -33,6 +33,7 @@ def run_full_pipeline(
     skip_irrigation: bool = False,
     skip_pdm: bool = False,
     skip_report: bool = False,
+    orthophoto_resolution_cm: int | None = None,
     pdm_crop: str | None = None,
     pdm_model_key: str | None = None,
     progress_callback: Callable[[str, str, str], None] | None = None,
@@ -85,7 +86,7 @@ def run_full_pipeline(
         if progress_callback:
             progress_callback('run_odm_rgb', 'Running ODM for RGB images', 'running')
         print('\n[ODM-RGB] Running RGB ODM...')
-        run_odm_rgb()
+        run_odm_rgb(ortho_resolution_cm=orthophoto_resolution_cm)
         if progress_callback:
             progress_callback('run_odm_rgb', 'RGB orthophoto complete', 'completed')
 
@@ -96,7 +97,7 @@ def run_full_pipeline(
             if progress_callback:
                 progress_callback('run_odm_mapir', 'Running ODM for MAPIR images', 'running')
             print('\n[ODM-MAPIR] MAPIR images detected – running MAPIR ODM...')
-            run_odm_mapir()
+            run_odm_mapir(ortho_resolution_cm=orthophoto_resolution_cm)
             if progress_callback:
                 progress_callback('run_odm_mapir', 'MAPIR orthophoto complete', 'completed')
         else:

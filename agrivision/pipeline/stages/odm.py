@@ -283,7 +283,7 @@ def _run_odm_docker(
 # ---------------------------------------------------------------------
 # Public functions
 # ---------------------------------------------------------------------
-def run_odm_rgb() -> None:
+def run_odm_rgb(ortho_resolution_cm: int | None = None) -> None:
     """
     Run ODM for the RGB dataset.
 
@@ -301,7 +301,7 @@ def run_odm_rgb() -> None:
     images_resized_rgb = settings["images_resized_rgb"]
     odm_project_root_rgb = settings["odm_project_root_rgb"]
     odm_docker_image = settings["odm_docker_image"]
-    ortho_resolution_cm = settings["ortho_resolution_cm"]
+    resolved_resolution_cm = ortho_resolution_cm or settings["ortho_resolution_cm"]
 
     input_folder = _choose_input_folder(
         label="RGB",
@@ -319,11 +319,11 @@ def run_odm_rgb() -> None:
         project_root=odm_project_root_rgb,
         label="RGB",
         odm_docker_image=odm_docker_image,
-        ortho_resolution_cm=ortho_resolution_cm,
+        ortho_resolution_cm=resolved_resolution_cm,
     )
 
 
-def run_odm_mapir() -> None:
+def run_odm_mapir(ortho_resolution_cm: int | None = None) -> None:
     """
     Run ODM for the MAPIR dataset.
 
@@ -347,7 +347,7 @@ def run_odm_mapir() -> None:
     images_resized_mapir = settings["images_resized_mapir"]
     odm_project_root_mapir = settings["odm_project_root_mapir"]
     odm_docker_image = settings["odm_docker_image"]
-    ortho_resolution_cm = settings["ortho_resolution_cm"]
+    resolved_resolution_cm = ortho_resolution_cm or settings["ortho_resolution_cm"]
 
     input_folder = _choose_input_folder(
         label="MAPIR",
@@ -365,7 +365,7 @@ def run_odm_mapir() -> None:
         project_root=odm_project_root_mapir,
         label="MAPIR",
         odm_docker_image=odm_docker_image,
-        ortho_resolution_cm=ortho_resolution_cm,
+        ortho_resolution_cm=resolved_resolution_cm,
     )
 
 

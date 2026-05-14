@@ -23,6 +23,9 @@ class RunParameters(BaseModel):
     preset: str | None = None
     notes: str | None = None
     flight_date: date | None = None
+    orthophoto_preset: str | None = None
+    orthophoto_resolution_cm: int | None = Field(default=None, ge=1, le=20)
+    source_orthophoto_run_id: str | None = None
     pdm_crop: str | None = None
     pdm_model_key: str | None = None
 

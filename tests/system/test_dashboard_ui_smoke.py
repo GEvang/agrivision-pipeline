@@ -53,11 +53,17 @@ def test_dashboard_pages_render(tmp_path: Path, monkeypatch) -> None:
     (run_dir / 'run.log').write_text('ok', encoding='utf-8')
 
     client = TestClient(api.app)
-    assert client.get('/', headers={'accept': 'text/html'}).status_code == 200
-    assert client.get('/runs/new', headers={'accept': 'text/html'}).status_code == 200
+    dashboard = client.get('/', headers={'accept': 'text/html'})
+    assert dashboard.status_code == 200
+    assert 'Operations' not in dashboard.text
+    new_run = client.get('/runs/new', headers={'accept': 'text/html'})
+    assert new_run.status_code == 200
+    assert 'Balanced (recommended)' in new_run.text
+    assert 'Saved orthophotos' in new_run.text
     runs_page = client.get('/runs', headers={'accept': 'text/html'})
     assert runs_page.status_code == 200
     assert 'Reports' in runs_page.text
+    assert 'Clear incomplete' in runs_page.text
     assert client.get('/runs/run-1', headers={'accept': 'text/html'}).status_code == 200
     monkeypatch.setattr(service_routes, 'service_statuses', lambda include_logs=False: [])
     monkeypatch.setattr(settings_routes, 'service_statuses', lambda include_logs=False: [])
