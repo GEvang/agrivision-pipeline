@@ -6,10 +6,13 @@ from pathlib import Path
 from typing import Any
 
 from agrivision.config.settings import get_project_root, get_settings
+from agrivision.integrations.pdm.client import (
+    PdmClient,
+    get_pdm_service_config,
+    write_pdm_artifact,
+)
 from agrivision.services.pdm.bootstrap import bootstrap_pdm_context
-from agrivision.services.pdm.catalog import get_pdm_model, get_models_for_crop
-from agrivision.integrations.pdm.client import PdmClient, get_pdm_service_config, write_pdm_artifact
-
+from agrivision.services.pdm.catalog import get_models_for_crop, get_pdm_model
 
 RISK_ORDER = {'low': 1, 'moderate': 2, 'medium': 2, 'high': 3}
 

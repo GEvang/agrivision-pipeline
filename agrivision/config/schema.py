@@ -8,9 +8,9 @@ from agrivision.config.settings import (
     LocationSettings,
     NdviSettings,
     OrthophotoSettings,
+    PathsSettings,
     PdmAuthSettings,
     PdmSettings,
-    PathsSettings,
     ResizeSettings,
     WeatherSettings,
 )

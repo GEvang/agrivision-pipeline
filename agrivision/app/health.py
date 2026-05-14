@@ -2,7 +2,8 @@ from __future__ import annotations
 
 import subprocess
 from urllib.error import URLError
-from urllib.request import Request as UrlRequest, urlopen
+from urllib.request import Request as UrlRequest
+from urllib.request import urlopen
 
 from agrivision.config import load_config
 

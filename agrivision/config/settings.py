@@ -93,6 +93,7 @@ DEFAULT_CONFIG: dict[str, Any] = {
         "username": "",
         "password": "",
         "openweather_api_key": "",
+        "service_dir": "OpenAgri-WeatherService",
     },
     "irrigation": {
         "base_url": "http://127.0.0.1:8004",
@@ -169,6 +170,7 @@ class WeatherSettings:
     username: str
     password: str
     openweather_api_key: str
+    service_dir: str
 
 
 @dataclass(frozen=True)
@@ -466,6 +468,7 @@ def get_settings() -> AppSettings:
                 weather_cfg.get("openweather_api_key"),
                 _as_str(weather_defaults.get("openweather_api_key")),
             ),
+            service_dir=_as_str(weather_cfg.get("service_dir"), _as_str(weather_defaults.get("service_dir"), "OpenAgri-WeatherService")),
         ),
         location=LocationSettings(
             name=_as_str(location_cfg.get("name"), _as_str(location_defaults.get("name"))),

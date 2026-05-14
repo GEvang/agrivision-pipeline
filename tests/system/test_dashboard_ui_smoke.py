@@ -6,8 +6,8 @@ from fastapi.testclient import TestClient
 
 from agrivision.app import api
 from agrivision.app import dependencies as deps
-from agrivision.app.routes import settings as settings_routes
 from agrivision.app.routes import services as service_routes
+from agrivision.app.routes import settings as settings_routes
 from agrivision.services.report_service import ReportService
 from agrivision.services.run_service import RunService
 from agrivision.services.settings_service import SettingsService

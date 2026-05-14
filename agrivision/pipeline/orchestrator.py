@@ -6,8 +6,8 @@ from typing import Callable
 from agrivision.pipeline.io.paths import resolve_pipeline_paths
 from agrivision.pipeline.stages.grid import run_grid_report
 from agrivision.pipeline.stages.irrigation_enrichment import run_irrigation_enrichment
-from agrivision.pipeline.stages.pdm_enrichment import run_pdm_enrichment
 from agrivision.pipeline.stages.odm import run_odm_mapir, run_odm_rgb
+from agrivision.pipeline.stages.pdm_enrichment import run_pdm_enrichment
 from agrivision.pipeline.stages.report import run_report
 from agrivision.pipeline.stages.resize import run_resize
 from agrivision.pipeline.stages.vegetation_index import run_ndvi

@@ -89,7 +89,8 @@ def _get_location_params() -> dict[str, Any]:
 
 
 def _service_dir() -> Path:
-    return project_service_dir("OpenAgri-WeatherService")
+    settings = get_settings()
+    return project_service_dir(settings.weather.service_dir or "OpenAgri-WeatherService")
 
 
 def _weather_env_values() -> dict[str, str]:

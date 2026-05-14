@@ -73,6 +73,7 @@ ndvi:
 
 weather:
   base_url: "http://127.0.0.1:8010"
+  service_dir: "OpenAgri-WeatherService"
 
 # OpenAgri Irrigation Management Service integration
 irrigation:

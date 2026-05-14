@@ -3,7 +3,11 @@ from __future__ import annotations
 from fastapi import APIRouter, HTTPException
 from fastapi.responses import RedirectResponse
 
-from agrivision.services.service_control import ensure_service, restart_service, service_statuses
+from agrivision.services.service_control import (
+    ensure_service,
+    restart_service,
+    service_statuses,
+)
 
 router = APIRouter()
 

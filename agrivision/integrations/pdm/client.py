@@ -1,9 +1,8 @@
 from __future__ import annotations
 
 import json
-import uuid
 from dataclasses import dataclass
-from datetime import date, datetime, timedelta, timezone
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from typing import Any
 
@@ -13,7 +12,6 @@ from requests import Response, Session
 from agrivision.config.settings import get_project_root, load_config
 from agrivision.services.pdm.catalog import get_pdm_model
 from agrivision.services.pdm.runtime import ensure_service_available
-
 
 FIELD_TO_UNIT_ID = {
     'temperature_c': 1,

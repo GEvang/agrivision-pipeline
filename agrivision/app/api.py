@@ -7,7 +7,16 @@ from fastapi.staticfiles import StaticFiles
 
 from agrivision.app import dependencies as deps
 from agrivision.app.formatters import format_duration, format_system_datetime
-from agrivision.app.routes import artifacts, dashboard, diagnostics, reports, runs, services, settings, uploads
+from agrivision.app.routes import (
+    artifacts,
+    dashboard,
+    diagnostics,
+    reports,
+    runs,
+    services,
+    settings,
+    uploads,
+)
 
 app = FastAPI(title='AgriVision Dashboard', version='0.2.0')
 app.mount('/static', StaticFiles(directory=str(Path(__file__).parent / 'web' / 'static')), name='static')

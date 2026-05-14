@@ -1,6 +1,6 @@
 from pathlib import Path
 
-from agrivision.config import settings
+from agrivision.config import runtime, settings
 
 
 def write_test_config(path: Path) -> None:
@@ -78,6 +78,7 @@ def test_load_config_returns_defaults_when_config_file_missing(monkeypatch, tmp_
     assert "ndvi" in cfg
     assert "weather" in cfg
     assert "irrigation" in cfg
+    assert cfg["weather"]["service_dir"] == "OpenAgri-WeatherService"
 
 
 def test_get_project_root_uses_config_parent(monkeypatch, tmp_path):
@@ -124,3 +125,22 @@ def test_native_runtime_keeps_loopback_service_urls(monkeypatch, tmp_path):
     cfg = settings.load_config()
 
     assert cfg["weather"]["base_url"] == "http://127.0.0.1:8010"
+
+
+def test_weather_service_dir_is_configurable(monkeypatch, tmp_path):
+    config_path = tmp_path / "config.yaml"
+    config_path.write_text(
+        """
+weather:
+  service_dir: "services/weather"
+""".strip()
+        + "\n",
+        encoding="utf-8",
+    )
+
+    monkeypatch.setattr(settings, "_CONFIG_PATH", config_path)
+
+    app_settings = settings.get_settings()
+
+    assert app_settings.weather.service_dir == "services/weather"
+    assert runtime.get_runtime_config()["weather_service_dir"] == "services/weather"

@@ -1,11 +1,15 @@
-from pathlib import Path
 import subprocess
+from pathlib import Path
 
 import pytest
 
 from agrivision.services import runtime
 from agrivision.services.irrigation.runtime import _apply_compatibility_patches
-from agrivision.services.runtime import ServiceBootstrapError, base_env_values, update_env_file
+from agrivision.services.runtime import (
+    ServiceBootstrapError,
+    base_env_values,
+    update_env_file,
+)
 
 
 def test_update_env_file_reports_changed_keys(tmp_path: Path) -> None:

@@ -4,7 +4,10 @@ from fastapi import APIRouter, Form, Request
 from fastapi.responses import RedirectResponse
 
 from agrivision.app import dependencies as deps
-from agrivision.app.schemas.settings import CredentialsUpdateRequest, SettingsUpdateRequest
+from agrivision.app.schemas.settings import (
+    CredentialsUpdateRequest,
+    SettingsUpdateRequest,
+)
 from agrivision.services.service_control import service_statuses
 
 router = APIRouter()
