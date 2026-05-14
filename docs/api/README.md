@@ -4,6 +4,12 @@ The dashboard is a thin FastAPI adapter over the pipeline core. Route handlers d
 
 ## Core endpoints
 
+FastAPI publishes machine-readable and human-readable API documentation:
+
+- `GET /openapi.json`
+- `GET /docs` for Swagger UI
+- `GET /redoc` for ReDoc
+
 ### Health
 - `GET /health`
 - `GET /doctor`
@@ -33,6 +39,13 @@ The dashboard is a thin FastAPI adapter over the pipeline core. Route handlers d
 - `GET /artifacts/{run_id}/orthophoto`
 - `GET /artifacts/{run_id}/preview`
 - `GET /artifacts/{run_id}/log`
+- `GET /runs/{run_id}/package`
+
+Run packages include:
+
+- `manifest.json` for simple file inventory
+- `metadata/run_metadata.jsonld` for OpenAgri-oriented semantic interchange
+- run status, parameters, logs, reports, rasters, and quality artifacts when present
 
 ## Dashboard pages
 

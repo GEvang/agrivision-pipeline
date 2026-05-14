@@ -29,10 +29,16 @@ python run.py
 Dashboard:
 
 ```bash
-python run.py --serve-dashboard --host 127.0.0.1 --port 8008 --host 127.0.0.1 --port 8008
+python run.py --serve-dashboard --host 127.0.0.1 --port 8008
 ```
 
 Open `http://127.0.0.1:8008` in your browser.
+
+API documentation is available from the running dashboard:
+
+- OpenAPI JSON: `http://127.0.0.1:8008/openapi.json`
+- Swagger UI: `http://127.0.0.1:8008/docs`
+- ReDoc: `http://127.0.0.1:8008/redoc`
 
 ## Configuration and secrets
 
@@ -75,3 +81,9 @@ docker compose up
 ## Developer notes
 
 Developer-oriented alternatives such as raw `uvicorn`, editable installs, and dev tooling are documented under `docs/developer/`.
+
+## OpenAgri alignment
+
+AgriVision is designed as an OpenAgri-aligned Agricultural Digital Solution (ADS). It reuses OpenAgri Weather, Irrigation Management, and Pest & Disease services where configured, keeps run artifacts under operator-controlled project folders, and exposes a documented REST interface through FastAPI/OpenAPI.
+
+The current repository license is MIT. OpenAgri core services commonly use EUPL 1.2; see `docs/developer/release.md` for the current license decision note and release checklist.

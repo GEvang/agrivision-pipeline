@@ -40,8 +40,84 @@ class RunExportService:
                 archive.write(path, arcname)
                 manifest['files'].append(arcname)  # type: ignore[union-attr]
             archive.writestr('manifest.json', json.dumps(manifest, indent=2, sort_keys=True))
+            archive.writestr(
+                'metadata/run_metadata.jsonld',
+                json.dumps(self._run_jsonld(run.run_id, manifest), indent=2, sort_keys=True),
+            )
 
         return package_path
+
+    def _run_jsonld(self, run_id: str, manifest: dict[str, object]) -> dict[str, object]:
+        run = self.run_service.load_run(run_id)
+        files = [str(item) for item in manifest.get('files', []) if str(item).strip()]
+        artifact_nodes = [
+            {
+                '@id': f'urn:openagri:agrivision:artifact:{run.run_id}:{index + 1}',
+                '@type': 'DigitalDocument',
+                'name': arcname,
+                'contentUrl': arcname,
+                'encodingFormat': self._encoding_format(arcname),
+            }
+            for index, arcname in enumerate(files)
+        ]
+        selected_steps = [
+            {'name': key, 'value': value}
+            for key, value in run.selected_steps.model_dump().items()
+        ]
+        parameters = [
+            {'name': key, 'value': value}
+            for key, value in run.parameters.items()
+            if value is not None
+        ]
+        return {
+            '@context': {
+                'schema': 'https://schema.org/',
+                'ocsm': 'https://w3id.org/openagri/ocsm#',
+                'AgriParcel': 'ocsm:AgriParcel',
+                'AgriculturalDataset': 'ocsm:AgriculturalDataset',
+                'DigitalDocument': 'schema:DigitalDocument',
+                'SoftwareApplication': 'schema:SoftwareApplication',
+                'actionStatus': 'schema:actionStatus',
+                'contentUrl': 'schema:contentUrl',
+                'dateCreated': 'schema:dateCreated',
+                'dateModified': 'schema:dateModified',
+                'encodingFormat': 'schema:encodingFormat',
+                'hasPart': 'schema:hasPart',
+                'identifier': 'schema:identifier',
+                'name': 'schema:name',
+                'softwareVersion': 'schema:softwareVersion',
+            },
+            '@id': f'urn:openagri:agrivision:run:{run.run_id}',
+            '@type': ['SoftwareApplication', 'ocsm:AgriVisionRun'],
+            'identifier': run.run_id,
+            'name': run.run_name or run.dataset_name,
+            'softwareVersion': '0.1.0',
+            'actionStatus': run.status,
+            'dateCreated': run.created_at.isoformat(),
+            'dateModified': run.updated_at.isoformat() if run.updated_at else None,
+            'dataset': {
+                '@id': f'urn:openagri:agrivision:dataset:{run.run_id}',
+                '@type': 'AgriculturalDataset',
+                'name': run.dataset_name,
+                'identifier': Path(run.input_path).name,
+            },
+            'selectedSteps': selected_steps,
+            'parameters': parameters,
+            'hasPart': artifact_nodes,
+        }
+
+    def _encoding_format(self, arcname: str) -> str:
+        suffix = Path(arcname).suffix.lower()
+        return {
+            '.csv': 'text/csv',
+            '.html': 'text/html',
+            '.json': 'application/json',
+            '.jsonld': 'application/ld+json',
+            '.log': 'text/plain',
+            '.png': 'image/png',
+            '.tif': 'image/tiff',
+            '.tiff': 'image/tiff',
+        }.get(suffix, 'application/octet-stream')
 
     def _artifact_candidates(self, run_id: str) -> list[tuple[Path, str]]:
         run = self.run_service.load_run(run_id)

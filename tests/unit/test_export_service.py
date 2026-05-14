@@ -50,6 +50,7 @@ def test_build_package_includes_run_and_quality_artifacts(tmp_path: Path, monkey
     with zipfile.ZipFile(package) as archive:
         names = set(archive.namelist())
         assert 'manifest.json' in names
+        assert 'metadata/run_metadata.jsonld' in names
         assert 'run/status.json' in names
         assert 'run/params.json' in names
         assert 'report/report.html' in names
@@ -57,3 +58,7 @@ def test_build_package_includes_run_and_quality_artifacts(tmp_path: Path, monkey
         assert 'quality/grid_metadata.json' in names
         assert 'quality/grid_cells.csv' in names
         assert 'quality/grid_overlay.png' in names
+        metadata = json.loads(archive.read('metadata/run_metadata.jsonld'))
+        assert metadata['@id'] == f'urn:openagri:agrivision:run:{record.run_id}'
+        assert metadata['dataset']['@type'] == 'AgriculturalDataset'
+        assert any(item['contentUrl'] == 'report/report.html' for item in metadata['hasPart'])
