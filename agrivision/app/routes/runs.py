@@ -50,6 +50,7 @@ def _render_new_run_page(
     validation_result: dict[str, object] | None = None,
     form_values: dict[str, object] | None = None,
 ) -> HTMLResponse:
+    deps.run_service.ensure_latest_orthophoto_run_saved()
     orthophoto_runs: list[dict[str, object]] = []
     odm_runs_by_upload: dict[str, list[object]] = {}
     for run in deps.run_service.list_runs():

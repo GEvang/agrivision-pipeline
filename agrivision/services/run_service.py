@@ -337,6 +337,30 @@ class RunService:
             target.parent.mkdir(parents=True, exist_ok=True)
             shutil.copy2(source_file, target)
 
+    def ensure_latest_orthophoto_run_saved(self) -> RunRecord | None:
+        latest_run = next(
+            (
+                run
+                for run in self.list_runs()
+                if run.status == 'completed' and run.selected_steps.run_odm
+            ),
+            None,
+        )
+        if latest_run is None:
+            return None
+        saved_outputs = {
+            key: value
+            for key, value in latest_run.outputs.items()
+            if key in {'orthophoto_rgb', 'orthophoto_mapir'}
+            and value
+            and Path(value).exists()
+            and 'orthophotos' in Path(value).parts
+        }
+        if saved_outputs:
+            return latest_run
+        outputs = self._discover_outputs(Path(latest_run.run_dir))
+        return self.update_status(latest_run.run_id, outputs=outputs)
+
     def start_run(self, run_id: str) -> RunRecord:
         record = self.load_run(run_id)
         if run_id in self._threads and self._threads[run_id].is_alive():
