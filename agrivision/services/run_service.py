@@ -28,6 +28,10 @@ class RunCancelled(RuntimeError):
     pass
 
 
+class RunStartBlocked(RuntimeError):
+    pass
+
+
 class RunService:
     def __init__(self, storage: StorageService | None = None) -> None:
         self.storage = storage or StorageService()
@@ -306,6 +310,18 @@ class RunService:
     def _append_unique_error(self, errors: list[str], message: str) -> list[str]:
         return errors if message in errors else [*errors, message]
 
+    def mark_start_blocked(self, run_id: str, message: str) -> RunRecord:
+        record = self.load_run(run_id)
+        return self.update_status(
+            run_id,
+            status='cancelled',
+            current_stage='blocked',
+            stage_message=message,
+            errors=self._append_unique_error(record.errors, message),
+            finished_at=datetime.now(timezone.utc),
+            stages=self._cancel_stages(record.stages),
+        )
+
     def stage_inputs_for_run(self, run_id: str) -> None:
         record = self.load_run(run_id)
         config = load_config()
@@ -378,6 +394,22 @@ class RunService:
         record = self.load_run(run_id)
         if run_id in self._threads and self._threads[run_id].is_alive():
             return record
+        if record.selected_steps.run_odm:
+            active_odm_runs = [
+                run
+                for run in self.list_runs()
+                if run.run_id != run_id
+                and run.selected_steps.run_odm
+                and run.status in {'queued', 'running'}
+            ]
+            config = load_config()
+            app_cfg = config.get('app', {}) if isinstance(config.get('app'), dict) else {}
+            max_active = self._as_positive_int(app_cfg.get('max_active_odm_runs'), 1)
+            if len(active_odm_runs) >= max_active:
+                raise RunStartBlocked(
+                    f'Another ODM run is already active ({active_odm_runs[0].run_id}). '
+                    'Wait for it to finish or stop it before starting a new orthophoto run.'
+                )
         self._cancel_events[run_id] = threading.Event()
         record = self.update_status(
             run_id,
@@ -391,6 +423,12 @@ class RunService:
         self._threads[run_id] = thread
         thread.start()
         return record
+
+    def _as_positive_int(self, value: object, fallback: int) -> int:
+        try:
+            return max(1, int(value))
+        except (TypeError, ValueError):
+            return fallback
 
     def request_stop(self, run_id: str) -> RunRecord:
         record = self.load_run(run_id)

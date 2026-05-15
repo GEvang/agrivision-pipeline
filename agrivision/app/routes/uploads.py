@@ -8,6 +8,7 @@ from PIL import Image, UnidentifiedImageError
 
 from agrivision.app import dependencies as deps
 from agrivision.app.schemas.runs import RunCreateRequest, UploadManifest
+from agrivision.services.run_service import RunStartBlocked
 
 router = APIRouter()
 
@@ -127,5 +128,8 @@ async def create_orthophotos_ui(
         }
     )
     record = deps.run_service.create_run_record(run_request)
-    result = deps.run_service.start_run(record.run_id)
+    try:
+        result = deps.run_service.start_run(record.run_id)
+    except RunStartBlocked as exc:
+        result = deps.run_service.mark_start_blocked(record.run_id, str(exc))
     return RedirectResponse(url=f'/runs/{result.run_id}', status_code=303)

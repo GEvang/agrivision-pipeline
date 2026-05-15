@@ -8,6 +8,7 @@ from fastapi.responses import HTMLResponse, RedirectResponse
 from agrivision.app import dependencies as deps
 from agrivision.app.schemas.runs import RunCreateRequest
 from agrivision.services.pdm.catalog import PDM_MODEL_CATALOG
+from agrivision.services.run_service import RunStartBlocked
 
 router = APIRouter()
 
@@ -195,7 +196,11 @@ def get_run(run_id: str, request: Request):
 @router.post('/runs')
 def create_run(request: RunCreateRequest) -> dict[str, str]:
     record = deps.run_service.create_run_record(request)
-    result = deps.run_service.start_run(record.run_id)
+    try:
+        result = deps.run_service.start_run(record.run_id)
+    except RunStartBlocked as exc:
+        deps.run_service.mark_start_blocked(record.run_id, str(exc))
+        raise HTTPException(status_code=409, detail=str(exc)) from exc
     return {'run_id': result.run_id, 'status': result.status, 'redirect': f'/runs/{result.run_id}'}
 
 

@@ -34,6 +34,8 @@ python run.py --serve-dashboard --host 127.0.0.1 --port 8008
 
 Open `http://127.0.0.1:8008` in your browser.
 
+For a Windows workstation exposed through Cloudflare Tunnel, see `docs/operator/windows-self-hosting.md`.
+
 API documentation is available from the running dashboard:
 
 - OpenAPI JSON: `http://127.0.0.1:8008/openapi.json`

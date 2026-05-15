@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import shutil
 import subprocess
 from pathlib import Path
 from urllib.error import URLError
@@ -36,6 +37,10 @@ class PreflightService:
 
         config = load_config()
         if request.selected_steps.run_odm:
+            disk_check = self._disk_space_check(config)
+            checks.append(disk_check)
+            if disk_check['state'] == 'error':
+                blockers.append(disk_check['detail'])
             docker_check = self._docker_check()
             checks.append(docker_check)
             if docker_check['state'] != 'ok':
@@ -81,6 +86,29 @@ class PreflightService:
         if result.returncode == 0 and version:
             return self._check('Docker', 'ok', version)
         return self._check('Docker', 'error', 'Daemon unavailable')
+
+    def _disk_space_check(self, config: dict) -> dict[str, str]:
+        app_cfg = config.get('app', {}) if isinstance(config.get('app'), dict) else {}
+        min_free_gb = self._as_int(app_cfg.get('min_free_disk_gb'), 50)
+        project_root = get_project_root()
+        try:
+            usage = shutil.disk_usage(project_root)
+        except OSError:
+            return self._check('Free disk space', 'warn', 'Could not check disk space')
+        free_gb = usage.free / (1024**3)
+        detail = f'{free_gb:.1f} GB free; minimum {min_free_gb} GB'
+        if free_gb < min_free_gb:
+            return self._check('Free disk space', 'error', detail)
+        warn_threshold = max(min_free_gb * 1.5, min_free_gb + 20)
+        if free_gb < warn_threshold:
+            return self._check('Free disk space', 'warn', detail)
+        return self._check('Free disk space', 'ok', detail)
+
+    def _as_int(self, value: object, fallback: int) -> int:
+        try:
+            return max(0, int(value))
+        except (TypeError, ValueError):
+            return fallback
 
     def _url_check(self, name: str, base_url: str) -> dict[str, str]:
         for path in ('/health', '/docs', '/openapi.json'):

@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import shutil
 from pathlib import Path
 
 from agrivision.app.schemas.runs import RunCreateRequest
@@ -26,6 +27,9 @@ def _request(upload_run_id: str, *, run_odm: bool = False, fetch_weather: bool =
 
 def _config() -> dict:
     return {
+        'app': {
+            'min_free_disk_gb': 50,
+        },
         'paths': {
             'odm_project_root_rgb': 'data/odm_project_rgb',
             'odm_project_root_mapir': 'data/odm_project_mapir',
@@ -102,3 +106,55 @@ def test_existing_orthophoto_mode_passes_with_saved_orthophoto_run(tmp_path: Pat
 
     assert result['ok'] is True
     assert any(item['name'] == 'Saved RGB orthophoto' and item['state'] == 'ok' for item in result['checks'])
+
+
+def test_odm_preflight_blocks_when_disk_space_is_too_low(tmp_path: Path, monkeypatch) -> None:
+    storage = StorageService(project_root=tmp_path)
+    upload_dir = storage.upload_dir('upload-1')
+    storage.write_json(
+        upload_dir / 'manifest.json',
+        {'dataset_name': 'Dataset', 'rgb_files': ['a.jpg', 'b.jpg'], 'mapir_files': ['m1.jpg', 'm2.jpg']},
+    )
+
+    def config() -> dict:
+        cfg = _config()
+        cfg['app']['min_free_disk_gb'] = 100
+        return cfg
+
+    monkeypatch.setattr('agrivision.services.preflight_service.get_project_root', lambda: tmp_path)
+    monkeypatch.setattr('agrivision.services.preflight_service.load_config', config)
+    monkeypatch.setattr(
+        'agrivision.services.preflight_service.shutil.disk_usage',
+        lambda path: shutil._ntuple_diskusage(total=200 * 1024**3, used=150 * 1024**3, free=50 * 1024**3),
+    )
+    service = PreflightService(storage)
+    monkeypatch.setattr(service, '_docker_check', lambda: service._check('Docker', 'ok', '27.0.0'))
+
+    result = service.validate(_request('upload-1', run_odm=True))
+
+    assert result['ok'] is False
+    assert '50.0 GB free; minimum 100 GB' in result['blockers']
+    assert any(item['name'] == 'Free disk space' and item['state'] == 'error' for item in result['checks'])
+
+
+def test_odm_preflight_warns_when_disk_space_is_near_minimum(tmp_path: Path, monkeypatch) -> None:
+    storage = StorageService(project_root=tmp_path)
+    upload_dir = storage.upload_dir('upload-1')
+    storage.write_json(
+        upload_dir / 'manifest.json',
+        {'dataset_name': 'Dataset', 'rgb_files': ['a.jpg', 'b.jpg'], 'mapir_files': ['m1.jpg', 'm2.jpg']},
+    )
+
+    monkeypatch.setattr('agrivision.services.preflight_service.get_project_root', lambda: tmp_path)
+    monkeypatch.setattr('agrivision.services.preflight_service.load_config', _config)
+    monkeypatch.setattr(
+        'agrivision.services.preflight_service.shutil.disk_usage',
+        lambda path: shutil._ntuple_diskusage(total=200 * 1024**3, used=140 * 1024**3, free=60 * 1024**3),
+    )
+    service = PreflightService(storage)
+    monkeypatch.setattr(service, '_docker_check', lambda: service._check('Docker', 'ok', '27.0.0'))
+
+    result = service.validate(_request('upload-1', run_odm=True))
+
+    assert result['ok'] is True
+    assert any(item['name'] == 'Free disk space' and item['state'] == 'warn' for item in result['checks'])

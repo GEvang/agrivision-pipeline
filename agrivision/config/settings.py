@@ -114,6 +114,12 @@ DEFAULT_CONFIG: dict[str, Any] = {
         "odm_docker_image": "opendronemap/odm:latest",
         "orthophoto_resolution_cm": 1,
     },
+    "app": {
+        "deployment_mode": "local",
+        "public_url": "",
+        "min_free_disk_gb": 50,
+        "max_active_odm_runs": 1,
+    },
     "pdm": {
         "enabled_by_default": True,
         "base_url": "http://127.0.0.1:8006",
@@ -142,6 +148,10 @@ _ENV_SECRET_OVERRIDES: tuple[tuple[tuple[str, ...], str, str], ...] = (
     (("pdm", "auth", "username"), "PDM_USERNAME", "pdm.auth.username"),
     (("pdm", "auth", "password"), "PDM_PASSWORD", "pdm.auth.password"),
     (("pdm", "token"), "PDM_TOKEN", "pdm.token"),
+    (("app", "deployment_mode"), "AGRIVISION_DEPLOYMENT_MODE", "app.deployment_mode"),
+    (("app", "public_url"), "AGRIVISION_PUBLIC_URL", "app.public_url"),
+    (("app", "min_free_disk_gb"), "AGRIVISION_MIN_FREE_DISK_GB", "app.min_free_disk_gb"),
+    (("app", "max_active_odm_runs"), "AGRIVISION_MAX_ACTIVE_ODM_RUNS", "app.max_active_odm_runs"),
 )
 
 
@@ -159,10 +169,20 @@ class PathsSettings:
     images_full_mapir: str
     images_resized_mapir: str
 
+
 @dataclass(frozen=True)
 class OrthophotoSettings:
     odm_docker_image: str
     orthophoto_resolution_cm: int
+
+
+@dataclass(frozen=True)
+class ApplicationSettings:
+    deployment_mode: str
+    public_url: str
+    min_free_disk_gb: int
+    max_active_odm_runs: int
+
 
 @dataclass(frozen=True)
 class WeatherSettings:
@@ -243,6 +263,7 @@ class ResizeSettings:
 
 @dataclass(frozen=True)
 class AppSettings:
+    app: ApplicationSettings
     paths: PathsSettings
     weather: WeatherSettings
     location: LocationSettings
@@ -421,6 +442,7 @@ def get_settings() -> AppSettings:
     ndvi_cfg = _as_dict(cfg.get("ndvi"))
     resize_cfg = _as_dict(cfg.get("resize"))
     orthophoto_cfg = _as_dict(cfg.get("orthophoto"))
+    app_cfg = _as_dict(cfg.get("app"))
 
     paths_defaults = _as_dict(defaults.get("paths"))
     weather_defaults = _as_dict(defaults.get("weather"))
@@ -433,8 +455,27 @@ def get_settings() -> AppSettings:
     ndvi_defaults = _as_dict(defaults.get("ndvi"))
     resize_defaults = _as_dict(defaults.get("resize"))
     orthophoto_defaults = _as_dict(defaults.get("orthophoto"))
+    app_defaults = _as_dict(defaults.get("app"))
 
     return AppSettings(
+        app=ApplicationSettings(
+            deployment_mode=_as_str(
+                app_cfg.get("deployment_mode"),
+                _as_str(app_defaults.get("deployment_mode"), "local"),
+            ),
+            public_url=_as_str(app_cfg.get("public_url"), _as_str(app_defaults.get("public_url"))),
+            min_free_disk_gb=max(
+                0,
+                _as_int(app_cfg.get("min_free_disk_gb"), _as_int(app_defaults.get("min_free_disk_gb"), 50)),
+            ),
+            max_active_odm_runs=max(
+                1,
+                _as_int(
+                    app_cfg.get("max_active_odm_runs"),
+                    _as_int(app_defaults.get("max_active_odm_runs"), 1),
+                ),
+            ),
+        ),
         paths=PathsSettings(
             data_root=_as_str(paths_cfg.get("data_root"), _as_str(paths_defaults.get("data_root"))),
             output_root=_as_str(paths_cfg.get("output_root"), _as_str(paths_defaults.get("output_root"))),

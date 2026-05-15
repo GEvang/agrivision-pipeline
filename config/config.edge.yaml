@@ -86,3 +86,9 @@ irrigation:
 orthophoto:
   odm_docker_image: "opendronemap/odm:latest"
   orthophoto_resolution_cm: 1
+
+app:
+  deployment_mode: "self_hosted"
+  public_url: ""
+  min_free_disk_gb: 25
+  max_active_odm_runs: 1

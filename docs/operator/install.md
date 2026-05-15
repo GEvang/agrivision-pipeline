@@ -24,3 +24,7 @@ python run.py --doctor
 - create local secrets with `cp .env.example .env` and then fill the required values
 - keep secrets in `.env` or exported environment variables
 - never commit real credentials into `config.yaml` or `.env`
+
+## Windows self-hosting
+
+For a Windows workstation that serves the dashboard through Cloudflare Tunnel, follow `docs/operator/windows-self-hosting.md` after the local dashboard runs successfully.
