@@ -3,6 +3,7 @@ from __future__ import annotations
 import shutil
 import subprocess
 from urllib.error import URLError
+from urllib.parse import urlparse
 from urllib.request import Request as UrlRequest
 from urllib.request import urlopen
 
@@ -65,6 +66,7 @@ def deployment_status() -> dict[str, object]:
         'max_active_odm_runs': max_active_odm,
         'git_commit': _git_commit(),
         'cloudflare_checks': cloudflare_checks,
+        'cloudflare_setup': _cloudflare_setup(public_url),
     }
 
 
@@ -120,6 +122,50 @@ def _public_health_check(public_url: str) -> dict[str, str]:
             return {'name': 'Tunnel reachability', 'state': 'warn', 'detail': f'HTTP {response.status} at /health'}
     except (OSError, URLError):
         return {'name': 'Tunnel reachability', 'state': 'down', 'detail': f'Not reachable: {health_url}'}
+
+
+def _cloudflare_setup(public_url: str) -> dict[str, object]:
+    hostname = urlparse(public_url).hostname if public_url else ''
+    local_service = 'http://localhost:8008'
+    commands = [
+        'cloudflared tunnel login',
+        'cloudflared tunnel create agrivision',
+    ]
+    if hostname:
+        commands.append(f'cloudflared tunnel route dns agrivision {hostname}')
+    commands.extend(
+        [
+            'cloudflared tunnel run agrivision',
+            'cloudflared service install',
+        ]
+    )
+    config_lines = [
+        'tunnel: agrivision',
+        r'credentials-file: C:\Users\<user>\.cloudflared\<tunnel-id>.json',
+        '',
+        'ingress:',
+    ]
+    if hostname:
+        config_lines.extend(
+            [
+                f'  - hostname: {hostname}',
+                f'    service: {local_service}',
+            ]
+        )
+    else:
+        config_lines.extend(
+            [
+                '  - hostname: <your-hostname>',
+                f'    service: {local_service}',
+            ]
+        )
+    config_lines.append('  - service: http_status:404')
+    return {
+        'hostname': hostname,
+        'local_service': local_service,
+        'commands': commands,
+        'config': '\n'.join(config_lines),
+    }
 
 
 def _free_disk_gb() -> float | None:

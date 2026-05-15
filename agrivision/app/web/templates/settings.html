@@ -178,6 +178,20 @@
       {% endfor %}
     </div>
   </div>
+  <details class="cloudflare-setup">
+    <summary>Cloudflare setup helper</summary>
+    <dl class="server-status-list">
+      <dt>Hostname</dt>
+      <dd>{{ deployment.cloudflare_setup.hostname or 'Set Public URL first' }}</dd>
+      <dt>Tunnel target</dt>
+      <dd>{{ deployment.cloudflare_setup.local_service }}</dd>
+    </dl>
+    <p class="muted">Run these commands in PowerShell after installing cloudflared.</p>
+    <pre class="snippet-box">{% for command in deployment.cloudflare_setup.commands %}{{ command }}
+{% endfor %}</pre>
+    <p class="muted">Cloudflare tunnel config:</p>
+    <pre class="snippet-box">{{ deployment.cloudflare_setup.config }}</pre>
+  </details>
   {% else %}
   <p class="muted">Restart the dashboard container to load the latest deployment status code.</p>
   {% endif %}

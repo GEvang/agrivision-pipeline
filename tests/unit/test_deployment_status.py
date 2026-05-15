@@ -35,6 +35,8 @@ def test_deployment_status_reports_self_hosted_readiness(monkeypatch) -> None:
     assert status['active_odm_count'] == 0
     assert status['git_commit'] == 'abc1234'
     assert [item['state'] for item in status['cloudflare_checks']] == ['ok', 'ok', 'ok', 'manual']
+    assert status['cloudflare_setup']['hostname'] == 'agrivision.example.com'
+    assert 'cloudflared tunnel route dns agrivision agrivision.example.com' in status['cloudflare_setup']['commands']
 
 
 def test_deployment_status_warns_when_odm_capacity_is_full(monkeypatch) -> None:
@@ -59,6 +61,7 @@ def test_deployment_status_warns_when_odm_capacity_is_full(monkeypatch) -> None:
     assert status['disk_state'] == 'warn'
     assert status['active_odm_runs'] == ['run-active']
     assert [item['state'] for item in status['cloudflare_checks']] == ['warn', 'warn', 'warn', 'manual']
+    assert status['cloudflare_setup']['local_service'] == 'http://localhost:8008'
 
 
 def test_deployment_status_warns_when_public_url_is_not_reachable(monkeypatch) -> None:

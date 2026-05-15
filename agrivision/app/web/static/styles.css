@@ -186,6 +186,8 @@ button.action-chip { font-family:inherit; }
 .checklist-item { display:flex; align-items:flex-start; gap:0.65rem; border:1px solid #e2e8f0; border-radius:8px; background:#f8fafc; padding:0.75rem; }
 .checklist-item p { margin:0.15rem 0 0; }
 .checklist-manual .health-dot { background:#64748b; }
+.cloudflare-setup { border-top:1px solid #e2e8f0; padding-top:1rem; }
+.snippet-box { white-space:pre-wrap; overflow:auto; border:1px solid #cbd5e1; border-radius:8px; background:#0f172a; color:#e2e8f0; padding:0.8rem; font-size:0.86rem; line-height:1.45; }
 .compact-services { grid-template-columns:repeat(auto-fit, minmax(320px, 1fr)); }
 .embedded-service-card { border:1px solid #e2e8f0; border-radius:8px; padding:1rem; background:#f8fafc; }
 .embedded-service-card .log-box { max-height:220px; }
