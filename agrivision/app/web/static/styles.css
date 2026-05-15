@@ -181,6 +181,11 @@ button.action-chip { font-family:inherit; }
 .status-value-warn { color:#a16207; }
 .status-value-down { color:#991b1b; }
 .deployment-form { border-top:1px solid #e2e8f0; padding-top:1rem; display:grid; gap:0.75rem; }
+.cloudflare-checklist { margin-top:0; }
+.checklist-grid { display:grid; grid-template-columns:repeat(auto-fit, minmax(240px, 1fr)); gap:0.75rem; }
+.checklist-item { display:flex; align-items:flex-start; gap:0.65rem; border:1px solid #e2e8f0; border-radius:8px; background:#f8fafc; padding:0.75rem; }
+.checklist-item p { margin:0.15rem 0 0; }
+.checklist-manual .health-dot { background:#64748b; }
 .compact-services { grid-template-columns:repeat(auto-fit, minmax(320px, 1fr)); }
 .embedded-service-card { border:1px solid #e2e8f0; border-radius:8px; padding:1rem; background:#f8fafc; }
 .embedded-service-card .log-box { max-height:220px; }

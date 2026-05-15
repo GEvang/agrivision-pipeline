@@ -164,6 +164,20 @@
     </ul>
   </details>
   {% endif %}
+  <div class="settings-group cloudflare-checklist">
+    <h3>Cloudflare Tunnel checklist</h3>
+    <div class="checklist-grid">
+      {% for check in deployment.cloudflare_checks %}
+      <div class="checklist-item checklist-{{ check.state }}">
+        <span class="health-dot"></span>
+        <div>
+          <strong>{{ check.name }}</strong>
+          <p class="muted">{{ check.detail }}</p>
+        </div>
+      </div>
+      {% endfor %}
+    </div>
+  </div>
   {% else %}
   <p class="muted">Restart the dashboard container to load the latest deployment status code.</p>
   {% endif %}

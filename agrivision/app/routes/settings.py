@@ -2,6 +2,9 @@ from __future__ import annotations
 
 import shutil
 import subprocess
+from urllib.error import URLError
+from urllib.request import Request as UrlRequest
+from urllib.request import urlopen
 
 from fastapi import APIRouter, Form, Request
 from fastapi.responses import RedirectResponse
@@ -31,6 +34,8 @@ def settings_page(request: Request):
 def deployment_status() -> dict[str, object]:
     config = load_config()
     app_cfg = config.get('app', {}) if isinstance(config.get('app'), dict) else {}
+    deployment_mode = str(app_cfg.get('deployment_mode') or 'local')
+    public_url = str(app_cfg.get('public_url') or '').rstrip('/')
     min_free_gb = _as_int(app_cfg.get('min_free_disk_gb'), 50)
     max_active_odm = max(1, _as_int(app_cfg.get('max_active_odm_runs'), 1))
     active_odm_runs = [
@@ -44,10 +49,13 @@ def deployment_status() -> dict[str, object]:
     overall_state = 'ok'
     if docker['state'] == 'down' or disk_state == 'down' or len(active_odm_runs) >= max_active_odm:
         overall_state = 'warn'
+    cloudflare_checks = _cloudflare_checks(deployment_mode, public_url)
+    if any(item['state'] == 'down' for item in cloudflare_checks):
+        overall_state = 'warn'
     return {
         'state': overall_state,
-        'deployment_mode': str(app_cfg.get('deployment_mode') or 'local'),
-        'public_url': str(app_cfg.get('public_url') or ''),
+        'deployment_mode': deployment_mode,
+        'public_url': public_url,
         'free_disk_gb': free_gb,
         'min_free_disk_gb': min_free_gb,
         'disk_state': disk_state,
@@ -56,7 +64,62 @@ def deployment_status() -> dict[str, object]:
         'active_odm_runs': active_odm_runs,
         'max_active_odm_runs': max_active_odm,
         'git_commit': _git_commit(),
+        'cloudflare_checks': cloudflare_checks,
     }
+
+
+def _cloudflare_checks(deployment_mode: str, public_url: str) -> list[dict[str, str]]:
+    public_mode = deployment_mode in {'self_hosted', 'cloud'}
+    checks = [
+        {
+            'name': 'Public deployment mode',
+            'state': 'ok' if public_mode else 'warn',
+            'detail': 'Self-hosted or cloud mode selected' if public_mode else 'Set mode to self-hosted or cloud before exposing the dashboard',
+        },
+        {
+            'name': 'Public URL',
+            'state': 'ok' if public_url else 'warn',
+            'detail': public_url or 'Add the Cloudflare hostname for this dashboard',
+        },
+    ]
+    if public_mode and public_url:
+        checks.append(_public_health_check(public_url))
+    elif not public_mode:
+        checks.append(
+            {
+                'name': 'Tunnel reachability',
+                'state': 'warn',
+                'detail': 'Set mode to self-hosted or cloud before checking the tunnel',
+            }
+        )
+    else:
+        checks.append(
+            {
+                'name': 'Tunnel reachability',
+                'state': 'warn',
+                'detail': 'Waiting for a public URL',
+            }
+        )
+    checks.append(
+        {
+            'name': 'Cloudflare Access',
+            'state': 'manual',
+            'detail': 'Protect the tunnel with Cloudflare Access outside AgriVision',
+        }
+    )
+    return checks
+
+
+def _public_health_check(public_url: str) -> dict[str, str]:
+    health_url = public_url.rstrip('/') + '/health'
+    try:
+        request = UrlRequest(health_url, method='GET')
+        with urlopen(request, timeout=2.0) as response:
+            if 200 <= response.status < 400:
+                return {'name': 'Tunnel reachability', 'state': 'ok', 'detail': f'HTTP {response.status} at /health'}
+            return {'name': 'Tunnel reachability', 'state': 'warn', 'detail': f'HTTP {response.status} at /health'}
+    except (OSError, URLError):
+        return {'name': 'Tunnel reachability', 'state': 'down', 'detail': f'Not reachable: {health_url}'}
 
 
 def _free_disk_gb() -> float | None:
