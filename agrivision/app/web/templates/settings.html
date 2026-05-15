@@ -124,7 +124,7 @@
 </section>
 
 {% set deployment = deployment_status|default(none) %}
-<section class="panel settings-card deployment-card service-{{ deployment.state if deployment else 'warn' }}">
+<section class="panel settings-card deployment-card service-{{ deployment.state if deployment else 'warn' }}" id="deployment">
   <div class="settings-section-head">
     <h2>Deployment</h2>
     <p class="muted">Host readiness for local and self-hosted use.</p>
@@ -167,5 +167,22 @@
   {% else %}
   <p class="muted">Restart the dashboard container to load the latest deployment status code.</p>
   {% endif %}
+  <form class="deployment-form" method="post" action="/ui/settings/deployment">
+    <div class="inline-fields">
+      <label>Mode
+        <select name="deployment_mode">
+          <option value="local" {% if non_secret.deployment_mode == 'local' %}selected{% endif %}>Local</option>
+          <option value="self_hosted" {% if non_secret.deployment_mode == 'self_hosted' %}selected{% endif %}>Self hosted</option>
+          <option value="cloud" {% if non_secret.deployment_mode == 'cloud' %}selected{% endif %}>Cloud</option>
+        </select>
+      </label>
+      <label>Public URL<input type="url" name="public_url" value="{{ non_secret.public_url }}" placeholder="https://agrivision.example.com" /></label>
+    </div>
+    <div class="inline-fields">
+      <label>Minimum free disk (GB)<input type="number" min="0" max="10000" name="min_free_disk_gb" value="{{ non_secret.min_free_disk_gb }}" /></label>
+      <label>Max active ODM runs<input type="number" min="1" max="10" name="max_active_odm_runs" value="{{ non_secret.max_active_odm_runs }}" /></label>
+    </div>
+    <button type="submit">Save deployment settings</button>
+  </form>
 </section>
 {% endblock %}

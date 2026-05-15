@@ -143,6 +143,24 @@ def update_settings_ui(
     return RedirectResponse(url='/settings', status_code=303)
 
 
+@router.post('/ui/settings/deployment')
+def update_deployment_settings_ui(
+    deployment_mode: str = Form('local'),
+    public_url: str = Form(''),
+    min_free_disk_gb: int | None = Form(None),
+    max_active_odm_runs: int | None = Form(None),
+) -> RedirectResponse:
+    update_settings(
+        SettingsUpdateRequest(
+            deployment_mode=deployment_mode,
+            public_url=public_url or None,
+            min_free_disk_gb=min_free_disk_gb,
+            max_active_odm_runs=max_active_odm_runs,
+        )
+    )
+    return RedirectResponse(url='/settings#deployment', status_code=303)
+
+
 @router.post('/ui/settings/credentials')
 def update_credentials_ui(
     shared_username: str = Form(''),
