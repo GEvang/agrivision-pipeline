@@ -1,13 +1,18 @@
 from __future__ import annotations
 
+import shutil
+import subprocess
+
 from fastapi import APIRouter, Form, Request
 from fastapi.responses import RedirectResponse
 
 from agrivision.app import dependencies as deps
+from agrivision.app.health import docker_health
 from agrivision.app.schemas.settings import (
     CredentialsUpdateRequest,
     SettingsUpdateRequest,
 )
+from agrivision.config import get_project_root, load_config
 from agrivision.services.service_control import service_statuses
 
 router = APIRouter()
@@ -17,9 +22,83 @@ router = APIRouter()
 def settings_page(request: Request):
     view = deps.settings_service.get_settings_view()
     view['services'] = service_statuses(include_logs=True)
+    view['deployment_status'] = deployment_status()
     if 'text/html' in request.headers.get('accept', ''):
         return deps.templates.TemplateResponse(request, 'settings.html', view)
     return view
+
+
+def deployment_status() -> dict[str, object]:
+    config = load_config()
+    app_cfg = config.get('app', {}) if isinstance(config.get('app'), dict) else {}
+    min_free_gb = _as_int(app_cfg.get('min_free_disk_gb'), 50)
+    max_active_odm = max(1, _as_int(app_cfg.get('max_active_odm_runs'), 1))
+    active_odm_runs = [
+        run.run_id
+        for run in deps.run_service.list_runs()
+        if run.selected_steps.run_odm and run.status in {'queued', 'running'}
+    ]
+    free_gb = _free_disk_gb()
+    docker = docker_health()
+    disk_state = _disk_state(free_gb, min_free_gb)
+    overall_state = 'ok'
+    if docker['state'] == 'down' or disk_state == 'down' or len(active_odm_runs) >= max_active_odm:
+        overall_state = 'warn'
+    return {
+        'state': overall_state,
+        'deployment_mode': str(app_cfg.get('deployment_mode') or 'local'),
+        'public_url': str(app_cfg.get('public_url') or ''),
+        'free_disk_gb': free_gb,
+        'min_free_disk_gb': min_free_gb,
+        'disk_state': disk_state,
+        'docker': docker,
+        'active_odm_count': len(active_odm_runs),
+        'active_odm_runs': active_odm_runs,
+        'max_active_odm_runs': max_active_odm,
+        'git_commit': _git_commit(),
+    }
+
+
+def _free_disk_gb() -> float | None:
+    try:
+        usage = shutil.disk_usage(get_project_root())
+    except OSError:
+        return None
+    return round(usage.free / (1024**3), 1)
+
+
+def _disk_state(free_gb: float | None, min_free_gb: int) -> str:
+    if free_gb is None:
+        return 'warn'
+    if free_gb < min_free_gb:
+        return 'down'
+    warn_threshold = max(min_free_gb * 1.5, min_free_gb + 20)
+    if free_gb < warn_threshold:
+        return 'warn'
+    return 'ok'
+
+
+def _git_commit() -> str:
+    try:
+        result = subprocess.run(
+            ['git', 'rev-parse', '--short', 'HEAD'],
+            cwd=get_project_root(),
+            capture_output=True,
+            text=True,
+            timeout=2,
+            check=False,
+        )
+    except (FileNotFoundError, subprocess.TimeoutExpired):
+        return 'unknown'
+    commit = result.stdout.strip()
+    return commit if result.returncode == 0 and commit else 'unknown'
+
+
+def _as_int(value: object, fallback: int) -> int:
+    try:
+        return max(0, int(value))
+    except (TypeError, ValueError):
+        return fallback
 
 
 @router.post('/settings')

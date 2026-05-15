@@ -67,5 +67,11 @@ def test_dashboard_pages_render(tmp_path: Path, monkeypatch) -> None:
     assert client.get('/runs/run-1', headers={'accept': 'text/html'}).status_code == 200
     monkeypatch.setattr(service_routes, 'service_statuses', lambda include_logs=False: [])
     monkeypatch.setattr(settings_routes, 'service_statuses', lambda include_logs=False: [])
+    monkeypatch.setattr(settings_routes, 'docker_health', lambda: {'name': 'Docker', 'state': 'ok', 'detail': '27.0.0', 'target': 'docker'})
+    monkeypatch.setattr(settings_routes, '_free_disk_gb', lambda: 120.0)
+    monkeypatch.setattr(settings_routes, '_git_commit', lambda: 'abc1234')
     assert client.get('/services', headers={'accept': 'text/html'}, follow_redirects=False).status_code == 303
-    assert client.get('/settings', headers={'accept': 'text/html'}).status_code == 200
+    settings_page = client.get('/settings', headers={'accept': 'text/html'})
+    assert settings_page.status_code == 200
+    assert 'Deployment' in settings_page.text
+    assert 'Host readiness' in settings_page.text

@@ -170,6 +170,16 @@ button.action-chip { font-family:inherit; }
 .credential-list { display:grid; grid-template-columns:auto minmax(0, 1fr); gap:0.45rem 0.75rem; padding:0.75rem; border:1px solid #e2e8f0; border-radius:8px; background:#f8fafc; }
 .credential-list span { color:#64748b; }
 .credential-list strong { overflow-wrap:anywhere; text-align:right; }
+.deployment-summary { display:flex; align-items:center; gap:0.75rem; padding:0.75rem; border:1px solid #e2e8f0; border-radius:8px; background:#f8fafc; }
+.deployment-summary p { margin:0.15rem 0 0; overflow-wrap:anywhere; }
+.server-status-list { display:grid; grid-template-columns:auto minmax(0, 1fr); gap:0.55rem 0.75rem; margin:0; }
+.server-status-list dt { color:#64748b; }
+.server-status-list dd { margin:0; text-align:right; overflow-wrap:anywhere; }
+.status-value { font-weight:700; }
+.status-value span { display:block; font-weight:400; }
+.status-value-ok { color:#166534; }
+.status-value-warn { color:#a16207; }
+.status-value-down { color:#991b1b; }
 .compact-services { grid-template-columns:repeat(auto-fit, minmax(320px, 1fr)); }
 .embedded-service-card { border:1px solid #e2e8f0; border-radius:8px; padding:1rem; background:#f8fafc; }
 .embedded-service-card .log-box { max-height:220px; }

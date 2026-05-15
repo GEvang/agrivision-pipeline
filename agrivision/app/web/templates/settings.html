@@ -122,4 +122,50 @@
     {% endfor %}
   </div>
 </section>
+
+{% set deployment = deployment_status|default(none) %}
+<section class="panel settings-card deployment-card service-{{ deployment.state if deployment else 'warn' }}">
+  <div class="settings-section-head">
+    <h2>Deployment</h2>
+    <p class="muted">Host readiness for local and self-hosted use.</p>
+  </div>
+  {% if deployment %}
+  <div class="deployment-summary">
+    <span class="health-dot"></span>
+    <div>
+      <strong>{{ deployment.deployment_mode|replace('_', ' ')|title }}</strong>
+      <p class="muted">{{ deployment.public_url or 'Local dashboard only' }}</p>
+    </div>
+  </div>
+  <dl class="server-status-list">
+    <dt>Free disk</dt>
+    <dd class="status-value status-value-{{ deployment.disk_state }}">
+      {{ deployment.free_disk_gb if deployment.free_disk_gb is not none else 'Unknown' }} GB
+      <span class="muted">min {{ deployment.min_free_disk_gb }} GB</span>
+    </dd>
+    <dt>Docker</dt>
+    <dd class="status-value status-value-{{ deployment.docker.state }}">
+      {{ deployment.docker.detail }}
+    </dd>
+    <dt>Active ODM</dt>
+    <dd>
+      {{ deployment.active_odm_count }} / {{ deployment.max_active_odm_runs }}
+    </dd>
+    <dt>Version</dt>
+    <dd>{{ deployment.git_commit }}</dd>
+  </dl>
+  {% if deployment.active_odm_runs %}
+  <details>
+    <summary>Active orthophoto runs</summary>
+    <ul>
+      {% for run_id in deployment.active_odm_runs %}
+      <li><a href="/runs/{{ run_id }}">{{ run_id }}</a></li>
+      {% endfor %}
+    </ul>
+  </details>
+  {% endif %}
+  {% else %}
+  <p class="muted">Restart the dashboard container to load the latest deployment status code.</p>
+  {% endif %}
+</section>
 {% endblock %}
