@@ -7,7 +7,8 @@
   <link rel="stylesheet" href="/static/styles.css" />
 </head>
 <body>
-  <header class="site-header">
+  <div class="app-shell">
+  <aside class="site-sidebar">
     <div class="brand-block">
       <a class="brand-lockup" href="/">
         <svg class="nav-icon brand-leaf" viewBox="0 0 24 24" aria-hidden="true">
@@ -20,28 +21,36 @@
         </span>
       </a>
     </div>
-    <nav>
-      <a href="/">
-        <svg class="nav-icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M3 11.5 12 4l9 7.5"></path><path d="M5 10.5V20h5v-5h4v5h5v-9.5"></path></svg>
-        Dashboard
+    <nav class="nav-board" aria-label="Primary navigation">
+      <a class="nav-link" href="/" data-nav-match="exact">
+        <span class="nav-icon-wrap"><svg class="nav-icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M3 11.5 12 4l9 7.5"></path><path d="M5 10.5V20h5v-5h4v5h5v-9.5"></path></svg></span>
+        <span>Dashboard</span>
       </a>
-      <a href="/runs/new">
-        <svg class="nav-icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M8 4h8l3 3v13H5V4Z"></path><path d="M15 4v4h4"></path><path d="M9 13h6"></path><path d="M12 10v6"></path></svg>
-        Start Processing
+      <a class="nav-link" href="/runs/new">
+        <span class="nav-icon-wrap"><svg class="nav-icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M8 4h8l3 3v13H5V4Z"></path><path d="M15 4v4h4"></path><path d="M9 13h6"></path><path d="M12 10v6"></path></svg></span>
+        <span>Start Processing</span>
       </a>
-      <a href="/runs">
-        <svg class="nav-icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M6 3h9l3 3v15H6Z"></path><path d="M15 3v5h5"></path><path d="M9 13h6"></path><path d="M9 17h6"></path></svg>
-        Reports
+      <a class="nav-link" href="/runs">
+        <span class="nav-icon-wrap"><svg class="nav-icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M6 3h9l3 3v15H6Z"></path><path d="M15 3v5h5"></path><path d="M9 13h6"></path><path d="M9 17h6"></path></svg></span>
+        <span>Reports</span>
       </a>
-      <a href="/settings">
-        <svg class="nav-icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M12 8a4 4 0 1 0 0 8 4 4 0 0 0 0-8Z"></path><path d="M4 12h2"></path><path d="M18 12h2"></path><path d="M12 4v2"></path><path d="M12 18v2"></path><path d="m6.6 6.6 1.4 1.4"></path><path d="m16 16 1.4 1.4"></path><path d="m17.4 6.6-1.4 1.4"></path><path d="m8 16-1.4 1.4"></path></svg>
-        Settings
+      <a class="nav-link" href="/settings">
+        <span class="nav-icon-wrap"><svg class="nav-icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M12 8a4 4 0 1 0 0 8 4 4 0 0 0 0-8Z"></path><path d="M4 12h2"></path><path d="M18 12h2"></path><path d="M12 4v2"></path><path d="M12 18v2"></path><path d="m6.6 6.6 1.4 1.4"></path><path d="m16 16 1.4 1.4"></path><path d="m17.4 6.6-1.4 1.4"></path><path d="m8 16-1.4 1.4"></path></svg></span>
+        <span>Settings</span>
       </a>
     </nav>
-  </header>
-  <main class="container {% block container_class %}{% endblock %}">
-    {% block content %}{% endblock %}
-  </main>
+    <div class="sidebar-footer">
+      <span class="eyebrow">Workspace</span>
+      <strong>AgriVision Pipeline</strong>
+      <small>Local analysis console</small>
+    </div>
+  </aside>
+  <div class="app-workspace">
+    <main class="container {% block container_class %}{% endblock %}">
+      {% block content %}{% endblock %}
+    </main>
+  </div>
+  </div>
   <script>
     function resizeAutoHeightFrame(frame) {
       try {
@@ -64,6 +73,17 @@
         setTimeout(() => resizeAutoHeightFrame(frame), 250);
         setTimeout(() => resizeAutoHeightFrame(frame), 1000);
       });
+    });
+
+    const currentPath = window.location.pathname;
+    document.querySelectorAll('.nav-link').forEach((link) => {
+      const href = link.getAttribute('href');
+      const exact = link.dataset.navMatch === 'exact';
+      const isActive = exact ? currentPath === href : currentPath === href || currentPath.startsWith(`${href}/`);
+      if (isActive) {
+        link.classList.add('active');
+        link.setAttribute('aria-current', 'page');
+      }
     });
   </script>
 </body>
