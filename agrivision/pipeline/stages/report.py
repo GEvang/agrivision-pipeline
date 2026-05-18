@@ -3,11 +3,12 @@
 
 from __future__ import annotations
 
-from datetime import datetime
+from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any, Dict, Optional, cast
 
 from agrivision.pipeline.report.assets import (
+    ensure_report_preview,
     get_index_title,
     get_report_settings,
     load_grid_cells,
@@ -40,6 +41,10 @@ def run_report(
     report_path = cast(Path, resolved["report_path"])
     ndvi_meta_path = cast(Path, resolved["ndvi_meta_path"])
     grid_meta_path = cast(Path, resolved["grid_meta_path"])
+    orthophoto_rgb = cast(Path, resolved["orthophoto_rgb"])
+    orthophoto_mapir = cast(Path, resolved["orthophoto_mapir"])
+    orthophoto_rgb_preview = cast(Path, resolved["orthophoto_rgb_preview"])
+    orthophoto_mapir_preview = cast(Path, resolved["orthophoto_mapir_preview"])
     ndvi_tif = cast(Path, resolved["ndvi_tif"])
     ndvi_color_png = cast(Path, resolved["ndvi_color_png"])
     grid_overlay_png = cast(Path, resolved["grid_overlay_png"])
@@ -50,6 +55,8 @@ def run_report(
 
     ndvi_meta = load_json(ndvi_meta_path)
     grid_meta = load_json(grid_meta_path)
+    visible_preview = ensure_report_preview(orthophoto_rgb, orthophoto_rgb_preview)
+    mapir_preview = ensure_report_preview(orthophoto_mapir, orthophoto_mapir_preview)
 
     index_title = get_index_title(ndvi_meta, grid_meta)
     weather_html = render_weather_section(weather_summary, output_dir)
@@ -61,7 +68,7 @@ def run_report(
     irrigation_html = render_irrigation_section(irrigation_summary, output_dir)
     pdm_html = render_pdm_section(pdm_summary, output_dir)
 
-    generated_at = datetime.utcnow().strftime("%Y-%m-%d %H:%M UTC")
+    generated_at = datetime.now(UTC).strftime("%Y-%m-%d %H:%M UTC")
 
     artifacts_list_html = "\n".join(
         [
@@ -81,7 +88,9 @@ def run_report(
         weather_html=weather_html,
         methodology_html=methodology_html,
         artifacts_list_html=artifacts_list_html,
+        visible_image_html=render_image_if_exists("Visible Orthomosaic", visible_preview or orthophoto_rgb_preview, output_dir),
         ndvi_color_html=render_image_if_exists(index_title + " Map", ndvi_color_png, output_dir),
+        thermal_image_html=render_image_if_exists("Thermal Placeholder (MAPIR)", mapir_preview or orthophoto_mapir_preview, output_dir),
         grid_meta_html=grid_meta_html,
         grid_overlay_html=render_image_if_exists("Grid Overlay", grid_overlay_png, output_dir),
         grid_table_html=grid_table_html,
