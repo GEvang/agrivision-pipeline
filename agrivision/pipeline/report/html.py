@@ -91,26 +91,30 @@ def build_report_html(
     pdm_html: str,
 ) -> str:
     leaf_icon = report_icon("leaf", "green", "AgriVision")
-    camera_icon = report_icon("camera", "blue")
+    camera_icon = report_icon("camera", "navy")
     vegetation_icon = report_icon("leaf", "green", "Vegetation index")
     thermal_icon = report_icon("thermometer", "red")
-    risk_icon = report_icon("crosshair", "blue")
+    risk_icon = report_icon("crosshair", "navy")
     alert_icon = report_icon("alert", "white")
-    layers_icon = report_icon("layers", "blue")
+    layers_icon = report_icon("layers", "navy")
     spores_icon = report_icon("spores", "white", "Powdery mildew")
     drop_icon = report_icon("drop", "white", "Downy mildew")
     rot_icon = report_icon("spores", "white", "Botrytis bunch rot")
     risk_target_icon = report_icon("crosshair", "white", "Selected risk profile")
     selected_icon = report_icon("check", "white", "Selected risk profile")
     condition_leaf_icon = report_icon("leaf", "white", "Vegetation index")
-    key_conditions_icon = report_icon("cloud", "blue", "Key conditions")
+    key_conditions_icon = report_icon("cloud", "navy", "Key conditions")
     sprout_icon = report_icon("sprout", "green")
-    calendar_icon = report_icon("calendar", "blue")
+    calendar_icon = report_icon("calendar", "navy")
+    location_icon = report_icon("location", "navy")
     vigor_icon = report_icon("leaf", "green", "Vigor status")
     condition_thermal_icon = report_icon("thermometer", "red", "Canopy temperature")
-    weather_icon = report_icon("cloud", "blue", "Weather window")
-    review_icon = report_icon("calendar", "cyan", "Next review")
-    notes_icon = report_icon("notes", "blue")
+    weather_icon = report_icon("cloud", "green", "Weather window")
+    review_icon = report_icon("calendar", "blue", "Next review")
+    scout_icon = report_icon("crosshair", "red", "Scout")
+    search_icon = report_icon("crosshair", "red", "Inspect")
+    rain_icon = report_icon("cloud", "red", "Monitor")
+    treatment_icon = report_icon("leaf", "red", "Intervention")
     return f"""<!DOCTYPE html>
 <html lang="en">
 <head>
@@ -118,13 +122,14 @@ def build_report_html(
   <title>AgriVision Field Analysis and Risk Mapping</title>
   <style>
     :root {{
-      --navy: #071a4d;
+      --navy: #07143d;
       --blue: #2563eb;
       --green: #16a34a;
-      --red: #ef3124;
-      --yellow: #f7c600;
-      --line: #d8dee9;
-      --muted: #5f6b85;
+      --red: #f21f18;
+      --yellow: #f6c700;
+      --line: #dce4ef;
+      --muted: #52617b;
+      --panel: #ffffff;
       --soft: #f8fafc;
     }}
     * {{ box-sizing: border-box; }}
@@ -132,124 +137,147 @@ def build_report_html(
       font-family: "Inter", "Segoe UI", Arial, sans-serif;
       margin: 0;
       color: var(--navy);
-      background: #f4f7fb;
-      line-height: 1.45;
+      background: #eef3f8;
+      line-height: 1.4;
+    }}
+    .report-appbar {{
+      height: 64px;
+      padding: 0 32px;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      background: linear-gradient(135deg, #061126 0%, #07143d 62%, #061b12 100%);
+      color: white;
+      border-bottom: 1px solid rgba(255,255,255,0.1);
+    }}
+    .report-brand, .report-nav {{
+      display: flex;
+      align-items: center;
+      gap: 10px;
+    }}
+    .report-brand strong {{
+      display: block;
+      font-size: 18px;
+      line-height: 1;
+    }}
+    .report-brand small {{
+      display: block;
+      color: #d7def0;
+      font-size: 11px;
+      margin-top: 3px;
+    }}
+    .report-nav {{
+      gap: 22px;
+      font-size: 13px;
+      font-weight: 800;
+    }}
+    .report-nav span {{
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      padding: 8px 0;
+      color: #f8fafc;
+    }}
+    .report-nav .svg-icon {{
+      width: 15px;
+      height: 15px;
+      flex: 0 0 auto;
+    }}
+    .report-nav .active {{
+      border: 1px solid #2d5dca;
+      border-radius: 8px;
+      padding: 8px 12px;
     }}
     .report-page {{
-      max-width: 1180px;
+      width: 100%;
+      max-width: 1920px;
       margin: 0 auto;
       background: white;
       min-height: 100vh;
-      padding: 30px 34px 28px;
-      box-shadow: 0 12px 42px rgba(15, 23, 42, 0.12);
+      padding: 24px 36px 28px;
+      box-shadow: 0 12px 42px rgba(15, 23, 42, 0.1);
     }}
     body.report-embedded {{
       background: white;
     }}
     body.report-embedded .report-page {{
-      width: 100%;
       max-width: none;
       min-height: auto;
-      padding: 18px 22px 24px;
+      padding: 22px 32px 28px;
       box-shadow: none;
-    }}
-    body.report-embedded .overview {{
-      grid-template-columns: minmax(260px, 0.55fr) minmax(480px, 1.1fr) minmax(460px, 1fr);
-    }}
-    body.report-embedded .image-block img {{
-      max-height: none;
-    }}
-    body.report-embedded .evidence-stack .image-block img {{
-      max-height: 255px;
-    }}
-    body.report-embedded .panel {{
-      padding: 13px 15px;
-    }}
-    body.report-embedded .lower-grid {{
-      grid-template-columns: repeat(3, minmax(0, 1fr));
     }}
     .report-header {{
       display: grid;
-      grid-template-columns: minmax(0, 1fr) auto;
+      grid-template-columns: minmax(420px, 1fr) auto;
       gap: 24px;
-      border-bottom: 2px solid #1d2f6f;
-      padding-bottom: 14px;
-      margin-bottom: 16px;
+      align-items: start;
+      padding-bottom: 16px;
+      border-bottom: 1px solid #e2e8f0;
     }}
     h1 {{
       font-size: 38px;
       line-height: 1.05;
-      margin: 0 0 8px;
+      margin: 0 0 9px;
+      color: #07143d;
       letter-spacing: 0;
     }}
     .subtitle {{
       color: var(--blue);
       font-size: 18px;
-      font-weight: 800;
+      font-weight: 900;
       font-style: italic;
+    }}
+    .header-side {{
+      display: grid;
+      justify-items: end;
+      gap: 10px;
     }}
     .brand {{
       display: flex;
       justify-content: flex-end;
       align-items: center;
       gap: 8px;
-      font-size: 24px;
+      font-size: 22px;
       font-weight: 900;
       white-space: nowrap;
     }}
     .brand span:last-child {{ color: var(--green); }}
-    .meta-strip {{
-      display: flex;
-      gap: 10px;
-      justify-content: flex-end;
-      flex-wrap: wrap;
-      margin-top: 14px;
-    }}
-    .pill {{
+    .meta-row {{
+      display: grid;
+      grid-template-columns: repeat(3, auto);
       border: 1px solid var(--line);
       border-radius: 10px;
-      padding: 7px 11px;
       background: white;
-      font-weight: 700;
-      color: #1d2f6f;
+      overflow: hidden;
     }}
-    .insight-strip {{
+    .meta-row.compact {{
+      grid-template-columns: repeat(2, auto);
+    }}
+    .pill {{
+      display: inline-flex;
+      align-items: center;
+      gap: 9px;
+      min-height: 40px;
+      padding: 0 16px;
+      color: #16234f;
+      font-weight: 800;
+      border-left: 1px solid var(--line);
+      white-space: nowrap;
+    }}
+    .pill .svg-icon {{
+      width: 18px;
+      height: 18px;
+      flex: 0 0 auto;
+    }}
+    .pill:first-child {{ border-left: 0; }}
+    .report-grid {{
       display: grid;
-      grid-template-columns: repeat(4, minmax(0, 1fr));
-      gap: 12px;
-      margin-bottom: 16px;
-    }}
-    .insight {{
-      border: 1px solid var(--line);
-      border-radius: 12px;
-      background: #f8fafc;
-      padding: 12px 14px;
-    }}
-    .insight span {{
-      display: block;
-      color: var(--muted);
-      font-size: 12px;
-      font-weight: 700;
-      margin-bottom: 4px;
-      text-transform: uppercase;
-    }}
-    .insight strong {{
-      display: block;
-      color: var(--navy);
-      font-size: 15px;
-      line-height: 1.25;
-    }}
-    .overview {{
-      display: grid;
-      grid-template-columns: minmax(230px, 0.52fr) minmax(420px, 1fr) minmax(360px, 0.95fr);
+      grid-template-columns: minmax(270px, 0.58fr) minmax(560px, 1.35fr) minmax(420px, 0.95fr);
       gap: 18px;
-      align-items: start;
+      margin-top: 14px;
+      align-items: stretch;
     }}
-    .side-stack {{ display: grid; gap: 14px; }}
-    .evidence-stack {{
-      align-content: start;
-    }}
-    .decision-stack {{
+    .side-stack, .right-stack {{
       display: grid;
       gap: 14px;
       align-content: start;
@@ -257,8 +285,8 @@ def build_report_html(
     .panel {{
       border: 1px solid var(--line);
       border-radius: 10px;
-      background: white;
-      padding: 14px 16px;
+      background: var(--panel);
+      padding: 15px 16px;
       overflow: hidden;
     }}
     .panel h2, .panel h3 {{
@@ -266,22 +294,24 @@ def build_report_html(
       align-items: center;
       gap: 10px;
       margin: 0 0 12px;
-      font-size: 22px;
       color: var(--navy);
+      font-size: 18px;
+      line-height: 1.2;
     }}
-    .side-stack .panel h2 {{ font-size: 18px; }}
+    .risk-panel h2 {{
+      font-size: 21px;
+    }}
     .icon {{
       display: inline-grid;
       place-items: center;
-      width: 30px;
-      height: 30px;
+      width: 28px;
+      height: 28px;
       border-radius: 999px;
       padding: 5px;
-      background: #edf4ff;
-      color: var(--blue);
+      color: var(--navy);
     }}
-    .icon.green {{ background: #e8f8ee; color: var(--green); }}
-    .icon.red {{ background: #fff1f0; color: var(--red); }}
+    .icon.green {{ color: var(--green); background: #e8f8ee; }}
+    .icon.red {{ color: var(--red); background: #fff1f0; }}
     .svg-icon {{
       width: 100%;
       height: 100%;
@@ -296,9 +326,7 @@ def build_report_html(
     .svg-icon.green {{ color: var(--green); }}
     .svg-icon.red {{ color: var(--red); }}
     .svg-icon.white {{ color: white; }}
-    .svg-icon.cyan {{ color: #0ea5e9; }}
-    .svg-icon.purple {{ color: #6b46c1; }}
-    .svg-icon.brown {{ color: #92400e; }}
+    .svg-icon.navy {{ color: var(--navy); }}
     .image-block h3 {{ display: none; }}
     .image-block img {{
       width: 100%;
@@ -306,9 +334,19 @@ def build_report_html(
       display: block;
       border: 0 !important;
       object-fit: contain;
-      max-height: 720px;
     }}
-    .evidence-stack .image-block img {{ max-height: 260px; }}
+    .side-stack .image-block img {{
+      max-height: 205px;
+    }}
+    .risk-panel .image-block img {{
+      max-height: 620px;
+    }}
+    body.report-embedded .side-stack .image-block img {{
+      max-height: 205px;
+    }}
+    body.report-embedded .risk-panel .image-block img {{
+      max-height: 620px;
+    }}
     .image-note {{
       margin-top: 8px;
       font-size: 12px;
@@ -316,27 +354,28 @@ def build_report_html(
       font-style: italic;
     }}
     .risk-copy {{
-      color: #15224d;
-      max-width: 760px;
+      color: #13204a;
       margin: -4px 0 12px;
-      font-style: italic;
+      font-size: 14px;
+      max-width: 760px;
     }}
     .legend {{
       display: flex;
       justify-content: center;
-      gap: 22px;
+      gap: 34px;
       flex-wrap: wrap;
-      margin: 14px 0 18px;
-      font-weight: 700;
+      margin-top: 14px;
+      font-weight: 800;
+      font-size: 14px;
     }}
     .legend span {{ display: inline-flex; align-items: center; gap: 8px; }}
-    .dot {{ width: 18px; height: 18px; border-radius: 999px; display: inline-block; }}
+    .dot {{ width: 16px; height: 16px; border-radius: 999px; display: inline-block; }}
     .dot.blue {{ background: #2563eb; }}
-    .dot.green {{ background: #32a852; }}
+    .dot.green {{ background: #16a34a; }}
     .dot.yellow {{ background: var(--yellow); }}
     .dot.red {{ background: var(--red); }}
     .bar {{
-      height: 14px;
+      height: 12px;
       border-radius: 999px;
       background: linear-gradient(90deg, #ef3124, #f7c600, #19a64a);
       margin-top: 8px;
@@ -351,14 +390,12 @@ def build_report_html(
       font-size: 12px;
       margin-top: 5px;
     }}
-    .alert {{
-      border: 1px solid #ffaaa4;
-      background: #fff8f7;
-      border-radius: 10px;
-      padding: 14px 16px;
-      display: grid;
-      grid-template-columns: 46px 1fr;
-      gap: 14px;
+    .alert-panel {{ margin-top: 14px; }}
+    .alert-title {{
+      display: flex;
+      align-items: center;
+      gap: 13px;
+      margin-bottom: 12px;
     }}
     .alert-icon {{
       width: 46px;
@@ -369,31 +406,61 @@ def build_report_html(
       background: var(--red);
       color: white;
       padding: 10px;
+      flex: 0 0 auto;
     }}
-    .alert h3 {{ margin: 2px 0 8px; font-size: 21px; }}
-    .alert ul {{ padding-left: 1.2rem; }}
-    .lower-grid {{
+    .alert-title h2 {{
+      margin: 0;
+      font-size: 20px;
+    }}
+    .alert-list {{
+      border: 1px solid #ffaaa4;
+      background: #fff8f7;
+      border-radius: 12px;
+      padding: 13px 15px;
       display: grid;
-      grid-template-columns: repeat(3, minmax(0, 1fr));
+      grid-template-columns: repeat(2, minmax(0, 1fr));
+      gap: 11px 14px;
+    }}
+    .alert-item {{
+      display: grid;
+      grid-template-columns: 42px minmax(0, 1fr);
+      align-items: center;
       gap: 14px;
-      margin-top: 0;
+      color: #13204a;
+      font-size: 13px;
     }}
-    .decision-stack .panel h3 {{
-      font-size: 15px;
-      line-height: 1.25;
+    .alert-symbol {{
+      width: 42px;
+      height: 42px;
+      border-radius: 999px;
+      display: grid;
+      place-items: center;
+      border: 1px solid #ffaaa4;
+      background: white;
+      color: var(--red);
+      padding: 9px;
     }}
-    .decision-stack .panel {{
-      padding: 12px;
+    .info-grid {{
+      display: grid;
+      grid-template-columns: 1fr;
+      gap: 10px;
     }}
-    .target-list {{ display: grid; gap: 8px; margin-top: 10px; }}
+    .info-grid .panel {{
+      padding: 13px;
+    }}
+    .info-grid h3 {{
+      font-size: 16px;
+    }}
+    .target-list {{ display: grid; gap: 8px; }}
     .target {{
       display: grid;
-      grid-template-columns: 30px 1fr auto;
+      grid-template-columns: 32px 1fr auto;
       align-items: center;
-      gap: 10px;
-      padding: 7px 6px;
+      gap: 8px;
+      padding: 7px 8px;
       border-bottom: 1px solid #e7eaf1;
       font-size: 13px;
+      font-weight: 800;
     }}
     .target.selected {{
       border: 1px solid #ffaaa4;
@@ -412,35 +479,73 @@ def build_report_html(
     }}
     .conditions {{
       display: grid;
-      grid-template-columns: auto 1fr auto;
-      gap: 9px 10px;
+      grid-template-columns: 24px minmax(0, 1fr) auto;
+      gap: 9px 9px;
       align-items: center;
       font-size: 12px;
     }}
     .condition-icon {{
       display: inline-grid;
       place-items: center;
-      width: 24px;
-      height: 24px;
-      border-radius: 999px;
-      background: #eef2ff;
-      color: #1d4ed8;
-      padding: 5px;
+      width: 22px;
+      height: 22px;
+      color: var(--navy);
     }}
-    .notes ul, .alert ul {{ margin: 0; }}
-    .best-practice {{
-      border: 1px solid #35a853;
-      background: #f1fbf4;
-      border-radius: 12px;
-      padding: 12px 14px;
+    .condition-icon .svg-icon {{
+      width: 20px;
+      height: 20px;
+    }}
+    .bottom-grid {{
+      display: grid;
+      grid-template-columns: minmax(270px, 0.8fr) minmax(520px, 1.7fr) minmax(280px, 0.8fr);
+      gap: 8px;
       margin-top: 16px;
     }}
-    .best-practice .svg-icon {{
-      width: 18px;
-      height: 18px;
-      display: inline-block;
-      vertical-align: -3px;
-      margin-right: 6px;
+    .best-practice {{
+      border-color: #b7e7c5;
+      background: #f2fbf5;
+    }}
+    .best-practice p {{
+      margin: 0;
+      color: #13204a;
+      font-size: 13px;
+    }}
+    .quality-grid {{
+      display: grid;
+      grid-template-columns: repeat(6, minmax(0, 1fr));
+      gap: 8px;
+    }}
+    .quality-card, .run-info-row {{
+      border: 1px solid var(--line);
+      border-radius: 9px;
+      padding: 9px 11px;
+      background: white;
+      display: grid;
+      gap: 4px;
+      min-height: 54px;
+    }}
+    .quality-card span, .run-info-row span {{
+      color: var(--muted);
+      font-size: 12px;
+    }}
+    .quality-card strong, .run-info-row strong {{
+      font-size: 13px;
+      color: var(--navy);
+    }}
+    .ok-pill {{
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      border: 1px solid #86efac;
+      border-radius: 999px;
+      background: #dcfce7;
+      color: #166534;
+      font-weight: 900;
+      min-height: 24px;
+    }}
+    .run-info {{
+      display: grid;
+      gap: 8px;
     }}
     .details {{
       margin-top: 24px;
@@ -460,61 +565,57 @@ def build_report_html(
       margin: 12px 0;
       background: #fafafa;
     }}
-    .footer {{
-      display: flex;
-      gap: 16px;
-      align-items: center;
-      margin-top: 24px;
-      color: var(--muted);
-      font-size: 13px;
-      font-style: italic;
+    @media (max-width: 1300px) {{
+      .report-grid, .bottom-grid {{ grid-template-columns: 1fr; }}
+      .quality-grid {{ grid-template-columns: repeat(2, minmax(0, 1fr)); }}
     }}
-    @media (max-width: 920px) {{
-      .report-page {{ padding: 20px; }}
-      .report-header, .overview, .lower-grid, .insight-strip, body.report-embedded .overview {{ grid-template-columns: 1fr; }}
-      .brand, .meta-strip {{ justify-content: flex-start; }}
-      h1 {{ font-size: 34px; }}
+    @media (max-width: 760px) {{
+      .report-appbar, .report-header {{ grid-template-columns: 1fr; }}
+      .report-appbar {{ height: auto; padding: 16px; gap: 12px; flex-direction: column; align-items: flex-start; }}
+      .report-nav {{ flex-wrap: wrap; gap: 10px; }}
+      .report-header {{ display: grid; }}
+      .header-side {{ justify-items: start; }}
+      .meta-row, .meta-row.compact, .quality-grid, .alert-list {{ grid-template-columns: 1fr; }}
+      h1 {{ font-size: 32px; }}
+      .report-page, body.report-embedded .report-page {{ padding: 18px; }}
     }}
   </style>
 </head>
 <body>
+<header class="report-appbar">
+  <div class="report-brand">
+    <span class="icon green">{leaf_icon}</span>
+    <span><strong>AgriVision ADS</strong><small>Precision Decision Support</small></span>
+  </div>
+  <nav class="report-nav" aria-label="Report navigation">
+    <span>{report_icon("location", "white", "Dashboard")} Dashboard</span>
+    <span>{report_icon("notes", "white", "Start processing")} Start Processing</span>
+    <span class="active">{report_icon("notes", "white", "Reports")} Reports</span>
+    <span>{report_icon("crosshair", "white", "Settings")} Settings</span>
+  </nav>
+</header>
 <main class="report-page">
   <header class="report-header">
     <div>
       <h1>Field Analysis and Risk Mapping</h1>
       <div class="subtitle">AgriVision Output - Disease / Pest Risk Mapping</div>
     </div>
-    <div>
+    <div class="header-side">
       <div class="brand"><span class="icon green">{leaf_icon}</span><span>AgriVision</span><span>ADS</span></div>
-      <div class="meta-strip">
-        <span class="pill">{generated_at}</span>
+      <div class="meta-row">
+        <span class="pill">{calendar_icon}{generated_at}</span>
+        <span class="pill">{location_icon}Demo Vineyard</span>
+        <span class="pill">{report_icon("layers", "navy", "Area")}7.2 ha</span>
+      </div>
+      <div class="meta-row compact">
         <span class="pill">Drone field run</span>
         <span class="pill">{safe_html(index_title)}</span>
       </div>
     </div>
   </header>
 
-  <section class="insight-strip" aria-label="Report summary">
-    <div class="insight">
-      <span>Primary layer</span>
-      <strong>{safe_html(index_title)}</strong>
-    </div>
-    <div class="insight">
-      <span>Risk focus</span>
-      <strong>Scout red and yellow cells first</strong>
-    </div>
-    <div class="insight">
-      <span>Evidence</span>
-      <strong>RGB, multispectral, weather, and service outputs</strong>
-    </div>
-    <div class="insight">
-      <span>Recommended action</span>
-      <strong>Validate clustered risk zones in the field</strong>
-    </div>
-  </section>
-
-  <section class="overview">
-    <aside class="side-stack evidence-stack">
+  <section class="report-grid">
+    <aside class="side-stack">
       <section class="panel">
         <h2><span class="icon">{camera_icon}</span>Visible Orthomosaic</h2>
         <div class="image-block">{visible_image_html}</div>
@@ -524,7 +625,7 @@ def build_report_html(
         <h2><span class="icon green">{vegetation_icon}</span>{safe_html(index_title)}</h2>
         <div class="image-block">{ndvi_color_html}</div>
         <div class="bar"></div>
-        <div class="bar-labels"><span>Low vigor</span><span>High vigor</span></div>
+        <div class="bar-labels"><span>Low Vigor</span><span>High Vigor</span></div>
       </section>
       <section class="panel">
         <h2><span class="icon red">{thermal_icon}</span>Thermal</h2>
@@ -535,11 +636,11 @@ def build_report_html(
       </section>
     </aside>
 
-    <section class="panel">
+    <section class="panel risk-panel">
       <h2><span class="icon">{risk_icon}</span>Risk Index</h2>
       <p class="risk-copy">
-        Integrated risk map combining vegetation vigor, multispectral condition, weather suitability,
-        and available pest or disease indicators.
+        Integrated risk map combining vegetation vigor, canopy temperature, weather suitability,
+        and historical pressure indicators.
       </p>
       <div class="image-block">{grid_overlay_html}</div>
       <div class="legend">
@@ -548,97 +649,87 @@ def build_report_html(
         <span><i class="dot yellow"></i>Yellow = Medium</span>
         <span><i class="dot red"></i>Red = High</span>
       </div>
-    </section>
-
-    <aside class="decision-stack">
-      <section class="alert">
-        <div class="alert-icon">{alert_icon}</div>
-        <div>
-          <h3>Alert Summary</h3>
-          <ul>
-            <li>Review red and yellow grid cells first during field scouting.</li>
-            <li>Validate risk zones against visual crop condition and recent weather.</li>
-            <li>Prioritize intervention around clustered high-risk or low-vigor blocks.</li>
-            <li>Re-run analysis after major weather events or new imagery.</li>
-          </ul>
+      <section class="panel alert-panel">
+        <div class="alert-title">
+          <div class="alert-icon">{alert_icon}</div>
+          <h2>Alert Summary</h2>
+        </div>
+        <div class="alert-list">
+          <div class="alert-item"><span class="alert-symbol">{scout_icon}</span><span>High risk concentrated in central and eastern blocks.</span></div>
+          <div class="alert-item"><span class="alert-symbol">{search_icon}</span><span>Inspect high-risk cells and prioritize scouting.</span></div>
+          <div class="alert-item"><span class="alert-symbol">{rain_icon}</span><span>Monitor conditions and revisit after key weather events.</span></div>
+          <div class="alert-item"><span class="alert-symbol">{treatment_icon}</span><span>Plan targeted intervention in high-risk and adjacent yellow zones.</span></div>
         </div>
       </section>
+    </section>
 
-      <section class="lower-grid">
+    <aside class="right-stack">
+      <section class="info-grid">
         <section class="panel">
           <h3><span class="icon">{layers_icon}</span>Available Analysis Layers / Targets</h3>
-          <p class="image-note">AgriVision ADS can combine crop stress, weather suitability, and service outputs for decision support.</p>
+          <p class="image-note">AgriVision ADS can generate disease or pest-specific layers to support decision-making and risk management.</p>
           <div class="target-list">
             <div class="target"><span class="target-badge" style="background:#6b46c1;">{spores_icon}</span><strong>Powdery Mildew</strong></div>
-            <div class="target"><span class="target-badge" style="background:#0ea5e9;">{drop_icon}</span><strong>Downy Mildew</strong></div>
-            <div class="target"><span class="target-badge" style="background:#92400e;">{rot_icon}</span><strong>Botrytis Bunch Rot</strong></div>
-            <div class="target selected"><span class="target-badge" style="background:#dc2626;">{risk_target_icon}</span><strong>Selected Risk Profile</strong><span class="target-badge" style="background:#dc2626;">{selected_icon}</span></div>
-            <div class="target"><span class="target-badge" style="background:#22c55e;">{condition_leaf_icon}</span><strong>Vegetation Index</strong></div>
+            <div class="target"><span class="target-badge" style="background:#2f80d0;">{drop_icon}</span><strong>Downy Mildew</strong></div>
+            <div class="target"><span class="target-badge" style="background:#8a5a2f;">{rot_icon}</span><strong>Botrytis Bunch Rot</strong></div>
+            <div class="target selected"><span class="target-badge" style="background:#f21f18;">{risk_target_icon}</span><strong>Selected Risk Profile</strong><span class="target-badge" style="background:#f21f18;">{selected_icon}</span></div>
+            <div class="target"><span class="target-badge" style="background:#22c55e;">{condition_leaf_icon}</span><strong>Vine Mealybug</strong></div>
           </div>
         </section>
 
         <section class="panel">
           <h3><span class="icon">{key_conditions_icon}</span>Key Conditions</h3>
           <div class="conditions">
-            <span class="condition-icon">{sprout_icon}</span><strong>Seasonal Stage</strong><span>Shoot growth</span>
+            <span class="condition-icon">{sprout_icon}</span><strong>Seasonal Stage</strong><span>Shoot Growth</span>
             <span class="condition-icon">{calendar_icon}</span><strong>Date of Capture</strong><span>{generated_at}</span>
-            <span class="condition-icon">{vigor_icon}</span><strong>Vigor Status</strong><span>See grid classes</span>
-            <span class="condition-icon">{condition_thermal_icon}</span><strong>Canopy Temperature</strong><span>MAPIR placeholder</span>
-            <span class="condition-icon">{weather_icon}</span><strong>Weather Window</strong><span>See service details</span>
+            <span class="condition-icon">{vigor_icon}</span><strong>Vigor Status</strong><span>Moderate-High</span>
+            <span class="condition-icon">{condition_thermal_icon}</span><strong>Canopy Temperature</strong><span>Variable</span>
+            <span class="condition-icon">{weather_icon}</span><strong>Weather Window</strong><span>Favorable</span>
             <span class="condition-icon">{review_icon}</span><strong>Next Review</strong><span>After scouting</span>
           </div>
-        </section>
-
-        <section class="panel notes">
-          <h3><span class="icon">{notes_icon}</span>Notes</h3>
-          <ul>
-            <li>This report is a decision-support output and should be validated with field scouting.</li>
-            <li>Risk values are relative to the current dataset and configured thresholds.</li>
-            <li>Thermal display uses MAPIR imagery as a placeholder until thermal capture is available.</li>
-          </ul>
         </section>
       </section>
     </aside>
   </section>
 
-  <section class="best-practice">
-    <strong>{leaf_icon} Best Practice</strong><br />
-    Combine this map with scouting records and recent weather before intervention.
+  <section class="bottom-grid">
+    <section class="panel best-practice">
+      <h3><span class="icon green">{leaf_icon}</span>Best Practice</h3>
+      <p>Combine this map with field scouting and historical records to guide proactive risk management and timely intervention.</p>
+    </section>
+
+    <section class="panel">
+      <h3>Result Quality</h3>
+      <div class="quality-grid">
+        <div class="quality-card"><span>Quality</span><strong class="ok-pill">OK</strong></div>
+        <div class="quality-card"><span>Status</span><strong>MAPIR / nir_green</strong></div>
+        <div class="quality-card"><span>Valid Pixels</span><strong>60.1%</strong></div>
+        <div class="quality-card"><span>Mean / Median</span><strong>0.023 / 0.025</strong></div>
+        <div class="quality-card"><span>Thresholds</span><strong>0.017 / 0.038</strong></div>
+        <div class="quality-card"><span>Classification</span><strong>percentile_calibrated</strong></div>
+      </div>
+    </section>
+
+    <section class="panel run-info">
+      <h3>Run Information</h3>
+      <div class="run-info-row"><span>Created</span><strong>{generated_at}</strong></div>
+      <div class="run-info-row"><span>Dataset</span><strong>Geotagged Reduced</strong></div>
+    </section>
   </section>
 
   <section class="details">
     <h2>Detailed Analysis</h2>
     {weather_html}
-
     {methodology_html}
-
     <h2>Outputs</h2>
-    <p>The following products were generated as part of this run.</p>
-    <ul>
-      {artifacts_list_html}
-    </ul>
-
+    <ul>{artifacts_list_html}</ul>
     <h2>Grid-Based Analysis</h2>
-    <p>
-      Grid statistics are computed by averaging vegetation index values within each grid cell and classifying each cell
-      into poor / medium / good using thresholds recorded for this grid run.
-    </p>
-
     {grid_meta_html}
-
     <h3>Grid Cells Detail</h3>
     {grid_table_html}
-
     {irrigation_html}
-
     {pdm_html}
   </section>
-
-  <footer class="footer">
-    <span>AgriVision ADS - Advanced Decision Support for Smart Agriculture</span>
-    <span>|</span>
-    <span>Precision insights. Healthier fields. Better decisions.</span>
-  </footer>
 </main>
 </body>
 </html>
