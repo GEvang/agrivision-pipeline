@@ -40,6 +40,7 @@ AGRIVISION_DEPLOYMENT_MODE=self_hosted
 AGRIVISION_PUBLIC_URL=https://agrivision.example.com
 AGRIVISION_MIN_FREE_DISK_GB=50
 AGRIVISION_MAX_ACTIVE_ODM_RUNS=1
+AGRIVISION_EXTERNAL_ACCESS_PROTECTION_CONFIRMED=false
 ```
 
 `AGRIVISION_MAX_ACTIVE_ODM_RUNS=1` is intentional for Windows self-hosting. ODM is CPU, memory, and disk intensive, so parallel orthophoto generation can make both runs fail.
@@ -108,6 +109,8 @@ Recommended controls:
 - avoid opening inbound firewall ports for the dashboard
 - keep the dashboard bound to localhost where possible
 - rotate API keys in `.env` if a workstation is shared
+
+After Cloudflare Access is enabled and tested, mark **Cloudflare Access or equivalent external login is enabled** in the dashboard Deployment settings. Until that is marked, AgriVision keeps the deployment checklist in a warning state.
 
 ## Persistence and Backup
 

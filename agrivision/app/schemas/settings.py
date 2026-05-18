@@ -21,6 +21,7 @@ class SettingsUpdateRequest(BaseModel):
     public_url: str | None = Field(default=None, max_length=500)
     min_free_disk_gb: int | None = Field(default=None, ge=0, le=10000)
     max_active_odm_runs: int | None = Field(default=None, ge=1, le=10)
+    external_access_protection_confirmed: bool | None = None
 
     @field_validator(
         'location_name',

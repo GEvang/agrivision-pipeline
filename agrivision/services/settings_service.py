@@ -91,6 +91,7 @@ class SettingsService:
                 'public_url': config.get('app', {}).get('public_url', ''),
                 'min_free_disk_gb': config.get('app', {}).get('min_free_disk_gb', 50),
                 'max_active_odm_runs': config.get('app', {}).get('max_active_odm_runs', 1),
+                'external_access_protection_confirmed': config.get('app', {}).get('external_access_protection_confirmed', False),
             },
             'credentials': self.masked_credentials(),
             'diagnostics': get_runtime_config(),
@@ -165,6 +166,8 @@ class SettingsService:
             payload.setdefault('app', {})['min_free_disk_gb'] = request.min_free_disk_gb
         if request.max_active_odm_runs is not None:
             payload.setdefault('app', {})['max_active_odm_runs'] = request.max_active_odm_runs
+        if request.external_access_protection_confirmed is not None:
+            payload.setdefault('app', {})['external_access_protection_confirmed'] = request.external_access_protection_confirmed
 
         self.config_path.write_text(yaml.safe_dump(payload, sort_keys=False), encoding='utf-8')
         return self.get_settings_view()

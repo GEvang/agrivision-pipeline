@@ -210,6 +210,10 @@
       <label>Minimum free disk (GB)<input type="number" min="0" max="10000" name="min_free_disk_gb" value="{{ non_secret.min_free_disk_gb }}" /></label>
       <label>Max active ODM runs<input type="number" min="1" max="10" name="max_active_odm_runs" value="{{ non_secret.max_active_odm_runs }}" /></label>
     </div>
+    <label class="toggle-line">
+      <input type="checkbox" name="external_access_protection_confirmed" value="true" {% if non_secret.external_access_protection_confirmed %}checked{% endif %} />
+      Cloudflare Access or equivalent external login is enabled
+    </label>
     <button type="submit">Save deployment settings</button>
   </form>
 </section>

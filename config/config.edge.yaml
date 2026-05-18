@@ -92,3 +92,4 @@ app:
   public_url: ""
   min_free_disk_gb: 25
   max_active_odm_runs: 1
+  external_access_protection_confirmed: false

@@ -119,6 +119,7 @@ DEFAULT_CONFIG: dict[str, Any] = {
         "public_url": "",
         "min_free_disk_gb": 50,
         "max_active_odm_runs": 1,
+        "external_access_protection_confirmed": False,
     },
     "pdm": {
         "enabled_by_default": True,
@@ -152,6 +153,11 @@ _ENV_SECRET_OVERRIDES: tuple[tuple[tuple[str, ...], str, str], ...] = (
     (("app", "public_url"), "AGRIVISION_PUBLIC_URL", "app.public_url"),
     (("app", "min_free_disk_gb"), "AGRIVISION_MIN_FREE_DISK_GB", "app.min_free_disk_gb"),
     (("app", "max_active_odm_runs"), "AGRIVISION_MAX_ACTIVE_ODM_RUNS", "app.max_active_odm_runs"),
+    (
+        ("app", "external_access_protection_confirmed"),
+        "AGRIVISION_EXTERNAL_ACCESS_PROTECTION_CONFIRMED",
+        "app.external_access_protection_confirmed",
+    ),
 )
 
 
@@ -182,6 +188,7 @@ class ApplicationSettings:
     public_url: str
     min_free_disk_gb: int
     max_active_odm_runs: int
+    external_access_protection_confirmed: bool
 
 
 @dataclass(frozen=True)
@@ -426,6 +433,19 @@ def _as_float(value: Any, fallback: float) -> float:
         return fallback
 
 
+def _as_bool(value: Any, fallback: bool) -> bool:
+    if isinstance(value, bool):
+        return value
+    if value is None:
+        return fallback
+    normalized = str(value).strip().lower()
+    if normalized in {"1", "true", "yes", "on"}:
+        return True
+    if normalized in {"0", "false", "no", "off"}:
+        return False
+    return fallback
+
+
 def get_settings() -> AppSettings:
     """Build typed settings from merged config without import-time caching."""
     cfg = load_config()
@@ -474,6 +494,10 @@ def get_settings() -> AppSettings:
                     app_cfg.get("max_active_odm_runs"),
                     _as_int(app_defaults.get("max_active_odm_runs"), 1),
                 ),
+            ),
+            external_access_protection_confirmed=_as_bool(
+                app_cfg.get("external_access_protection_confirmed"),
+                _as_bool(app_defaults.get("external_access_protection_confirmed"), False),
             ),
         ),
         paths=PathsSettings(

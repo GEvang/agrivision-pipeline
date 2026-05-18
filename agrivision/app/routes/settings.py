@@ -37,6 +37,7 @@ def deployment_status() -> dict[str, object]:
     app_cfg = config.get('app', {}) if isinstance(config.get('app'), dict) else {}
     deployment_mode = str(app_cfg.get('deployment_mode') or 'local')
     public_url = str(app_cfg.get('public_url') or '').rstrip('/')
+    access_confirmed = _as_bool(app_cfg.get('external_access_protection_confirmed'), False)
     min_free_gb = _as_int(app_cfg.get('min_free_disk_gb'), 50)
     max_active_odm = max(1, _as_int(app_cfg.get('max_active_odm_runs'), 1))
     active_odm_runs = [
@@ -50,13 +51,14 @@ def deployment_status() -> dict[str, object]:
     overall_state = 'ok'
     if docker['state'] == 'down' or disk_state == 'down' or len(active_odm_runs) >= max_active_odm:
         overall_state = 'warn'
-    cloudflare_checks = _cloudflare_checks(deployment_mode, public_url)
+    cloudflare_checks = _cloudflare_checks(deployment_mode, public_url, access_confirmed)
     if any(item['state'] == 'down' for item in cloudflare_checks):
         overall_state = 'warn'
     return {
         'state': overall_state,
         'deployment_mode': deployment_mode,
         'public_url': public_url,
+        'external_access_protection_confirmed': access_confirmed,
         'free_disk_gb': free_gb,
         'min_free_disk_gb': min_free_gb,
         'disk_state': disk_state,
@@ -70,7 +72,7 @@ def deployment_status() -> dict[str, object]:
     }
 
 
-def _cloudflare_checks(deployment_mode: str, public_url: str) -> list[dict[str, str]]:
+def _cloudflare_checks(deployment_mode: str, public_url: str, access_confirmed: bool) -> list[dict[str, str]]:
     public_mode = deployment_mode in {'self_hosted', 'cloud'}
     checks = [
         {
@@ -105,8 +107,8 @@ def _cloudflare_checks(deployment_mode: str, public_url: str) -> list[dict[str, 
     checks.append(
         {
             'name': 'Cloudflare Access',
-            'state': 'manual',
-            'detail': 'Protect the tunnel with Cloudflare Access outside AgriVision',
+            'state': 'ok' if access_confirmed else 'down',
+            'detail': 'External access protection confirmed' if access_confirmed else 'Protect the tunnel with Cloudflare Access before sharing the URL',
         }
     )
     return checks
@@ -210,6 +212,19 @@ def _as_int(value: object, fallback: int) -> int:
         return fallback
 
 
+def _as_bool(value: object, fallback: bool) -> bool:
+    if isinstance(value, bool):
+        return value
+    if value is None:
+        return fallback
+    normalized = str(value).strip().lower()
+    if normalized in {'1', 'true', 'yes', 'on'}:
+        return True
+    if normalized in {'0', 'false', 'no', 'off'}:
+        return False
+    return fallback
+
+
 @router.post('/settings')
 def update_settings(request: SettingsUpdateRequest) -> dict:
     return deps.settings_service.update_non_secret_settings(request)
@@ -258,6 +273,7 @@ def update_deployment_settings_ui(
     public_url: str = Form(''),
     min_free_disk_gb: int | None = Form(None),
     max_active_odm_runs: int | None = Form(None),
+    external_access_protection_confirmed: bool = Form(False),
 ) -> RedirectResponse:
     update_settings(
         SettingsUpdateRequest(
@@ -265,6 +281,7 @@ def update_deployment_settings_ui(
             public_url=public_url or None,
             min_free_disk_gb=min_free_disk_gb,
             max_active_odm_runs=max_active_odm_runs,
+            external_access_protection_confirmed=external_access_protection_confirmed,
         )
     )
     return RedirectResponse(url='/settings#deployment', status_code=303)

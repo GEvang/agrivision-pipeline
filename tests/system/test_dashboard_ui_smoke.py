@@ -77,4 +77,5 @@ def test_dashboard_pages_render(tmp_path: Path, monkeypatch) -> None:
     assert 'Host readiness' in settings_page.text
     assert 'Cloudflare Tunnel checklist' in settings_page.text
     assert 'Cloudflare setup helper' in settings_page.text
+    assert 'Cloudflare Access or equivalent external login is enabled' in settings_page.text
     assert 'Save deployment settings' in settings_page.text

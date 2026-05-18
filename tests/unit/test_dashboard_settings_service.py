@@ -38,6 +38,7 @@ def test_update_deployment_settings(tmp_path: Path) -> None:
             public_url='https://agrivision.example.com',
             min_free_disk_gb=75,
             max_active_odm_runs=2,
+            external_access_protection_confirmed=True,
         )
     )
 
@@ -45,6 +46,7 @@ def test_update_deployment_settings(tmp_path: Path) -> None:
     assert view['non_secret']['public_url'] == 'https://agrivision.example.com'
     assert view['non_secret']['min_free_disk_gb'] == 75
     assert view['non_secret']['max_active_odm_runs'] == 2
+    assert view['non_secret']['external_access_protection_confirmed'] is True
 
 
 def test_update_credentials_refreshes_runtime_environment(tmp_path: Path, monkeypatch) -> None:
