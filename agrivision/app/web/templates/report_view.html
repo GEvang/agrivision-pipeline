@@ -1,5 +1,6 @@
 {% extends 'base.html' %}
 {% block title %}Report - {{ run.dataset_name }}{% endblock %}
+{% block container_class %}container-wide{% endblock %}
 {% block content %}
 <section class="panel">
   <div class="panel-header">
@@ -47,6 +48,6 @@
   {% endif %}
   {% endif %}
 
-  <iframe class="report-frame report-frame-full" src="/artifacts/{{ run.run_id }}/report" title="Report for {{ run.dataset_name }}"></iframe>
+  <iframe class="report-frame report-frame-full report-frame-auto" data-auto-height="true" scrolling="no" src="/artifacts/{{ run.run_id }}/report?embedded=true" title="Report for {{ run.dataset_name }}"></iframe>
 </section>
 {% endblock %}

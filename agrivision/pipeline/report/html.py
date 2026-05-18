@@ -143,23 +143,48 @@ def build_report_html(
       padding: 30px 34px 28px;
       box-shadow: 0 12px 42px rgba(15, 23, 42, 0.12);
     }}
+    body.report-embedded {{
+      background: white;
+    }}
+    body.report-embedded .report-page {{
+      width: 100%;
+      max-width: none;
+      min-height: auto;
+      padding: 18px 22px 24px;
+      box-shadow: none;
+    }}
+    body.report-embedded .overview {{
+      grid-template-columns: minmax(260px, 0.55fr) minmax(480px, 1.1fr) minmax(460px, 1fr);
+    }}
+    body.report-embedded .image-block img {{
+      max-height: none;
+    }}
+    body.report-embedded .evidence-stack .image-block img {{
+      max-height: 255px;
+    }}
+    body.report-embedded .panel {{
+      padding: 13px 15px;
+    }}
+    body.report-embedded .lower-grid {{
+      grid-template-columns: repeat(3, minmax(0, 1fr));
+    }}
     .report-header {{
       display: grid;
       grid-template-columns: minmax(0, 1fr) auto;
       gap: 24px;
       border-bottom: 2px solid #1d2f6f;
-      padding-bottom: 16px;
-      margin-bottom: 22px;
+      padding-bottom: 14px;
+      margin-bottom: 16px;
     }}
     h1 {{
-      font-size: 42px;
+      font-size: 38px;
       line-height: 1.05;
       margin: 0 0 8px;
       letter-spacing: 0;
     }}
     .subtitle {{
       color: var(--blue);
-      font-size: 21px;
+      font-size: 18px;
       font-weight: 800;
       font-style: italic;
     }}
@@ -183,23 +208,57 @@ def build_report_html(
     .pill {{
       border: 1px solid var(--line);
       border-radius: 10px;
-      padding: 8px 12px;
+      padding: 7px 11px;
       background: white;
       font-weight: 700;
       color: #1d2f6f;
     }}
+    .insight-strip {{
+      display: grid;
+      grid-template-columns: repeat(4, minmax(0, 1fr));
+      gap: 12px;
+      margin-bottom: 16px;
+    }}
+    .insight {{
+      border: 1px solid var(--line);
+      border-radius: 12px;
+      background: #f8fafc;
+      padding: 12px 14px;
+    }}
+    .insight span {{
+      display: block;
+      color: var(--muted);
+      font-size: 12px;
+      font-weight: 700;
+      margin-bottom: 4px;
+      text-transform: uppercase;
+    }}
+    .insight strong {{
+      display: block;
+      color: var(--navy);
+      font-size: 15px;
+      line-height: 1.25;
+    }}
     .overview {{
       display: grid;
-      grid-template-columns: 0.58fr 1fr;
-      gap: 24px;
-      align-items: stretch;
+      grid-template-columns: minmax(230px, 0.52fr) minmax(420px, 1fr) minmax(360px, 0.95fr);
+      gap: 18px;
+      align-items: start;
     }}
     .side-stack {{ display: grid; gap: 14px; }}
+    .evidence-stack {{
+      align-content: start;
+    }}
+    .decision-stack {{
+      display: grid;
+      gap: 14px;
+      align-content: start;
+    }}
     .panel {{
       border: 1px solid var(--line);
-      border-radius: 14px;
+      border-radius: 10px;
       background: white;
-      padding: 16px 18px;
+      padding: 14px 16px;
       overflow: hidden;
     }}
     .panel h2, .panel h3 {{
@@ -207,10 +266,10 @@ def build_report_html(
       align-items: center;
       gap: 10px;
       margin: 0 0 12px;
-      font-size: 24px;
+      font-size: 22px;
       color: var(--navy);
     }}
-    .side-stack .panel h2 {{ font-size: 20px; }}
+    .side-stack .panel h2 {{ font-size: 18px; }}
     .icon {{
       display: inline-grid;
       place-items: center;
@@ -247,8 +306,9 @@ def build_report_html(
       display: block;
       border: 0 !important;
       object-fit: contain;
-      max-height: 760px;
+      max-height: 720px;
     }}
+    .evidence-stack .image-block img {{ max-height: 260px; }}
     .image-note {{
       margin-top: 8px;
       font-size: 12px;
@@ -257,16 +317,16 @@ def build_report_html(
     }}
     .risk-copy {{
       color: #15224d;
-      max-width: 560px;
+      max-width: 760px;
       margin: -4px 0 12px;
       font-style: italic;
     }}
     .legend {{
       display: flex;
       justify-content: center;
-      gap: 28px;
+      gap: 22px;
       flex-wrap: wrap;
-      margin: 16px 0 24px;
+      margin: 14px 0 18px;
       font-weight: 700;
     }}
     .legend span {{ display: inline-flex; align-items: center; gap: 8px; }}
@@ -294,9 +354,8 @@ def build_report_html(
     .alert {{
       border: 1px solid #ffaaa4;
       background: #fff8f7;
-      border-radius: 14px;
-      padding: 18px 22px;
-      margin-top: 20px;
+      border-radius: 10px;
+      padding: 14px 16px;
       display: grid;
       grid-template-columns: 46px 1fr;
       gap: 14px;
@@ -312,20 +371,29 @@ def build_report_html(
       padding: 10px;
     }}
     .alert h3 {{ margin: 2px 0 8px; font-size: 21px; }}
+    .alert ul {{ padding-left: 1.2rem; }}
     .lower-grid {{
       display: grid;
-      grid-template-columns: 1.08fr 0.92fr 1fr;
-      gap: 18px;
-      margin-top: 22px;
+      grid-template-columns: repeat(3, minmax(0, 1fr));
+      gap: 14px;
+      margin-top: 0;
+    }}
+    .decision-stack .panel h3 {{
+      font-size: 15px;
+      line-height: 1.25;
+    }}
+    .decision-stack .panel {{
+      padding: 12px;
     }}
     .target-list {{ display: grid; gap: 8px; margin-top: 10px; }}
     .target {{
       display: grid;
-      grid-template-columns: 36px 1fr auto;
+      grid-template-columns: 30px 1fr auto;
       align-items: center;
       gap: 10px;
-      padding: 8px 10px;
+      padding: 7px 6px;
       border-bottom: 1px solid #e7eaf1;
+      font-size: 13px;
     }}
     .target.selected {{
       border: 1px solid #ffaaa4;
@@ -334,8 +402,8 @@ def build_report_html(
       border-bottom-color: #ffaaa4;
     }}
     .target-badge {{
-      width: 34px;
-      height: 34px;
+      width: 30px;
+      height: 30px;
       display: grid;
       place-items: center;
       border-radius: 999px;
@@ -345,9 +413,9 @@ def build_report_html(
     .conditions {{
       display: grid;
       grid-template-columns: auto 1fr auto;
-      gap: 10px 12px;
+      gap: 9px 10px;
       align-items: center;
-      font-size: 14px;
+      font-size: 12px;
     }}
     .condition-icon {{
       display: inline-grid;
@@ -365,7 +433,14 @@ def build_report_html(
       background: #f1fbf4;
       border-radius: 12px;
       padding: 12px 14px;
-      margin-top: 12px;
+      margin-top: 16px;
+    }}
+    .best-practice .svg-icon {{
+      width: 18px;
+      height: 18px;
+      display: inline-block;
+      vertical-align: -3px;
+      margin-right: 6px;
     }}
     .details {{
       margin-top: 24px;
@@ -396,7 +471,7 @@ def build_report_html(
     }}
     @media (max-width: 920px) {{
       .report-page {{ padding: 20px; }}
-      .report-header, .overview, .lower-grid {{ grid-template-columns: 1fr; }}
+      .report-header, .overview, .lower-grid, .insight-strip, body.report-embedded .overview {{ grid-template-columns: 1fr; }}
       .brand, .meta-strip {{ justify-content: flex-start; }}
       h1 {{ font-size: 34px; }}
     }}
@@ -419,8 +494,27 @@ def build_report_html(
     </div>
   </header>
 
+  <section class="insight-strip" aria-label="Report summary">
+    <div class="insight">
+      <span>Primary layer</span>
+      <strong>{safe_html(index_title)}</strong>
+    </div>
+    <div class="insight">
+      <span>Risk focus</span>
+      <strong>Scout red and yellow cells first</strong>
+    </div>
+    <div class="insight">
+      <span>Evidence</span>
+      <strong>RGB, multispectral, weather, and service outputs</strong>
+    </div>
+    <div class="insight">
+      <span>Recommended action</span>
+      <strong>Validate clustered risk zones in the field</strong>
+    </div>
+  </section>
+
   <section class="overview">
-    <aside class="side-stack">
+    <aside class="side-stack evidence-stack">
       <section class="panel">
         <h2><span class="icon">{camera_icon}</span>Visible Orthomosaic</h2>
         <div class="image-block">{visible_image_html}</div>
@@ -454,6 +548,9 @@ def build_report_html(
         <span><i class="dot yellow"></i>Yellow = Medium</span>
         <span><i class="dot red"></i>Red = High</span>
       </div>
+    </section>
+
+    <aside class="decision-stack">
       <section class="alert">
         <div class="alert-icon">{alert_icon}</div>
         <div>
@@ -466,46 +563,47 @@ def build_report_html(
           </ul>
         </div>
       </section>
-    </section>
+
+      <section class="lower-grid">
+        <section class="panel">
+          <h3><span class="icon">{layers_icon}</span>Available Analysis Layers / Targets</h3>
+          <p class="image-note">AgriVision ADS can combine crop stress, weather suitability, and service outputs for decision support.</p>
+          <div class="target-list">
+            <div class="target"><span class="target-badge" style="background:#6b46c1;">{spores_icon}</span><strong>Powdery Mildew</strong></div>
+            <div class="target"><span class="target-badge" style="background:#0ea5e9;">{drop_icon}</span><strong>Downy Mildew</strong></div>
+            <div class="target"><span class="target-badge" style="background:#92400e;">{rot_icon}</span><strong>Botrytis Bunch Rot</strong></div>
+            <div class="target selected"><span class="target-badge" style="background:#dc2626;">{risk_target_icon}</span><strong>Selected Risk Profile</strong><span class="target-badge" style="background:#dc2626;">{selected_icon}</span></div>
+            <div class="target"><span class="target-badge" style="background:#22c55e;">{condition_leaf_icon}</span><strong>Vegetation Index</strong></div>
+          </div>
+        </section>
+
+        <section class="panel">
+          <h3><span class="icon">{key_conditions_icon}</span>Key Conditions</h3>
+          <div class="conditions">
+            <span class="condition-icon">{sprout_icon}</span><strong>Seasonal Stage</strong><span>Shoot growth</span>
+            <span class="condition-icon">{calendar_icon}</span><strong>Date of Capture</strong><span>{generated_at}</span>
+            <span class="condition-icon">{vigor_icon}</span><strong>Vigor Status</strong><span>See grid classes</span>
+            <span class="condition-icon">{condition_thermal_icon}</span><strong>Canopy Temperature</strong><span>MAPIR placeholder</span>
+            <span class="condition-icon">{weather_icon}</span><strong>Weather Window</strong><span>See service details</span>
+            <span class="condition-icon">{review_icon}</span><strong>Next Review</strong><span>After scouting</span>
+          </div>
+        </section>
+
+        <section class="panel notes">
+          <h3><span class="icon">{notes_icon}</span>Notes</h3>
+          <ul>
+            <li>This report is a decision-support output and should be validated with field scouting.</li>
+            <li>Risk values are relative to the current dataset and configured thresholds.</li>
+            <li>Thermal display uses MAPIR imagery as a placeholder until thermal capture is available.</li>
+          </ul>
+        </section>
+      </section>
+    </aside>
   </section>
 
-  <section class="lower-grid">
-    <section class="panel">
-      <h3><span class="icon">{layers_icon}</span>Available Analysis Layers / Targets</h3>
-      <p class="image-note">AgriVision ADS can combine crop stress, weather suitability, and service outputs for decision support.</p>
-      <div class="target-list">
-        <div class="target"><span class="target-badge" style="background:#6b46c1;">{spores_icon}</span><strong>Powdery Mildew</strong></div>
-        <div class="target"><span class="target-badge" style="background:#0ea5e9;">{drop_icon}</span><strong>Downy Mildew</strong></div>
-        <div class="target"><span class="target-badge" style="background:#92400e;">{rot_icon}</span><strong>Botrytis Bunch Rot</strong></div>
-        <div class="target selected"><span class="target-badge" style="background:#dc2626;">{risk_target_icon}</span><strong>Selected Risk Profile</strong><span class="target-badge" style="background:#dc2626;">{selected_icon}</span></div>
-        <div class="target"><span class="target-badge" style="background:#22c55e;">{condition_leaf_icon}</span><strong>Vegetation Index</strong></div>
-      </div>
-    </section>
-
-    <section class="panel">
-      <h3><span class="icon">{key_conditions_icon}</span>Key Conditions</h3>
-      <div class="conditions">
-        <span class="condition-icon">{sprout_icon}</span><strong>Seasonal Stage</strong><span>Shoot growth</span>
-        <span class="condition-icon">{calendar_icon}</span><strong>Date of Capture</strong><span>{generated_at}</span>
-        <span class="condition-icon">{vigor_icon}</span><strong>Vigor Status</strong><span>See grid classes</span>
-        <span class="condition-icon">{condition_thermal_icon}</span><strong>Canopy Temperature</strong><span>MAPIR placeholder</span>
-        <span class="condition-icon">{weather_icon}</span><strong>Weather Window</strong><span>See service details</span>
-        <span class="condition-icon">{review_icon}</span><strong>Next Review</strong><span>After scouting</span>
-      </div>
-    </section>
-
-    <section class="panel notes">
-      <h3><span class="icon">{notes_icon}</span>Notes</h3>
-      <ul>
-        <li>This report is a decision-support output and should be validated with field scouting.</li>
-        <li>Risk values are relative to the current dataset and configured thresholds.</li>
-        <li>Thermal display uses MAPIR imagery as a placeholder until thermal capture is available.</li>
-      </ul>
-      <div class="best-practice">
-        <strong>Best Practice</strong><br />
-        Combine this map with scouting records and recent weather before intervention.
-      </div>
-    </section>
+  <section class="best-practice">
+    <strong>{leaf_icon} Best Practice</strong><br />
+    Combine this map with scouting records and recent weather before intervention.
   </section>
 
   <section class="details">

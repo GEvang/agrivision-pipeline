@@ -9,18 +9,62 @@
 <body>
   <header class="site-header">
     <div class="brand-block">
-      <h1><a href="/">AgriVision</a></h1>
-      <span>Pipeline Dashboard</span>
+      <a class="brand-lockup" href="/">
+        <svg class="nav-icon brand-leaf" viewBox="0 0 24 24" aria-hidden="true">
+          <path d="M21 3C12 3 4 9.2 4 17.3c0 1.2.2 2.3.7 3.4C10.6 20.1 21 14.6 21 3Z"></path>
+          <path d="M4.7 20.7C7.7 14.8 11.8 10.9 17.8 7"></path>
+        </svg>
+        <span>
+          <strong>AgriVision ADS</strong>
+          <small>Precision Decision Support</small>
+        </span>
+      </a>
     </div>
     <nav>
-      <a href="/">Dashboard</a>
-      <a href="/runs/new">Start Processing</a>
-      <a href="/runs">Reports</a>
-      <a href="/settings">Settings</a>
+      <a href="/">
+        <svg class="nav-icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M3 11.5 12 4l9 7.5"></path><path d="M5 10.5V20h5v-5h4v5h5v-9.5"></path></svg>
+        Dashboard
+      </a>
+      <a href="/runs/new">
+        <svg class="nav-icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M8 4h8l3 3v13H5V4Z"></path><path d="M15 4v4h4"></path><path d="M9 13h6"></path><path d="M12 10v6"></path></svg>
+        Start Processing
+      </a>
+      <a href="/runs">
+        <svg class="nav-icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M6 3h9l3 3v15H6Z"></path><path d="M15 3v5h5"></path><path d="M9 13h6"></path><path d="M9 17h6"></path></svg>
+        Reports
+      </a>
+      <a href="/settings">
+        <svg class="nav-icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M12 8a4 4 0 1 0 0 8 4 4 0 0 0 0-8Z"></path><path d="M4 12h2"></path><path d="M18 12h2"></path><path d="M12 4v2"></path><path d="M12 18v2"></path><path d="m6.6 6.6 1.4 1.4"></path><path d="m16 16 1.4 1.4"></path><path d="m17.4 6.6-1.4 1.4"></path><path d="m8 16-1.4 1.4"></path></svg>
+        Settings
+      </a>
     </nav>
   </header>
-  <main class="container">
+  <main class="container {% block container_class %}{% endblock %}">
     {% block content %}{% endblock %}
   </main>
+  <script>
+    function resizeAutoHeightFrame(frame) {
+      try {
+        const doc = frame.contentDocument || frame.contentWindow.document;
+        const height = Math.max(
+          doc.body.scrollHeight,
+          doc.documentElement.scrollHeight,
+          doc.body.offsetHeight,
+          doc.documentElement.offsetHeight
+        );
+        frame.style.height = `${height}px`;
+      } catch (error) {
+        frame.style.height = '85vh';
+      }
+    }
+
+    document.querySelectorAll('iframe[data-auto-height="true"]').forEach((frame) => {
+      frame.addEventListener('load', () => {
+        resizeAutoHeightFrame(frame);
+        setTimeout(() => resizeAutoHeightFrame(frame), 250);
+        setTimeout(() => resizeAutoHeightFrame(frame), 1000);
+      });
+    });
+  </script>
 </body>
 </html>

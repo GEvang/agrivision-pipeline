@@ -27,7 +27,7 @@ def report_asset(run_id: str, asset_path: str) -> FileResponse:
 
 
 @router.get('/artifacts/{run_id}/{artifact_name}')
-def artifact(run_id: str, artifact_name: str):
+def artifact(run_id: str, artifact_name: str, embedded: bool = False):
     run = deps.run_service.load_run(run_id)
     report = deps.report_service.get_report(run_id)
     options = {
@@ -51,6 +51,8 @@ def artifact(run_id: str, artifact_name: str):
             html = html.replace('</head>', f'  {base_tag}\n</head>', 1)
         else:
             html = base_tag + html
+        if embedded:
+            html = html.replace('<body>', '<body class="report-embedded">', 1)
         return HTMLResponse(content=html)
     return FileResponse(resolved)
 
