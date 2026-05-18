@@ -88,3 +88,4 @@ def test_build_report_html_uses_risk_mapping_layout() -> None:
     assert "MAPIR placeholder until thermal imagery is available" in html
     assert "Risk Index" in html
     assert "Detailed Analysis" in html
+    assert '<svg class="svg-icon' in html

@@ -34,6 +34,47 @@ def render_image_if_exists(title: str, path: Path, output_dir: Path) -> str:
 """.strip()
 
 
+def report_icon(name: str, color: str = "blue", title: str | None = None) -> str:
+    labels = {
+        "alert": "Alert",
+        "calendar": "Date",
+        "camera": "Visible imagery",
+        "check": "Selected",
+        "cloud": "Weather",
+        "crosshair": "Risk index",
+        "drop": "Water",
+        "layers": "Analysis layers",
+        "leaf": "Vegetation",
+        "location": "Location",
+        "notes": "Notes",
+        "pest": "Pest pressure",
+        "spores": "Disease pressure",
+        "sprout": "Growth stage",
+        "thermometer": "Temperature",
+    }
+    paths = {
+        "alert": '<path d="M12 7v6"/><path d="M12 17h.01"/><path d="M10.3 3.9 2.4 17.6A2 2 0 0 0 4.1 20h15.8a2 2 0 0 0 1.7-2.4L13.7 3.9a2 2 0 0 0-3.4 0Z"/>',
+        "calendar": '<path d="M8 2v4"/><path d="M16 2v4"/><rect x="3" y="5" width="18" height="16" rx="3"/><path d="M3 10h18"/><path d="M8 14h.01"/><path d="M12 14h.01"/><path d="M16 14h.01"/><path d="M8 18h.01"/><path d="M12 18h.01"/>',
+        "camera": '<path d="M4 8a3 3 0 0 1 3-3h1.5l1.2-2h4.6l1.2 2H17a3 3 0 0 1 3 3v8a3 3 0 0 1-3 3H7a3 3 0 0 1-3-3Z"/><circle cx="12" cy="12" r="3.5"/>',
+        "check": '<path d="m6 12 4 4 8-8"/>',
+        "cloud": '<path d="M17.5 18H7a4 4 0 0 1-.6-8 5.8 5.8 0 0 1 11.1-1.7A4.8 4.8 0 0 1 17.5 18Z"/>',
+        "crosshair": '<circle cx="12" cy="12" r="7"/><circle cx="12" cy="12" r="2"/><path d="M12 2v4"/><path d="M12 18v4"/><path d="M2 12h4"/><path d="M18 12h4"/>',
+        "drop": '<path d="M12 3s6 6.3 6 11a6 6 0 0 1-12 0c0-4.7 6-11 6-11Z"/>',
+        "layers": '<path d="m12 3 9 5-9 5-9-5 9-5Z"/><path d="m3 12 9 5 9-5"/><path d="m3 16 9 5 9-5"/>',
+        "leaf": '<path d="M20 4C12 4 5 9.6 5 17c0 1.1.2 2.1.6 3C11 19.5 20 14.5 20 4Z"/><path d="M5.6 20C8.2 14.8 11.8 11.5 17 8"/>',
+        "location": '<path d="M12 21s7-6.1 7-12a7 7 0 0 0-14 0c0 5.9 7 12 7 12Z"/><circle cx="12" cy="9" r="2.5"/>',
+        "notes": '<path d="M7 3h7l4 4v14H7Z"/><path d="M14 3v5h5"/><path d="M9 12h6"/><path d="M9 16h6"/>',
+        "pest": '<path d="M8 11a4 4 0 0 1 8 0v5a4 4 0 0 1-8 0Z"/><path d="M9 7 7 4"/><path d="m15 7 2-3"/><path d="M5 12h3"/><path d="M16 12h3"/><path d="M5 16h3"/><path d="M16 16h3"/><path d="M12 11v8"/>',
+        "spores": '<circle cx="8" cy="8" r="3"/><circle cx="15" cy="7" r="2"/><circle cx="16" cy="15" r="3"/><circle cx="7" cy="16" r="2"/><circle cx="12" cy="12" r="1.5"/>',
+        "sprout": '<path d="M12 21V10"/><path d="M12 13C7 13 4 10 4 5c5 0 8 3 8 8Z"/><path d="M12 11c5 0 8-3 8-8-5 0-8 3-8 8Z"/>',
+        "thermometer": '<path d="M14 14.8V5a2 2 0 0 0-4 0v9.8a4 4 0 1 0 4 0Z"/><path d="M12 7v8"/>',
+    }
+    css_class = f"svg-icon {safe_html(color)}"
+    title_html = f"<title>{safe_html(title or labels.get(name, name.title()))}</title>"
+    path_html = paths.get(name, paths["notes"])
+    return f'<svg class="{css_class}" viewBox="0 0 24 24" role="img" aria-hidden="false">{title_html}{path_html}</svg>'
+
+
 def build_report_html(
     generated_at: str,
     index_title: str,
@@ -49,6 +90,27 @@ def build_report_html(
     irrigation_html: str,
     pdm_html: str,
 ) -> str:
+    leaf_icon = report_icon("leaf", "green", "AgriVision")
+    camera_icon = report_icon("camera", "blue")
+    vegetation_icon = report_icon("leaf", "green", "Vegetation index")
+    thermal_icon = report_icon("thermometer", "red")
+    risk_icon = report_icon("crosshair", "blue")
+    alert_icon = report_icon("alert", "white")
+    layers_icon = report_icon("layers", "blue")
+    spores_icon = report_icon("spores", "white", "Powdery mildew")
+    drop_icon = report_icon("drop", "white", "Downy mildew")
+    rot_icon = report_icon("spores", "white", "Botrytis bunch rot")
+    risk_target_icon = report_icon("crosshair", "white", "Selected risk profile")
+    selected_icon = report_icon("check", "white", "Selected risk profile")
+    condition_leaf_icon = report_icon("leaf", "white", "Vegetation index")
+    key_conditions_icon = report_icon("cloud", "blue", "Key conditions")
+    sprout_icon = report_icon("sprout", "green")
+    calendar_icon = report_icon("calendar", "blue")
+    vigor_icon = report_icon("leaf", "green", "Vigor status")
+    condition_thermal_icon = report_icon("thermometer", "red", "Canopy temperature")
+    weather_icon = report_icon("cloud", "blue", "Weather window")
+    review_icon = report_icon("calendar", "cyan", "Next review")
+    notes_icon = report_icon("notes", "blue")
     return f"""<!DOCTYPE html>
 <html lang="en">
 <head>
@@ -110,13 +172,6 @@ def build_report_html(
       font-weight: 900;
       white-space: nowrap;
     }}
-    .brand-mark {{
-      color: var(--green);
-      border: 2px solid var(--green);
-      border-radius: 999px;
-      padding: 2px 8px;
-      font-size: 16px;
-    }}
     .brand span:last-child {{ color: var(--green); }}
     .meta-strip {{
       display: flex;
@@ -159,17 +214,32 @@ def build_report_html(
     .icon {{
       display: inline-grid;
       place-items: center;
-      min-width: 30px;
+      width: 30px;
       height: 30px;
       border-radius: 999px;
-      padding: 0 7px;
+      padding: 5px;
       background: #edf4ff;
       color: var(--blue);
-      font-size: 12px;
-      font-weight: 900;
     }}
     .icon.green {{ background: #e8f8ee; color: var(--green); }}
     .icon.red {{ background: #fff1f0; color: var(--red); }}
+    .svg-icon {{
+      width: 100%;
+      height: 100%;
+      display: block;
+      fill: none;
+      stroke: currentColor;
+      stroke-width: 2;
+      stroke-linecap: round;
+      stroke-linejoin: round;
+    }}
+    .svg-icon.blue {{ color: var(--blue); }}
+    .svg-icon.green {{ color: var(--green); }}
+    .svg-icon.red {{ color: var(--red); }}
+    .svg-icon.white {{ color: white; }}
+    .svg-icon.cyan {{ color: #0ea5e9; }}
+    .svg-icon.purple {{ color: #6b46c1; }}
+    .svg-icon.brown {{ color: #92400e; }}
     .image-block h3 {{ display: none; }}
     .image-block img {{
       width: 100%;
@@ -239,8 +309,7 @@ def build_report_html(
       place-items: center;
       background: var(--red);
       color: white;
-      font-size: 25px;
-      font-weight: 900;
+      padding: 10px;
     }}
     .alert h3 {{ margin: 2px 0 8px; font-size: 21px; }}
     .lower-grid {{
@@ -271,7 +340,7 @@ def build_report_html(
       place-items: center;
       border-radius: 999px;
       color: white;
-      font-weight: 900;
+      padding: 8px;
     }}
     .conditions {{
       display: grid;
@@ -288,8 +357,7 @@ def build_report_html(
       border-radius: 999px;
       background: #eef2ff;
       color: #1d4ed8;
-      font-size: 12px;
-      font-weight: 900;
+      padding: 5px;
     }}
     .notes ul, .alert ul {{ margin: 0; }}
     .best-practice {{
@@ -342,7 +410,7 @@ def build_report_html(
       <div class="subtitle">AgriVision Output - Disease / Pest Risk Mapping</div>
     </div>
     <div>
-      <div class="brand"><span class="brand-mark">leaf</span><span>AgriVision</span><span>ADS</span></div>
+      <div class="brand"><span class="icon green">{leaf_icon}</span><span>AgriVision</span><span>ADS</span></div>
       <div class="meta-strip">
         <span class="pill">{generated_at}</span>
         <span class="pill">Drone field run</span>
@@ -354,18 +422,18 @@ def build_report_html(
   <section class="overview">
     <aside class="side-stack">
       <section class="panel">
-        <h2><span class="icon">RGB</span>Visible Orthomosaic</h2>
+        <h2><span class="icon">{camera_icon}</span>Visible Orthomosaic</h2>
         <div class="image-block">{visible_image_html}</div>
         <div class="image-note">High-resolution true-color image</div>
       </section>
       <section class="panel">
-        <h2><span class="icon green">VI</span>{safe_html(index_title)}</h2>
+        <h2><span class="icon green">{vegetation_icon}</span>{safe_html(index_title)}</h2>
         <div class="image-block">{ndvi_color_html}</div>
         <div class="bar"></div>
         <div class="bar-labels"><span>Low vigor</span><span>High vigor</span></div>
       </section>
       <section class="panel">
-        <h2><span class="icon red">TH</span>Thermal</h2>
+        <h2><span class="icon red">{thermal_icon}</span>Thermal</h2>
         <div class="image-block">{thermal_image_html}</div>
         <div class="bar thermal-bar"></div>
         <div class="bar-labels"><span>Cold</span><span>Hot</span></div>
@@ -374,7 +442,7 @@ def build_report_html(
     </aside>
 
     <section class="panel">
-      <h2><span class="icon">RI</span>Risk Index</h2>
+      <h2><span class="icon">{risk_icon}</span>Risk Index</h2>
       <p class="risk-copy">
         Integrated risk map combining vegetation vigor, multispectral condition, weather suitability,
         and available pest or disease indicators.
@@ -387,7 +455,7 @@ def build_report_html(
         <span><i class="dot red"></i>Red = High</span>
       </div>
       <section class="alert">
-        <div class="alert-icon">!</div>
+        <div class="alert-icon">{alert_icon}</div>
         <div>
           <h3>Alert Summary</h3>
           <ul>
@@ -403,31 +471,31 @@ def build_report_html(
 
   <section class="lower-grid">
     <section class="panel">
-      <h3><span class="icon">LY</span>Available Analysis Layers / Targets</h3>
+      <h3><span class="icon">{layers_icon}</span>Available Analysis Layers / Targets</h3>
       <p class="image-note">AgriVision ADS can combine crop stress, weather suitability, and service outputs for decision support.</p>
       <div class="target-list">
-        <div class="target"><span class="target-badge" style="background:#6b46c1;">PM</span><strong>Powdery Mildew</strong></div>
-        <div class="target"><span class="target-badge" style="background:#0ea5e9;">DM</span><strong>Downy Mildew</strong></div>
-        <div class="target"><span class="target-badge" style="background:#92400e;">BR</span><strong>Botrytis Bunch Rot</strong></div>
-        <div class="target selected"><span class="target-badge" style="background:#dc2626;">RI</span><strong>Selected Risk Profile</strong><span>OK</span></div>
-        <div class="target"><span class="target-badge" style="background:#22c55e;">VI</span><strong>Vegetation Index</strong></div>
+        <div class="target"><span class="target-badge" style="background:#6b46c1;">{spores_icon}</span><strong>Powdery Mildew</strong></div>
+        <div class="target"><span class="target-badge" style="background:#0ea5e9;">{drop_icon}</span><strong>Downy Mildew</strong></div>
+        <div class="target"><span class="target-badge" style="background:#92400e;">{rot_icon}</span><strong>Botrytis Bunch Rot</strong></div>
+        <div class="target selected"><span class="target-badge" style="background:#dc2626;">{risk_target_icon}</span><strong>Selected Risk Profile</strong><span class="target-badge" style="background:#dc2626;">{selected_icon}</span></div>
+        <div class="target"><span class="target-badge" style="background:#22c55e;">{condition_leaf_icon}</span><strong>Vegetation Index</strong></div>
       </div>
     </section>
 
     <section class="panel">
-      <h3><span class="icon">KC</span>Key Conditions</h3>
+      <h3><span class="icon">{key_conditions_icon}</span>Key Conditions</h3>
       <div class="conditions">
-        <span class="condition-icon">S</span><strong>Seasonal Stage</strong><span>Shoot growth</span>
-        <span class="condition-icon">D</span><strong>Date of Capture</strong><span>{generated_at}</span>
-        <span class="condition-icon">V</span><strong>Vigor Status</strong><span>See grid classes</span>
-        <span class="condition-icon">T</span><strong>Canopy Temperature</strong><span>MAPIR placeholder</span>
-        <span class="condition-icon">W</span><strong>Weather Window</strong><span>See service details</span>
-        <span class="condition-icon">R</span><strong>Next Review</strong><span>After scouting</span>
+        <span class="condition-icon">{sprout_icon}</span><strong>Seasonal Stage</strong><span>Shoot growth</span>
+        <span class="condition-icon">{calendar_icon}</span><strong>Date of Capture</strong><span>{generated_at}</span>
+        <span class="condition-icon">{vigor_icon}</span><strong>Vigor Status</strong><span>See grid classes</span>
+        <span class="condition-icon">{condition_thermal_icon}</span><strong>Canopy Temperature</strong><span>MAPIR placeholder</span>
+        <span class="condition-icon">{weather_icon}</span><strong>Weather Window</strong><span>See service details</span>
+        <span class="condition-icon">{review_icon}</span><strong>Next Review</strong><span>After scouting</span>
       </div>
     </section>
 
     <section class="panel notes">
-      <h3><span class="icon">NT</span>Notes</h3>
+      <h3><span class="icon">{notes_icon}</span>Notes</h3>
       <ul>
         <li>This report is a decision-support output and should be validated with field scouting.</li>
         <li>Risk values are relative to the current dataset and configured thresholds.</li>
