@@ -69,6 +69,16 @@ def test_build_report_html_uses_risk_mapping_layout() -> None:
     html = build_report_html(
         generated_at="2026-05-18 12:00 UTC",
         index_title="Vegetation Index",
+        location_label="Neapolis Field",
+        quality={
+            "quality_state": "OK",
+            "source": "MAPIR / nir_green",
+            "valid_pixels": "60.1%",
+            "mean_median": "0.023 / 0.025",
+            "thresholds": "0.017 / 0.036",
+            "classification": "percentile_calibrated",
+            "dataset": "MAPIR",
+        },
         weather_html="<section>Weather</section>",
         methodology_html="<section>Method</section>",
         artifacts_list_html="<li>Artifact</li>",
@@ -88,4 +98,8 @@ def test_build_report_html_uses_risk_mapping_layout() -> None:
     assert "MAPIR placeholder until thermal imagery is available" in html
     assert "Risk Index" in html
     assert "Detailed Analysis" in html
+    assert "Neapolis Field" in html
+    assert "60.1%" in html
+    assert "Demo Vineyard" not in html
+    assert "7.2 ha" not in html
     assert '<svg class="svg-icon' in html

@@ -89,7 +89,18 @@ def build_report_html(
     grid_table_html: str,
     irrigation_html: str,
     pdm_html: str,
+    *,
+    location_label: str = "Location not set",
+    quality: dict[str, str] | None = None,
 ) -> str:
+    quality = quality or {}
+    quality_state = quality.get("quality_state", "N/A")
+    source_label = quality.get("source", "N/A")
+    valid_pixels = quality.get("valid_pixels", "N/A")
+    mean_median = quality.get("mean_median", "N/A")
+    thresholds = quality.get("thresholds", "N/A")
+    classification = quality.get("classification", "N/A")
+    dataset_label = quality.get("dataset", "N/A")
     leaf_icon = report_icon("leaf", "green", "AgriVision")
     camera_icon = report_icon("camera", "navy")
     vegetation_icon = report_icon("leaf", "green", "Vegetation index")
@@ -139,54 +150,6 @@ def build_report_html(
       color: var(--navy);
       background: #eef3f8;
       line-height: 1.4;
-    }}
-    .report-appbar {{
-      height: 64px;
-      padding: 0 32px;
-      display: flex;
-      align-items: center;
-      justify-content: space-between;
-      background: linear-gradient(135deg, #061126 0%, #07143d 62%, #061b12 100%);
-      color: white;
-      border-bottom: 1px solid rgba(255,255,255,0.1);
-    }}
-    .report-brand, .report-nav {{
-      display: flex;
-      align-items: center;
-      gap: 10px;
-    }}
-    .report-brand strong {{
-      display: block;
-      font-size: 18px;
-      line-height: 1;
-    }}
-    .report-brand small {{
-      display: block;
-      color: #d7def0;
-      font-size: 11px;
-      margin-top: 3px;
-    }}
-    .report-nav {{
-      gap: 22px;
-      font-size: 13px;
-      font-weight: 800;
-    }}
-    .report-nav span {{
-      display: inline-flex;
-      align-items: center;
-      gap: 6px;
-      padding: 8px 0;
-      color: #f8fafc;
-    }}
-    .report-nav .svg-icon {{
-      width: 15px;
-      height: 15px;
-      flex: 0 0 auto;
-    }}
-    .report-nav .active {{
-      border: 1px solid #2d5dca;
-      border-radius: 8px;
-      padding: 8px 12px;
     }}
     .report-page {{
       width: 100%;
@@ -244,14 +207,11 @@ def build_report_html(
     .brand span:last-child {{ color: var(--green); }}
     .meta-row {{
       display: grid;
-      grid-template-columns: repeat(3, auto);
+      grid-template-columns: repeat(2, auto);
       border: 1px solid var(--line);
       border-radius: 10px;
       background: white;
       overflow: hidden;
-    }}
-    .meta-row.compact {{
-      grid-template-columns: repeat(2, auto);
     }}
     .pill {{
       display: inline-flex;
@@ -272,7 +232,7 @@ def build_report_html(
     .pill:first-child {{ border-left: 0; }}
     .report-grid {{
       display: grid;
-      grid-template-columns: minmax(270px, 0.58fr) minmax(560px, 1.35fr) minmax(420px, 0.95fr);
+      grid-template-columns: minmax(330px, 0.75fr) minmax(620px, 1.35fr) minmax(330px, 0.7fr);
       gap: 18px;
       margin-top: 14px;
       align-items: stretch;
@@ -336,13 +296,13 @@ def build_report_html(
       object-fit: contain;
     }}
     .side-stack .image-block img {{
-      max-height: 205px;
+      max-height: 260px;
     }}
     .risk-panel .image-block img {{
       max-height: 620px;
     }}
     body.report-embedded .side-stack .image-block img {{
-      max-height: 205px;
+      max-height: 260px;
     }}
     body.report-embedded .risk-panel .image-block img {{
       max-height: 620px;
@@ -548,14 +508,82 @@ def build_report_html(
       gap: 8px;
     }}
     .details {{
-      margin-top: 24px;
-      border-top: 2px solid #e7eaf1;
-      padding-top: 20px;
+      margin-top: 18px;
+      border: 1px solid var(--line);
+      border-radius: 12px;
+      padding: 18px;
+      background: linear-gradient(180deg, #fbfdff 0%, #f8fafc 100%);
     }}
-    .details h2 {{ color: var(--navy); }}
-    table {{ border-collapse: collapse; margin-top: 10px; }}
-    th {{ background-color: #f0f4f8; }}
-    code {{ background-color: #f7f7f7; padding: 2px 4px; }}
+    .details h2 {{
+      display: flex;
+      align-items: center;
+      margin: 18px 0 10px;
+      padding: 11px 13px;
+      border: 1px solid #d9e4f1;
+      border-radius: 10px;
+      background: white;
+      color: var(--navy);
+      font-size: 20px;
+      box-shadow: 0 8px 20px rgba(15, 23, 42, 0.04);
+    }}
+    .details h2:first-child {{ margin-top: 0; }}
+    .details h3 {{
+      margin: 16px 0 8px;
+      color: #13204a;
+      font-size: 16px;
+    }}
+    .details h4 {{
+      margin: 14px 0 8px;
+      color: #13204a;
+      font-size: 14px;
+    }}
+    .details p {{
+      margin: 8px 0 12px;
+      color: #334155;
+    }}
+    .details ul {{
+      margin: 8px 0 14px;
+      padding-left: 22px;
+      color: #334155;
+    }}
+    table {{
+      width: 100%;
+      border-collapse: separate;
+      border-spacing: 0;
+      margin-top: 10px;
+      overflow: hidden;
+      border: 1px solid #d9e4f1;
+      border-radius: 10px;
+      background: white;
+    }}
+    th, td {{
+      padding: 9px 11px;
+      border: 0;
+      border-bottom: 1px solid #e7eef7;
+      text-align: left;
+      vertical-align: top;
+    }}
+    tr:last-child th, tr:last-child td {{ border-bottom: 0; }}
+    th {{
+      background-color: #f1f6fb;
+      color: #42526d;
+      font-size: 12px;
+      text-transform: uppercase;
+      letter-spacing: 0.02em;
+    }}
+    code {{
+      background-color: #eef4fa;
+      border: 1px solid #dbe6f2;
+      border-radius: 5px;
+      padding: 2px 5px;
+      color: #0f2558;
+    }}
+    pre {{
+      border-color: #d9e4f1 !important;
+      border-radius: 10px;
+      background: #07143d !important;
+      color: #e7eef7;
+    }}
     a {{ color: #1d4ed8; text-decoration: none; }}
     a:hover {{ text-decoration: underline; }}
     .subtle-card {{
@@ -570,30 +598,16 @@ def build_report_html(
       .quality-grid {{ grid-template-columns: repeat(2, minmax(0, 1fr)); }}
     }}
     @media (max-width: 760px) {{
-      .report-appbar, .report-header {{ grid-template-columns: 1fr; }}
-      .report-appbar {{ height: auto; padding: 16px; gap: 12px; flex-direction: column; align-items: flex-start; }}
-      .report-nav {{ flex-wrap: wrap; gap: 10px; }}
+      .report-header {{ grid-template-columns: 1fr; }}
       .report-header {{ display: grid; }}
       .header-side {{ justify-items: start; }}
-      .meta-row, .meta-row.compact, .quality-grid, .alert-list {{ grid-template-columns: 1fr; }}
+      .meta-row, .quality-grid, .alert-list {{ grid-template-columns: 1fr; }}
       h1 {{ font-size: 32px; }}
       .report-page, body.report-embedded .report-page {{ padding: 18px; }}
     }}
   </style>
 </head>
 <body>
-<header class="report-appbar">
-  <div class="report-brand">
-    <span class="icon green">{leaf_icon}</span>
-    <span><strong>AgriVision ADS</strong><small>Precision Decision Support</small></span>
-  </div>
-  <nav class="report-nav" aria-label="Report navigation">
-    <span>{report_icon("location", "white", "Dashboard")} Dashboard</span>
-    <span>{report_icon("notes", "white", "Start processing")} Start Processing</span>
-    <span class="active">{report_icon("notes", "white", "Reports")} Reports</span>
-    <span>{report_icon("crosshair", "white", "Settings")} Settings</span>
-  </nav>
-</header>
 <main class="report-page">
   <header class="report-header">
     <div>
@@ -604,12 +618,7 @@ def build_report_html(
       <div class="brand"><span class="icon green">{leaf_icon}</span><span>AgriVision</span><span>ADS</span></div>
       <div class="meta-row">
         <span class="pill">{calendar_icon}{generated_at}</span>
-        <span class="pill">{location_icon}Demo Vineyard</span>
-        <span class="pill">{report_icon("layers", "navy", "Area")}7.2 ha</span>
-      </div>
-      <div class="meta-row compact">
-        <span class="pill">Drone field run</span>
-        <span class="pill">{safe_html(index_title)}</span>
+        <span class="pill">{location_icon}{safe_html(location_label)}</span>
       </div>
     </div>
   </header>
@@ -701,19 +710,19 @@ def build_report_html(
     <section class="panel">
       <h3>Result Quality</h3>
       <div class="quality-grid">
-        <div class="quality-card"><span>Quality</span><strong class="ok-pill">OK</strong></div>
-        <div class="quality-card"><span>Status</span><strong>MAPIR / nir_green</strong></div>
-        <div class="quality-card"><span>Valid Pixels</span><strong>60.1%</strong></div>
-        <div class="quality-card"><span>Mean / Median</span><strong>0.023 / 0.025</strong></div>
-        <div class="quality-card"><span>Thresholds</span><strong>0.017 / 0.038</strong></div>
-        <div class="quality-card"><span>Classification</span><strong>percentile_calibrated</strong></div>
+        <div class="quality-card"><span>Quality</span><strong class="ok-pill">{safe_html(quality_state)}</strong></div>
+        <div class="quality-card"><span>Source</span><strong>{safe_html(source_label)}</strong></div>
+        <div class="quality-card"><span>Valid Pixels</span><strong>{safe_html(valid_pixels)}</strong></div>
+        <div class="quality-card"><span>Mean / Median</span><strong>{safe_html(mean_median)}</strong></div>
+        <div class="quality-card"><span>Thresholds</span><strong>{safe_html(thresholds)}</strong></div>
+        <div class="quality-card"><span>Classification</span><strong>{safe_html(classification)}</strong></div>
       </div>
     </section>
 
     <section class="panel run-info">
       <h3>Run Information</h3>
       <div class="run-info-row"><span>Created</span><strong>{generated_at}</strong></div>
-      <div class="run-info-row"><span>Dataset</span><strong>Geotagged Reduced</strong></div>
+      <div class="run-info-row"><span>Source Dataset</span><strong>{safe_html(dataset_label)}</strong></div>
     </section>
   </section>
 

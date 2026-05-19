@@ -75,6 +75,7 @@ button.action-chip { font-family:inherit; }
 .report-frame { width:100%; min-height:70vh; border:1px solid #cbd5e1; border-radius:8px; background:white; }
 .report-frame-full { min-height:85vh; }
 .report-frame-auto { min-height:0; height:1200px; overflow:hidden; }
+.report-frame-clean { border:0; border-radius:0; background:transparent; }
 
 .latest-report-embed { width: 100%; margin-top: 1rem; }
 .latest-report-embed .report-frame { display: block; width: 100%; min-height: 900px; height: 900px; border: 1px solid #cbd5e1; border-radius: 8px; background: white; }

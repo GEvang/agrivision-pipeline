@@ -7,6 +7,7 @@ from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any, Dict, Optional, cast
 
+from agrivision.config.settings import load_config
 from agrivision.pipeline.report.assets import (
     ensure_report_preview,
     get_index_title,
@@ -27,6 +28,92 @@ from agrivision.pipeline.report.sections import (
     render_weather_section,
 )
 from agrivision.pipeline.report.tables import render_grid_table
+
+
+def _as_float(value: Any) -> float | None:
+    try:
+        return float(value)
+    except (TypeError, ValueError):
+        return None
+
+
+def _format_float(value: Any, precision: int = 3) -> str:
+    parsed = _as_float(value)
+    if parsed is None:
+        return "N/A"
+    return f"{parsed:.{precision}f}"
+
+
+def _format_percent(value: Any) -> str:
+    parsed = _as_float(value)
+    if parsed is None:
+        return "N/A"
+    return f"{parsed:.1f}%"
+
+
+def _read_nested(payload: dict[str, Any], *keys: str) -> Any:
+    current: Any = payload
+    for key in keys:
+        if not isinstance(current, dict):
+            return None
+        current = current.get(key)
+    return current
+
+
+def _location_label(config: dict[str, Any], weather_summary: Optional[Dict[str, Any]]) -> str:
+    if weather_summary:
+        weather_location = weather_summary.get("location_name")
+        if weather_location:
+            return str(weather_location)
+
+    location = config.get("location", {})
+    if isinstance(location, dict):
+        if location.get("name"):
+            return str(location["name"])
+        lat = location.get("lat")
+        lon = location.get("lon")
+        if lat is not None and lon is not None:
+            return f"{lat}, {lon}"
+    return "Location not set"
+
+
+def _quality_summary(ndvi_meta: dict[str, Any], grid_meta: dict[str, Any]) -> dict[str, str]:
+    source_dataset = (
+        _read_nested(ndvi_meta, "source", "dataset")
+        or grid_meta.get("source_dataset")
+        or "Source not set"
+    )
+    index_mode = (
+        _read_nested(ndvi_meta, "index", "index_mode")
+        or grid_meta.get("index_mode")
+        or "index not set"
+    )
+    valid_percent = _read_nested(ndvi_meta, "valid_pixels", "percent")
+    mean = _read_nested(ndvi_meta, "distribution", "mean")
+    median = _read_nested(ndvi_meta, "distribution", "median")
+    poor_max = _read_nested(grid_meta, "thresholds_used", "poor_max")
+    medium_max = _read_nested(grid_meta, "thresholds_used", "medium_max")
+    classification_mode = grid_meta.get("classification_mode") or "Classification not set"
+    flags = ndvi_meta.get("quality_flags", [])
+
+    quality_state = "OK"
+    valid_value = _as_float(valid_percent)
+    if flags:
+        quality_state = "Review"
+    if valid_value is not None and valid_value < 20:
+        quality_state = "Error"
+    elif valid_value is not None and valid_value < 50:
+        quality_state = "Review"
+
+    return {
+        "quality_state": quality_state,
+        "source": f"{source_dataset} / {index_mode}",
+        "valid_pixels": _format_percent(valid_percent),
+        "mean_median": f"{_format_float(mean)} / {_format_float(median)}",
+        "thresholds": f"{_format_float(poor_max)} / {_format_float(medium_max)}",
+        "classification": str(classification_mode),
+        "dataset": str(source_dataset),
+    }
 
 
 def run_report(
@@ -53,6 +140,7 @@ def run_report(
 
     output_dir.mkdir(parents=True, exist_ok=True)
 
+    config = load_config()
     ndvi_meta = load_json(ndvi_meta_path)
     grid_meta = load_json(grid_meta_path)
     visible_preview = ensure_report_preview(orthophoto_rgb, orthophoto_rgb_preview)
@@ -69,6 +157,7 @@ def run_report(
     pdm_html = render_pdm_section(pdm_summary, output_dir)
 
     generated_at = datetime.now(UTC).strftime("%Y-%m-%d %H:%M UTC")
+    report_quality = _quality_summary(ndvi_meta, grid_meta)
 
     artifacts_list_html = "\n".join(
         [
@@ -85,6 +174,8 @@ def run_report(
     html_doc = build_report_html(
         generated_at=generated_at,
         index_title=index_title,
+        location_label=_location_label(config, weather_summary),
+        quality=report_quality,
         weather_html=weather_html,
         methodology_html=methodology_html,
         artifacts_list_html=artifacts_list_html,

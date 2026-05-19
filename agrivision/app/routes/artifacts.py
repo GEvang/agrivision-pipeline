@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import re
 from pathlib import Path
 
 from fastapi import APIRouter, HTTPException
@@ -9,6 +10,10 @@ from agrivision.app import dependencies as deps
 from agrivision.config import get_project_root, load_config
 
 router = APIRouter()
+
+
+def _strip_embedded_report_chrome(html: str) -> str:
+    return re.sub(r'<header class="report-appbar">.*?</header>\s*', '', html, count=1, flags=re.DOTALL)
 
 
 @router.get('/artifacts/{run_id}/report-assets/{asset_path:path}')
@@ -53,6 +58,7 @@ def artifact(run_id: str, artifact_name: str, embedded: bool = False):
             html = base_tag + html
         if embedded:
             html = html.replace('<body>', '<body class="report-embedded">', 1)
+            html = _strip_embedded_report_chrome(html)
         return HTMLResponse(content=html)
     return FileResponse(resolved)
 

@@ -28,6 +28,8 @@ def test_dashboard_pages_render(tmp_path: Path, monkeypatch) -> None:
     monkeypatch.setattr(deps, 'settings_service', settings_service)
 
     run_dir = storage.run_dir('run-1')
+    report_path = run_dir / 'report.html'
+    report_path.write_text('<html><body><h1>Field Analysis and Risk Mapping</h1></body></html>', encoding='utf-8')
     storage.write_json(run_dir / 'status.json', {
         'run_id': 'run-1',
         'created_at': '2026-03-24T10:00:00Z',
@@ -42,7 +44,7 @@ def test_dashboard_pages_render(tmp_path: Path, monkeypatch) -> None:
         'started_at': '2026-03-24T10:00:05Z',
         'finished_at': '2026-03-24T10:05:05Z',
         'parameters': {},
-        'outputs': {},
+        'outputs': {'report_html': str(report_path)},
         'errors': [],
         'stages': [],
         'logs_path': str(run_dir / 'run.log'),
@@ -64,7 +66,12 @@ def test_dashboard_pages_render(tmp_path: Path, monkeypatch) -> None:
     assert runs_page.status_code == 200
     assert 'Reports' in runs_page.text
     assert 'Clear incomplete' in runs_page.text
-    assert client.get('/runs/run-1', headers={'accept': 'text/html'}).status_code == 200
+    run_detail = client.get('/runs/run-1', headers={'accept': 'text/html'})
+    assert run_detail.status_code == 200
+    assert 'Result Quality' not in run_detail.text
+    report_view_template = Path('agrivision/app/web/templates/report_view.html').read_text(encoding='utf-8')
+    assert 'Result Quality' not in report_view_template
+    assert 'run-meta-grid' not in report_view_template
     monkeypatch.setattr(service_routes, 'service_statuses', lambda include_logs=False: [])
     monkeypatch.setattr(settings_routes, 'service_statuses', lambda include_logs=False: [])
     monkeypatch.setattr(settings_routes, 'docker_health', lambda: {'name': 'Docker', 'state': 'ok', 'detail': '27.0.0', 'target': 'docker'})

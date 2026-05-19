@@ -79,7 +79,10 @@
     document.querySelectorAll('.nav-link').forEach((link) => {
       const href = link.getAttribute('href');
       const exact = link.dataset.navMatch === 'exact';
-      const isActive = exact ? currentPath === href : currentPath === href || currentPath.startsWith(`${href}/`);
+      const isReportsLink = href === '/runs';
+      const isActive = exact
+        ? currentPath === href
+        : currentPath === href || (currentPath.startsWith(`${href}/`) && !(isReportsLink && currentPath === '/runs/new'));
       if (isActive) {
         link.classList.add('active');
         link.setAttribute('aria-current', 'page');
