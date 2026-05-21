@@ -44,6 +44,7 @@ def get_report_settings() -> dict[str, Path]:
         "grid_overlay_png": ndvi_dir / "ndvi_grid_overlay.png",
         "grid_cells_csv": ndvi_dir / "ndvi_grid_cells.csv",
         "grid_categories_csv": ndvi_dir / "ndvi_grid_categories.csv",
+        "disease_risk_summary": ndvi_dir / "disease_risk" / "summary.json",
     }
 
 

@@ -20,6 +20,8 @@ from agrivision.pipeline.report.html import (
     render_artifact_link,
     render_image_if_exists,
     render_pending_image,
+    report_icon,
+    safe_html,
 )
 from agrivision.pipeline.report.sections import (
     render_grid_metadata_section,
@@ -117,10 +119,117 @@ def _quality_summary(ndvi_meta: dict[str, Any], grid_meta: dict[str, Any]) -> di
     }
 
 
+def _load_disease_risk_summary(
+    passed_summary: Optional[Dict[str, Any]],
+    summary_path: Path,
+) -> dict[str, Any]:
+    if passed_summary and passed_summary.get("enabled"):
+        return passed_summary
+    return load_json(summary_path)
+
+
+def _selected_risk_layer(summary: dict[str, Any]) -> dict[str, Any] | None:
+    layers = summary.get("layers")
+    if not isinstance(layers, list):
+        return None
+    selected_key = summary.get("selected_layer_key")
+    for layer in layers:
+        if isinstance(layer, dict) and layer.get("profile_key") == selected_key:
+            return layer
+    for layer in layers:
+        if isinstance(layer, dict):
+            return layer
+    return None
+
+
+def _risk_target_html(summary: dict[str, Any], selected: dict[str, Any] | None) -> str:
+    layers = summary.get("layers")
+    if not isinstance(layers, list) or not layers:
+        layers = [
+            {"profile_key": "grapevine_powdery_mildew", "profile_label": "Powdery Mildew", "mean_risk": None},
+            {"profile_key": "grapevine_downy_mildew", "profile_label": "Downy Mildew", "mean_risk": None},
+            {"profile_key": "botrytis_bunch_rot", "profile_label": "Botrytis Bunch Rot", "mean_risk": None},
+        ]
+    selected_key = selected.get("profile_key") if selected else None
+    icons = ["spores", "drop", "spores", "crosshair", "leaf", "pest"]
+    colors = ["#6b46c1", "#2f80d0", "#8a5a2f", "#f21f18", "#22c55e", "#0f766e"]
+    rows = []
+    check = report_icon("check", "white", "Selected risk profile")
+    for idx, layer in enumerate(layers):
+        if not isinstance(layer, dict):
+            continue
+        is_selected = layer.get("profile_key") == selected_key
+        icon = report_icon(icons[idx % len(icons)], "white", str(layer.get("profile_label") or "Risk profile"))
+        mean_risk = layer.get("mean_risk")
+        risk_text = f"{float(mean_risk):.2f}" if isinstance(mean_risk, (float, int)) else "N/A"
+        selected_badge = f'<span class="target-badge" style="background:#f21f18;">{check}</span>' if is_selected else ""
+        rows.append(
+            '<div class="target{selected_class}">'
+            '<span class="target-badge" style="background:{color};">{icon}</span>'
+            '<strong>{label}</strong>'
+            '<span class="risk-score">{risk}</span>'
+            "{selected_badge}"
+            "</div>".format(
+                selected_class=" selected" if is_selected else "",
+                color=colors[idx % len(colors)],
+                icon=icon,
+                label=safe_html(layer.get("profile_label") or "Risk profile"),
+                risk=safe_html(risk_text),
+                selected_badge=selected_badge,
+            )
+        )
+    return "\n".join(rows)
+
+
+def _risk_alert_html(selected: dict[str, Any] | None) -> str:
+    if not selected:
+        messages = [
+            "Disease risk layer unavailable; review NDVI grid and source imagery.",
+            "Generate a new analysis run to calculate no-input cell risk.",
+            "Use field scouting to confirm any visual anomalies.",
+            "Add thermal, irrigation, and historical data to improve confidence.",
+        ]
+    else:
+        high_count = int(selected.get("high_or_above_cells") or 0)
+        mean_risk = selected.get("mean_risk")
+        mean_text = f"{float(mean_risk):.2f}" if isinstance(mean_risk, (float, int)) else "N/A"
+        label = str(selected.get("profile_label") or "selected profile")
+        messages = [
+            f"{high_count} grid cells are high risk or above for {label}.",
+            f"Average final cell risk for the selected layer is {mean_text}.",
+            "Prioritize scouting in red and orange cells, then adjacent yellow cells.",
+            "Thermal, historical pressure, and field evidence can refine this model when available.",
+        ]
+    icons = ["crosshair", "search", "cloud", "leaf"]
+    # `search` is not a custom icon; report_icon will fall back to notes.
+    rendered = []
+    for idx, message in enumerate(messages):
+        rendered.append(
+            f'<div class="alert-item"><span class="alert-symbol">{report_icon(icons[idx], "red")}</span>'
+            f"<span>{safe_html(message)}</span></div>"
+        )
+    return "\n".join(rendered)
+
+
+def _risk_copy(selected: dict[str, Any] | None) -> str:
+    if not selected:
+        return (
+            "Integrated risk map combining vegetation vigor, canopy temperature, weather suitability, "
+            "and historical pressure indicators."
+        )
+    missing = selected.get("missing_inputs") if isinstance(selected.get("missing_inputs"), list) else []
+    missing_text = ", ".join(str(item).replace("_", " ") for item in missing) if missing else "none"
+    return (
+        "No-input risk score using biological seasonality, weather suitability, NDVI cell anomaly, "
+        f"and available context. Missing inputs renormalized: {missing_text}."
+    )
+
+
 def run_report(
     irrigation_summary: Optional[Dict[str, Any]] = None,
     weather_summary: Optional[Dict[str, Any]] = None,
     pdm_summary: Optional[Dict[str, Any]] = None,
+    disease_risk_summary: Optional[Dict[str, Any]] = None,
 ) -> None:
     print("\n[AgriVision] Generating HTML report...")
 
@@ -138,6 +247,7 @@ def run_report(
     grid_overlay_png = cast(Path, resolved["grid_overlay_png"])
     grid_cells_csv = cast(Path, resolved["grid_cells_csv"])
     grid_categories_csv = cast(Path, resolved["grid_categories_csv"])
+    disease_risk_summary_path = cast(Path, resolved["disease_risk_summary"])
 
     output_dir.mkdir(parents=True, exist_ok=True)
 
@@ -159,6 +269,10 @@ def run_report(
 
     generated_at = datetime.now(UTC).strftime("%Y-%m-%d %H:%M UTC")
     report_quality = _quality_summary(ndvi_meta, grid_meta)
+    risk_summary = _load_disease_risk_summary(disease_risk_summary, disease_risk_summary_path)
+    selected_risk = _selected_risk_layer(risk_summary)
+    risk_overlay_png = Path(str(selected_risk.get("overlay_png"))) if selected_risk and selected_risk.get("overlay_png") else grid_overlay_png
+    risk_title = str(selected_risk.get("profile_label") or "Risk Index") if selected_risk else "Risk Index"
 
     artifacts_list_html = "\n".join(
         [
@@ -169,6 +283,7 @@ def run_report(
             render_artifact_link("Grid Categories (CSV)", grid_categories_csv, output_dir),
             render_artifact_link("Index Run Metadata (JSON)", ndvi_meta_path, output_dir),
             render_artifact_link("Grid Run Metadata (JSON)", grid_meta_path, output_dir),
+            render_artifact_link("Disease Risk Summary (JSON)", disease_risk_summary_path, output_dir),
         ]
     )
 
@@ -188,10 +303,14 @@ def run_report(
             else render_pending_image("Thermal orthomosaic")
         ),
         grid_meta_html=grid_meta_html,
-        grid_overlay_html=render_image_if_exists("Grid Overlay", grid_overlay_png, output_dir),
+        grid_overlay_html=render_image_if_exists(risk_title, risk_overlay_png, output_dir),
         grid_table_html=grid_table_html,
         irrigation_html=irrigation_html,
         pdm_html=pdm_html,
+        risk_title=risk_title,
+        risk_copy=_risk_copy(selected_risk),
+        risk_layers_html=_risk_target_html(risk_summary, selected_risk),
+        risk_alert_html=_risk_alert_html(selected_risk),
     )
 
     report_path.write_text(html_doc, encoding="utf-8")

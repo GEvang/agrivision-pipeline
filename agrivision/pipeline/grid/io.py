@@ -86,6 +86,10 @@ def save_cell_table_csv(
         "class",
         "index_name",
         "index_mode",
+        "r0",
+        "r1",
+        "c0",
+        "c1",
     ]
 
     with out_path.open("w", newline="", encoding="utf-8") as f:
@@ -106,6 +110,10 @@ def save_cell_table_csv(
                     "class": cell["class"],
                     "index_name": index_name,
                     "index_mode": index_mode,
+                    "r0": cell["r0"],
+                    "r1": cell["r1"],
+                    "c0": cell["c0"],
+                    "c1": cell["c1"],
                 }
             )
 

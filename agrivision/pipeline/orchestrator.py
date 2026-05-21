@@ -4,6 +4,7 @@ from pathlib import Path
 from typing import Callable
 
 from agrivision.pipeline.io.paths import resolve_pipeline_paths
+from agrivision.pipeline.stages.disease_risk import run_disease_risk
 from agrivision.pipeline.stages.grid import run_grid_report
 from agrivision.pipeline.stages.irrigation_enrichment import run_irrigation_enrichment
 from agrivision.pipeline.stages.odm import run_odm_mapir, run_odm_rgb, run_odm_thermal
@@ -216,13 +217,39 @@ def run_full_pipeline(
         if progress_callback:
             progress_callback('pdm_enrichment', 'Pest & disease enrichment complete', 'completed')
 
+    disease_risk_summary = {'enabled': False, 'notes': ['Disease risk scoring skipped.']}
+    if not skip_grid:
+        if progress_callback:
+            progress_callback('disease_risk', 'Scoring disease risk layers', 'running')
+        try:
+            disease_risk_summary = run_disease_risk(
+                crop=resolved_pdm_crop,
+                weather_summary=weather_summary,
+                irrigation_summary=irrigation_summary,
+            )
+        except Exception as exc:
+            disease_risk_summary = {
+                'enabled': False,
+                'status': 'failed',
+                'error_message': str(exc),
+                'notes': ['Disease risk scoring failed; report will use the standard grid overlay.'],
+            }
+            print(f'[AgriVision] Disease risk scoring failed (continuing pipeline): {exc}')
+        if progress_callback:
+            progress_callback('disease_risk', 'Disease risk scoring complete', 'completed')
+
     if skip_report:
         print('\nStep 5/5: Skipping report generation (--skip-report).')
     else:
         if progress_callback:
             progress_callback('generate_report', 'Generating report', 'running')
         print('\nStep 5/5: Creating report...')
-        run_report(irrigation_summary=irrigation_summary, weather_summary=weather_summary, pdm_summary=pdm_summary)
+        run_report(
+            irrigation_summary=irrigation_summary,
+            weather_summary=weather_summary,
+            pdm_summary=pdm_summary,
+            disease_risk_summary=disease_risk_summary,
+        )
         if progress_callback:
             progress_callback('generate_report', 'Report generated', 'completed')
     print('\n================== Pipeline Complete ==================\n')

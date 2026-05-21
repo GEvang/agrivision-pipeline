@@ -110,6 +110,7 @@ class RunService:
             stages.append(StageStatus(key='irrigation_enrichment', label='Irrigation enrichment'))
         if selected_steps.run_pdm:
             stages.append(StageStatus(key='pdm_enrichment', label='Pest & disease enrichment'))
+        stages.append(StageStatus(key='disease_risk', label='Score disease risk'))
         if selected_steps.generate_report:
             stages.append(StageStatus(key='generate_report', label='Generate report'))
         return stages
@@ -622,6 +623,7 @@ class RunService:
                     'ndvi_tif': project_root / config['paths']['ndvi_output'] / 'ndvi.tif',
                     'ndvi_metadata': project_root / config['paths']['ndvi_output'] / 'metadata.json',
                     'grid_metadata': project_root / config['paths']['ndvi_output'] / 'grid_metadata.json',
+                    'disease_risk_summary': project_root / config['paths']['ndvi_output'] / 'disease_risk' / 'summary.json',
                 }
                 if not self._is_orthophoto_creation_run(record)
                 else {}

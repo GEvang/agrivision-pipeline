@@ -57,6 +57,7 @@ def report_icon(name: str, color: str = "blue", title: str | None = None) -> str
         "location": "Location",
         "notes": "Notes",
         "pest": "Pest pressure",
+        "search": "Inspect",
         "spores": "Disease pressure",
         "sprout": "Growth stage",
         "thermometer": "Temperature",
@@ -74,6 +75,7 @@ def report_icon(name: str, color: str = "blue", title: str | None = None) -> str
         "location": '<path d="M12 21s7-6.1 7-12a7 7 0 0 0-14 0c0 5.9 7 12 7 12Z"/><circle cx="12" cy="9" r="2.5"/>',
         "notes": '<path d="M7 3h7l4 4v14H7Z"/><path d="M14 3v5h5"/><path d="M9 12h6"/><path d="M9 16h6"/>',
         "pest": '<path d="M8 11a4 4 0 0 1 8 0v5a4 4 0 0 1-8 0Z"/><path d="M9 7 7 4"/><path d="m15 7 2-3"/><path d="M5 12h3"/><path d="M16 12h3"/><path d="M5 16h3"/><path d="M16 16h3"/><path d="M12 11v8"/>',
+        "search": '<circle cx="11" cy="11" r="7"/><path d="m16.5 16.5 4 4"/>',
         "spores": '<circle cx="8" cy="8" r="3"/><circle cx="15" cy="7" r="2"/><circle cx="16" cy="15" r="3"/><circle cx="7" cy="16" r="2"/><circle cx="12" cy="12" r="1.5"/>',
         "sprout": '<path d="M12 21V10"/><path d="M12 13C7 13 4 10 4 5c5 0 8 3 8 8Z"/><path d="M12 11c5 0 8-3 8-8-5 0-8 3-8 8Z"/>',
         "thermometer": '<path d="M14 14.8V5a2 2 0 0 0-4 0v9.8a4 4 0 1 0 4 0Z"/><path d="M12 7v8"/>',
@@ -101,6 +103,13 @@ def build_report_html(
     *,
     location_label: str = "Location not set",
     quality: dict[str, str] | None = None,
+    risk_title: str = "Risk Index",
+    risk_copy: str = (
+        "Integrated risk map combining vegetation vigor, canopy temperature, weather suitability, "
+        "and historical pressure indicators."
+    ),
+    risk_layers_html: str | None = None,
+    risk_alert_html: str | None = None,
 ) -> str:
     quality = quality or {}
     quality_state = quality.get("quality_state", "N/A")
@@ -135,6 +144,21 @@ def build_report_html(
     search_icon = report_icon("crosshair", "red", "Inspect")
     rain_icon = report_icon("cloud", "red", "Monitor")
     treatment_icon = report_icon("leaf", "red", "Intervention")
+    if risk_layers_html is None:
+        risk_layers_html = f"""
+            <div class="target"><span class="target-badge" style="background:#6b46c1;">{spores_icon}</span><strong>Powdery Mildew</strong><span class="risk-score">N/A</span></div>
+            <div class="target"><span class="target-badge" style="background:#2f80d0;">{drop_icon}</span><strong>Downy Mildew</strong><span class="risk-score">N/A</span></div>
+            <div class="target"><span class="target-badge" style="background:#8a5a2f;">{rot_icon}</span><strong>Botrytis Bunch Rot</strong><span class="risk-score">N/A</span></div>
+            <div class="target selected"><span class="target-badge" style="background:#f21f18;">{risk_target_icon}</span><strong>Selected Risk Profile</strong><span class="risk-score">N/A</span><span class="target-badge" style="background:#f21f18;">{selected_icon}</span></div>
+            <div class="target"><span class="target-badge" style="background:#22c55e;">{condition_leaf_icon}</span><strong>Vine Mealybug</strong><span class="risk-score">N/A</span></div>
+        """
+    if risk_alert_html is None:
+        risk_alert_html = f"""
+          <div class="alert-item"><span class="alert-symbol">{scout_icon}</span><span>High risk concentrated in central and eastern blocks.</span></div>
+          <div class="alert-item"><span class="alert-symbol">{search_icon}</span><span>Inspect high-risk cells and prioritize scouting.</span></div>
+          <div class="alert-item"><span class="alert-symbol">{rain_icon}</span><span>Monitor conditions and revisit after key weather events.</span></div>
+          <div class="alert-item"><span class="alert-symbol">{treatment_icon}</span><span>Plan targeted intervention in high-risk and adjacent yellow zones.</span></div>
+        """
     return f"""<!DOCTYPE html>
 <html lang="en">
 <head>
@@ -437,7 +461,7 @@ def build_report_html(
     .target-list {{ display: grid; gap: 8px; }}
     .target {{
       display: grid;
-      grid-template-columns: 32px 1fr auto;
+      grid-template-columns: 32px 1fr auto auto;
       align-items: center;
       gap: 8px;
       padding: 7px 8px;
@@ -459,6 +483,11 @@ def build_report_html(
       border-radius: 999px;
       color: white;
       padding: 8px;
+    }}
+    .risk-score {{
+      font-size: 12px;
+      color: var(--muted);
+      font-weight: 900;
     }}
     .conditions {{
       display: grid;
@@ -669,10 +698,9 @@ def build_report_html(
     </aside>
 
     <section class="panel risk-panel">
-      <h2><span class="icon">{risk_icon}</span>Risk Index</h2>
+      <h2><span class="icon">{risk_icon}</span>{safe_html(risk_title)}</h2>
       <p class="risk-copy">
-        Integrated risk map combining vegetation vigor, canopy temperature, weather suitability,
-        and historical pressure indicators.
+        {safe_html(risk_copy)}
       </p>
       <div class="image-block">{grid_overlay_html}</div>
       <div class="legend">
@@ -687,10 +715,7 @@ def build_report_html(
           <h2>Alert Summary</h2>
         </div>
         <div class="alert-list">
-          <div class="alert-item"><span class="alert-symbol">{scout_icon}</span><span>High risk concentrated in central and eastern blocks.</span></div>
-          <div class="alert-item"><span class="alert-symbol">{search_icon}</span><span>Inspect high-risk cells and prioritize scouting.</span></div>
-          <div class="alert-item"><span class="alert-symbol">{rain_icon}</span><span>Monitor conditions and revisit after key weather events.</span></div>
-          <div class="alert-item"><span class="alert-symbol">{treatment_icon}</span><span>Plan targeted intervention in high-risk and adjacent yellow zones.</span></div>
+          {risk_alert_html}
         </div>
       </section>
     </section>
@@ -701,11 +726,7 @@ def build_report_html(
           <h3><span class="icon">{layers_icon}</span>Available Analysis Layers / Targets</h3>
           <p class="image-note">AgriVision ADS can generate disease or pest-specific layers to support decision-making and risk management.</p>
           <div class="target-list">
-            <div class="target"><span class="target-badge" style="background:#6b46c1;">{spores_icon}</span><strong>Powdery Mildew</strong></div>
-            <div class="target"><span class="target-badge" style="background:#2f80d0;">{drop_icon}</span><strong>Downy Mildew</strong></div>
-            <div class="target"><span class="target-badge" style="background:#8a5a2f;">{rot_icon}</span><strong>Botrytis Bunch Rot</strong></div>
-            <div class="target selected"><span class="target-badge" style="background:#f21f18;">{risk_target_icon}</span><strong>Selected Risk Profile</strong><span class="target-badge" style="background:#f21f18;">{selected_icon}</span></div>
-            <div class="target"><span class="target-badge" style="background:#22c55e;">{condition_leaf_icon}</span><strong>Vine Mealybug</strong></div>
+            {risk_layers_html}
           </div>
         </section>
 
