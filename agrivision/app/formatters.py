@@ -45,6 +45,4 @@ def step_summary(run) -> str:
         'Irrigation' if selected.run_irrigation else 'No irrigation',
         'PDM' if selected.run_pdm else 'No PDM',
     ]
-    if selected.resize_images:
-        parts.insert(0, 'Resize')
     return ' / '.join(parts)

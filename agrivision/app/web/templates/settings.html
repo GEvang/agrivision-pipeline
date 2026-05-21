@@ -48,9 +48,9 @@
     <div class="settings-group">
       <h3>Processing</h3>
       <div class="inline-fields">
-        <label>Resize max long edge<input type="number" name="resize_max_long_edge" value="{{ non_secret.resize_max_long_edge }}" /></label>
         <label>Orthophoto resolution (cm)<input type="number" name="orthophoto_resolution_cm" value="{{ non_secret.orthophoto_resolution_cm }}" /></label>
       </div>
+      <p class="muted">ODM uses full-resolution images. The legacy resize utility remains in the codebase but is not used by dashboard runs.</p>
     </div>
 
     <button type="submit">Save settings</button>

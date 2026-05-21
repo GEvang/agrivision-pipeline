@@ -6,10 +6,9 @@ from typing import Callable
 from agrivision.pipeline.io.paths import resolve_pipeline_paths
 from agrivision.pipeline.stages.grid import run_grid_report
 from agrivision.pipeline.stages.irrigation_enrichment import run_irrigation_enrichment
-from agrivision.pipeline.stages.odm import run_odm_mapir, run_odm_rgb
+from agrivision.pipeline.stages.odm import run_odm_mapir, run_odm_rgb, run_odm_thermal
 from agrivision.pipeline.stages.pdm_enrichment import run_pdm_enrichment
 from agrivision.pipeline.stages.report import run_report
-from agrivision.pipeline.stages.resize import run_resize
 from agrivision.pipeline.stages.vegetation_index import run_ndvi
 from agrivision.pipeline.stages.weather_enrichment import run_weather_enrichment
 from agrivision.pipeline.state import folder_has_images
@@ -28,6 +27,7 @@ def run_full_pipeline(
     skip_odm: bool = False,
     skip_odm_rgb: bool = False,
     skip_odm_mapir: bool = False,
+    skip_odm_thermal: bool = False,
     skip_ndvi: bool = False,
     skip_grid: bool = False,
     skip_weather: bool = False,
@@ -45,6 +45,7 @@ def run_full_pipeline(
     print(f"  skip_odm        = {skip_odm}")
     print(f"  skip_odm_rgb    = {skip_odm_rgb}")
     print(f"  skip_odm_mapir  = {skip_odm_mapir}")
+    print(f"  skip_odm_thermal= {skip_odm_thermal}")
     print(f"  skip_ndvi       = {skip_ndvi}")
     print(f"  skip_grid       = {skip_grid}")
     print(f"  skip_weather    = {skip_weather}")
@@ -57,25 +58,24 @@ def run_full_pipeline(
     config = resolved['config']
     ortho_rgb = resolved['ortho_rgb']
     ortho_mapir = resolved['ortho_mapir']
+    ortho_thermal = resolved.get('ortho_thermal')
     ndvi_tif = resolved['ndvi_output'] / 'ndvi.tif'
-    images_full_mapir = resolved['images_full_mapir']
-    images_resized_mapir = resolved['images_resized_mapir']
+    images_full_rgb = resolved.get('images_full_rgb')
+    images_full_mapir = resolved.get('images_full_mapir')
+    images_full_thermal = resolved.get('images_full_thermal')
     output_root = resolved['output_root']
 
     if run_resize_step:
+        print('Step 1/5: Resize requested but disabled. Using full-resolution images.')
         if progress_callback:
-            progress_callback('resize_images', 'Resizing images', 'running')
-        print('Step 1/5: Resizing images...')
-        run_resize()
-        if progress_callback:
-            progress_callback('resize_images', 'Images resized', 'completed')
+            progress_callback('resize_images', 'Resize disabled; full-resolution images will be used', 'completed')
     else:
-        print('Step 1/5: Skipping resize (no --run-resize flag).')
-        print('          ODM will auto-select full vs resized images.')
+        print('Step 1/5: Resize disabled. ODM will use full-resolution images.')
 
     if skip_odm:
         skip_odm_rgb = True
         skip_odm_mapir = True
+        skip_odm_thermal = True
         print('\nStep 2/5: Skipping ODM (--skip-odm).')
 
     if skip_odm_rgb:
@@ -85,17 +85,22 @@ def run_full_pipeline(
         else:
             print(f'[ODM-RGB] No existing RGB orthophoto found at: {ortho_rgb}')
     else:
-        if progress_callback:
-            progress_callback('run_odm_rgb', 'Running ODM for RGB images', 'running')
-        print('\n[ODM-RGB] Running RGB ODM...')
-        run_odm_rgb(ortho_resolution_cm=orthophoto_resolution_cm)
-        if progress_callback:
-            progress_callback('run_odm_rgb', 'RGB orthophoto complete', 'completed')
+        if isinstance(images_full_rgb, Path) and folder_has_images(images_full_rgb):
+            if progress_callback:
+                progress_callback('run_odm_rgb', 'Running ODM for RGB images', 'running')
+            print('\n[ODM-RGB] Running RGB ODM...')
+            run_odm_rgb(ortho_resolution_cm=orthophoto_resolution_cm)
+            if progress_callback:
+                progress_callback('run_odm_rgb', 'RGB orthophoto complete', 'completed')
+        else:
+            print('\n[ODM-RGB] No RGB images found. Skipping RGB ODM.')
+            if progress_callback:
+                progress_callback('run_odm_rgb', 'No RGB images found', 'completed')
 
     if skip_odm_mapir:
         print('\n[ODM-MAPIR] Skipping MAPIR ODM (skip flag active).')
     else:
-        if folder_has_images(images_full_mapir) or folder_has_images(images_resized_mapir):
+        if isinstance(images_full_mapir, Path) and folder_has_images(images_full_mapir):
             if progress_callback:
                 progress_callback('run_odm_mapir', 'Running ODM for MAPIR images', 'running')
             print('\n[ODM-MAPIR] MAPIR images detected – running MAPIR ODM...')
@@ -106,6 +111,23 @@ def run_full_pipeline(
             print('\n[ODM-MAPIR] No MAPIR images found. Skipping MAPIR ODM.')
             if progress_callback:
                 progress_callback('run_odm_mapir', 'No MAPIR images found', 'completed')
+
+    if skip_odm_thermal:
+        print('\n[ODM-THERMAL] Skipping thermal ODM (skip flag active).')
+        if isinstance(ortho_thermal, Path) and _orthophoto_exists(ortho_thermal):
+            print(f'[ODM-THERMAL] Reusing existing thermal orthophoto: {ortho_thermal}')
+    else:
+        if isinstance(images_full_thermal, Path) and folder_has_images(images_full_thermal):
+            if progress_callback:
+                progress_callback('run_odm_thermal', 'Running ODM for thermal images', 'running')
+            print('\n[ODM-THERMAL] Thermal images detected - running thermal ODM...')
+            run_odm_thermal(ortho_resolution_cm=orthophoto_resolution_cm)
+            if progress_callback:
+                progress_callback('run_odm_thermal', 'Thermal orthophoto complete', 'completed')
+        else:
+            print('\n[ODM-THERMAL] No thermal images found. Skipping thermal ODM.')
+            if progress_callback:
+                progress_callback('run_odm_thermal', 'No thermal images found', 'completed')
 
     if skip_ndvi:
         print('\nStep 3/5: Skipping NDVI (--skip-ndvi).')

@@ -64,6 +64,7 @@ class RunService:
                 'orthophoto_preset': request.parameters.orthophoto_preset,
                 'orthophoto_resolution_cm': request.parameters.orthophoto_resolution_cm,
                 'source_orthophoto_run_id': request.parameters.source_orthophoto_run_id,
+                'camera_targets': request.parameters.camera_targets,
                 'pdm_crop': request.parameters.pdm_crop,
                 'pdm_model_key': request.parameters.pdm_model_key,
             },
@@ -91,12 +92,11 @@ class RunService:
 
     def _build_stages(self, selected_steps) -> list[StageStatus]:
         stages = [StageStatus(key='stage_inputs', label='Stage inputs')]
-        if selected_steps.resize_images:
-            stages.append(StageStatus(key='resize_images', label='Resize images'))
         if selected_steps.run_odm:
             stages.extend([
                 StageStatus(key='run_odm_rgb', label='Run ODM RGB'),
                 StageStatus(key='run_odm_mapir', label='Run ODM MAPIR'),
+                StageStatus(key='run_odm_thermal', label='Run ODM thermal'),
             ])
         if self._is_orthophoto_creation_run(selected_steps):
             return stages
@@ -329,6 +329,8 @@ class RunService:
         upload_dir = Path(record.input_path)
         target_rgb = project_root / config['paths']['images_full']
         target_mapir = project_root / config['paths']['images_full_mapir']
+        target_thermal = project_root / config['paths'].get('images_full_thermal', 'data/images_full/thermal')
+        camera_targets = set(record.parameters.get('camera_targets') or ['rgb', 'mapir'])
 
         def _reset_target(target_dir: Path) -> None:
             target_dir.mkdir(parents=True, exist_ok=True)
@@ -345,19 +347,35 @@ class RunService:
 
         _reset_target(target_rgb)
         _reset_target(target_mapir)
-        _copy_inputs(upload_dir / 'rgb', target_rgb)
-        _copy_inputs(upload_dir / 'mapir', target_mapir)
+        _reset_target(target_thermal)
+        if 'rgb' in camera_targets:
+            _copy_inputs(upload_dir / 'rgb', target_rgb)
+        if 'mapir' in camera_targets:
+            _copy_inputs(upload_dir / 'mapir', target_mapir)
+        if 'thermal' in camera_targets:
+            _copy_inputs(upload_dir / 'thermal', target_thermal)
 
     def stage_saved_orthophotos_for_run(self, source_run_id: str) -> None:
         source = self.load_run(source_run_id)
+        source_upload_id = Path(source.input_path).name
         config = load_config()
         project_root = get_project_root()
+        paths = config['paths']
         targets = {
             'orthophoto_rgb': project_root / config['paths']['odm_project_root_rgb'] / 'project' / 'odm_orthophoto' / 'odm_orthophoto.tif',
             'orthophoto_mapir': project_root / config['paths']['odm_project_root_mapir'] / 'project' / 'odm_orthophoto' / 'odm_orthophoto.tif',
         }
+        if paths.get('odm_project_root_thermal'):
+            targets['orthophoto_thermal'] = project_root / paths['odm_project_root_thermal'] / 'project' / 'odm_orthophoto' / 'odm_orthophoto.tif'
+        outputs_by_key: dict[str, str] = {}
+        for run in self.list_runs():
+            if Path(run.input_path).name != source_upload_id or run.status != 'completed':
+                continue
+            for key in targets:
+                if key in run.outputs and key not in outputs_by_key:
+                    outputs_by_key[key] = run.outputs[key]
         for key, target in targets.items():
-            source_path = source.outputs.get(key)
+            source_path = outputs_by_key.get(key)
             if not source_path:
                 continue
             source_file = Path(source_path)
@@ -380,7 +398,7 @@ class RunService:
         saved_outputs = {
             key: value
             for key, value in latest_run.outputs.items()
-            if key in {'orthophoto_rgb', 'orthophoto_mapir'}
+            if key in {'orthophoto_rgb', 'orthophoto_mapir', 'orthophoto_thermal'}
             and value
             and Path(value).exists()
             and 'orthophotos' in Path(value).parts
@@ -458,7 +476,7 @@ class RunService:
             raise RunCancelled('Run stopped by operator.')
 
     def _stop_odm_containers(self) -> None:
-        for container_name in ('agrivision-odm-rgb', 'agrivision-odm-mapir'):
+        for container_name in ('agrivision-odm-rgb', 'agrivision-odm-mapir', 'agrivision-odm-thermal'):
             with contextlib.suppress(FileNotFoundError):
                 subprocess.run(
                     ['docker', 'stop', container_name],
@@ -474,7 +492,7 @@ class RunService:
         log_path = Path(record.logs_path)
         try:
             self._raise_if_cancelled(run_id)
-            self.update_stage(run_id, 'stage_inputs', 'running', 'Staging MAPIR and RGB inputs')
+            self.update_stage(run_id, 'stage_inputs', 'running', 'Staging camera inputs')
             self.stage_inputs_for_run(run_id)
             source_orthophoto_run_id = record.parameters.get('source_orthophoto_run_id')
             if source_orthophoto_run_id and not record.selected_steps.run_odm:
@@ -484,6 +502,7 @@ class RunService:
 
             selected = record.selected_steps
             orthophoto_creation_only = self._is_orthophoto_creation_run(record)
+            camera_targets = set(record.parameters.get('camera_targets') or ['rgb', 'mapir'])
             def callback(stage_key: str, message: str, state: str = 'running') -> None:
                 self._raise_if_cancelled(run_id)
                 self.update_stage(run_id, stage_key, state, message)
@@ -491,8 +510,11 @@ class RunService:
             with log_path.open('a', encoding='utf-8') as log_handle:
                 with contextlib.redirect_stdout(log_handle), contextlib.redirect_stderr(log_handle):
                     run_full_pipeline(
-                        run_resize_step=selected.resize_images,
+                        run_resize_step=False,
                         skip_odm=not selected.run_odm,
+                        skip_odm_rgb='rgb' not in camera_targets,
+                        skip_odm_mapir='mapir' not in camera_targets,
+                        skip_odm_thermal='thermal' not in camera_targets,
                         skip_ndvi=orthophoto_creation_only,
                         skip_grid=orthophoto_creation_only,
                         skip_weather=not selected.fetch_weather,
@@ -589,6 +611,7 @@ class RunService:
         project_root = self.storage.layout.project_root
         record = RunRecord.model_validate(self.storage.read_json(run_dir / 'status.json'))
         selected = record.selected_steps
+        camera_targets = set(record.parameters.get('camera_targets') or ['rgb', 'mapir'])
         report_candidates = [
             project_root / config['paths']['output_root'] / 'report_latest.html',
             project_root / config['paths']['output_root'] / 'report' / 'index.html',
@@ -605,8 +628,27 @@ class RunService:
             ),
             **(
                 {
-                    'orthophoto_rgb': project_root / config['paths']['odm_project_root_rgb'] / 'project' / 'odm_orthophoto' / 'odm_orthophoto.tif',
-                    'orthophoto_mapir': project_root / config['paths']['odm_project_root_mapir'] / 'project' / 'odm_orthophoto' / 'odm_orthophoto.tif',
+                    **(
+                        {
+                            'orthophoto_rgb': project_root / config['paths']['odm_project_root_rgb'] / 'project' / 'odm_orthophoto' / 'odm_orthophoto.tif',
+                        }
+                        if 'rgb' in camera_targets
+                        else {}
+                    ),
+                    **(
+                        {
+                            'orthophoto_mapir': project_root / config['paths']['odm_project_root_mapir'] / 'project' / 'odm_orthophoto' / 'odm_orthophoto.tif',
+                        }
+                        if 'mapir' in camera_targets
+                        else {}
+                    ),
+                    **(
+                        {
+                            'orthophoto_thermal': project_root / config['paths'].get('odm_project_root_thermal', 'data/odm_project_thermal') / 'project' / 'odm_orthophoto' / 'odm_orthophoto.tif',
+                        }
+                        if 'thermal' in camera_targets
+                        else {}
+                    ),
                 }
                 if selected.run_odm
                 else {}
@@ -620,6 +662,8 @@ class RunService:
                 outputs[name] = str(self._persist_output_for_run(record, path, 'orthophoto_rgb.tif'))
             elif name == 'orthophoto_mapir':
                 outputs[name] = str(self._persist_output_for_run(record, path, 'orthophoto_mapir.tif'))
+            elif name == 'orthophoto_thermal':
+                outputs[name] = str(self._persist_output_for_run(record, path, 'orthophoto_thermal.tif'))
             else:
                 outputs[name] = str(path)
         report_path = next((path for path in report_candidates if path.exists()), None)

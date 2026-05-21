@@ -60,10 +60,13 @@ DEFAULT_CONFIG: dict[str, Any] = {
         "odm_project_root": "data/odm_project_rgb",
         "odm_project_root_rgb": "data/odm_project_rgb",
         "odm_project_root_mapir": "data/odm_project_mapir",
+        "odm_project_root_thermal": "data/odm_project_thermal",
         "ndvi_output": "output/ndvi",
         "runs_output": "output/runs",
         "images_full_mapir": "data/images_full/mapir",
         "images_resized_mapir": "data/images_resized/mapir",
+        "images_full_thermal": "data/images_full/thermal",
+        "images_resized_thermal": "data/images_resized/thermal",
     },
     "resize": {
         "max_long_edge": 3000,
@@ -170,10 +173,13 @@ class PathsSettings:
     odm_project_root: str
     odm_project_root_rgb: str
     odm_project_root_mapir: str
+    odm_project_root_thermal: str
     ndvi_output: str
     runs_output: str
     images_full_mapir: str
     images_resized_mapir: str
+    images_full_thermal: str
+    images_resized_thermal: str
 
 
 @dataclass(frozen=True)
@@ -514,6 +520,10 @@ def get_settings() -> AppSettings:
                 paths_cfg.get("odm_project_root_mapir"),
                 _as_str(paths_defaults.get("odm_project_root_mapir")),
             ),
+            odm_project_root_thermal=_as_str(
+                paths_cfg.get("odm_project_root_thermal"),
+                _as_str(paths_defaults.get("odm_project_root_thermal")),
+            ),
             ndvi_output=_as_str(paths_cfg.get("ndvi_output"), _as_str(paths_defaults.get("ndvi_output"))),
             runs_output=_as_str(paths_cfg.get("runs_output"), _as_str(paths_defaults.get("runs_output"))),
             images_full_mapir=_as_str(
@@ -523,6 +533,14 @@ def get_settings() -> AppSettings:
             images_resized_mapir=_as_str(
                 paths_cfg.get("images_resized_mapir"),
                 _as_str(paths_defaults.get("images_resized_mapir")),
+            ),
+            images_full_thermal=_as_str(
+                paths_cfg.get("images_full_thermal"),
+                _as_str(paths_defaults.get("images_full_thermal")),
+            ),
+            images_resized_thermal=_as_str(
+                paths_cfg.get("images_resized_thermal"),
+                _as_str(paths_defaults.get("images_resized_thermal")),
             ),
         ),
         weather=WeatherSettings(

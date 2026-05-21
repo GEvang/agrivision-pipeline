@@ -136,6 +136,7 @@ class RunExportService:
             ('ndvi_tif', 'rasters/vegetation_index.tif'),
             ('orthophoto_rgb', 'rasters/orthophoto_rgb.tif'),
             ('orthophoto_mapir', 'rasters/orthophoto_mapir.tif'),
+            ('orthophoto_thermal', 'rasters/orthophoto_thermal.tif'),
         ):
             value = run.outputs.get(key)
             if value:

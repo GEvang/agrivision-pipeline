@@ -17,14 +17,14 @@ ORTHOPHOTO_PRESETS = [
         'key': 'preview',
         'label': 'Preview',
         'resolution_cm': 8,
-        'reduce_images': True,
-        'description': 'Fastest run for checking image coverage.',
+        'reduce_images': False,
+        'description': 'Lowest orthophoto detail for checking image coverage.',
     },
     {
         'key': 'balanced',
         'label': 'Balanced (recommended)',
         'resolution_cm': 3,
-        'reduce_images': True,
+        'reduce_images': False,
         'description': 'Good default for dashboard analysis and normal field reports.',
     },
     {
@@ -52,33 +52,53 @@ def _render_new_run_page(
     form_values: dict[str, object] | None = None,
 ) -> HTMLResponse:
     deps.run_service.ensure_latest_orthophoto_run_saved()
-    orthophoto_runs: list[dict[str, object]] = []
+    orthophoto_runs_by_upload: dict[str, dict[str, object]] = {}
     odm_runs_by_upload: dict[str, list[object]] = {}
     for run in deps.run_service.list_runs():
         upload_id = Path(run.input_path).name
-        if not run.selected_steps.run_odm or run.status != 'completed':
+        if run.status != 'completed':
             continue
         orthophoto_paths = {
             key: value
             for key, value in run.outputs.items()
-            if key in {'orthophoto_rgb', 'orthophoto_mapir'} and value and Path(value).exists()
+            if key in {'orthophoto_rgb', 'orthophoto_mapir', 'orthophoto_thermal'} and value and Path(value).exists()
         }
         if not orthophoto_paths:
             continue
+        manifest = deps.storage_service.read_json(deps.storage_service.upload_dir(upload_id) / 'manifest.json', default={})
         odm_runs_by_upload.setdefault(upload_id, []).append(run)
-        orthophoto_runs.append(
+        item = orthophoto_runs_by_upload.setdefault(
+            upload_id,
             {
                 'run_id': run.run_id,
                 'upload_run_id': upload_id,
                 'dataset_name': run.dataset_name,
                 'run_name': run.run_name,
                 'created_at': run.created_at,
-                'mapir_ready': 'orthophoto_mapir' in orthophoto_paths,
-                'rgb_ready': 'orthophoto_rgb' in orthophoto_paths,
+                'mapir_ready': False,
+                'rgb_ready': False,
+                'thermal_ready': False,
+                'mapir_uploaded': bool(manifest.get('mapir_files', [])),
+                'rgb_uploaded': bool(manifest.get('rgb_files', [])),
+                'thermal_uploaded': bool(manifest.get('thermal_files', [])),
                 'preset': run.parameters.get('orthophoto_preset') or '-',
                 'resolution_cm': run.parameters.get('orthophoto_resolution_cm') or '-',
-            }
+            },
         )
+        item['rgb_ready'] = bool(item.get('rgb_ready')) or 'orthophoto_rgb' in orthophoto_paths
+        item['mapir_ready'] = bool(item.get('mapir_ready')) or 'orthophoto_mapir' in orthophoto_paths
+        item['thermal_ready'] = bool(item.get('thermal_ready')) or 'orthophoto_thermal' in orthophoto_paths
+        if 'orthophoto_rgb' in orthophoto_paths:
+            item['rgb_run_id'] = run.run_id
+        if 'orthophoto_mapir' in orthophoto_paths:
+            item['mapir_run_id'] = run.run_id
+        if 'orthophoto_thermal' in orthophoto_paths:
+            item['thermal_run_id'] = run.run_id
+        if run.created_at > item['created_at']:  # type: ignore[operator]
+            item['run_id'] = run.run_id
+            item['created_at'] = run.created_at
+
+    orthophoto_runs = sorted(orthophoto_runs_by_upload.values(), key=lambda item: item['created_at'], reverse=True)
 
     uploads: list[dict[str, object]] = []
     for path in sorted(deps.storage_service.layout.uploads_root.iterdir(), reverse=True):
@@ -92,6 +112,7 @@ def _render_new_run_page(
                 'dataset_name': manifest.get('dataset_name') or path.name,
                 'mapir_count': len(manifest.get('mapir_files', [])),
                 'rgb_count': len(manifest.get('rgb_files', [])),
+                'thermal_count': len(manifest.get('thermal_files', [])),
                 'orthophoto_ready': bool(odm_runs),
                 'orthophoto_run_id': getattr(odm_runs[0], 'run_id', None) if odm_runs else None,
                 'selected': path.name == upload_run_id,

@@ -95,7 +95,7 @@ def test_build_report_html_uses_risk_mapping_layout() -> None:
     assert "Field Analysis and Risk Mapping" in html
     assert "Visible Orthomosaic" in html
     assert "Thermal" in html
-    assert "MAPIR placeholder until thermal imagery is available" in html
+    assert "Thermal layer will appear after thermal imagery is uploaded and processed" in html
     assert "Risk Index" in html
     assert "Detailed Analysis" in html
     assert "Neapolis Field" in html

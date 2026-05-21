@@ -26,11 +26,20 @@ def render_artifact_link(label: str, path: Path, output_dir: Path) -> str:
 
 def render_image_if_exists(title: str, path: Path, output_dir: Path) -> str:
     if not path.exists():
-        return f"<p><em>{safe_html(title)} not found.</em></p>"
+        return render_pending_image(title)
     src = rel_to_report(path, output_dir)
     return f"""
 <h3>{safe_html(title)}</h3>
 <img src="{safe_html(src)}" alt="{safe_html(title)}" style="max-width: 100%; height: auto; border: 1px solid #ddd;" />
+""".strip()
+
+
+def render_pending_image(title: str, message: str = "Pending Image Upload") -> str:
+    return f"""
+<div class="pending-image">
+  <strong>{safe_html(message)}</strong>
+  <span>{safe_html(title)} is not available for this report yet.</span>
+</div>
 """.strip()
 
 
@@ -313,6 +322,20 @@ def build_report_html(
       color: var(--muted);
       font-style: italic;
     }}
+    .pending-image {{
+      min-height: 170px;
+      display: grid;
+      place-items: center;
+      gap: 6px;
+      text-align: center;
+      border: 1px dashed #fca5a5;
+      border-radius: 10px;
+      background: #fff7f7;
+      color: #991b1b;
+      padding: 18px;
+    }}
+    .pending-image strong {{ font-size: 17px; }}
+    .pending-image span {{ color: #7f1d1d; font-size: 13px; }}
     .risk-copy {{
       color: #13204a;
       margin: -4px 0 12px;
@@ -641,7 +664,7 @@ def build_report_html(
         <div class="image-block">{thermal_image_html}</div>
         <div class="bar thermal-bar"></div>
         <div class="bar-labels"><span>Cold</span><span>Hot</span></div>
-        <div class="image-note">MAPIR placeholder until thermal imagery is available</div>
+        <div class="image-note">Thermal layer will appear after thermal imagery is uploaded and processed</div>
       </section>
     </aside>
 

@@ -67,6 +67,104 @@ Fix local startup problems before adding Cloudflare. The tunnel should only expo
 
 ## Cloudflare Tunnel
 
+Cloudflare Tunnel is the recommended way to expose a Windows-hosted dashboard because it uses outbound connections from the host to Cloudflare. Do not open inbound router ports for the dashboard.
+
+First prove the app works locally:
+
+```powershell
+docker compose ps agrivision
+Invoke-WebRequest -Uri http://localhost:8008 -UseBasicParsing
+```
+
+Only continue when `http://localhost:8008` returns the dashboard.
+
+### Temporary quick tunnel
+
+Use a quick tunnel for demos or first validation before buying or configuring a domain:
+
+```powershell
+docker run --rm cloudflare/cloudflared:latest tunnel --url http://host.docker.internal:8008
+```
+
+Cloudflare prints a temporary URL similar to:
+
+```text
+https://random-words.trycloudflare.com
+```
+
+Open that URL and confirm the AgriVision dashboard loads. This URL is public while the command is running. It is temporary, has no uptime guarantee, and should not be used as the production URL.
+
+If running the quick tunnel in detached mode:
+
+```powershell
+docker run -d --name agrivision-quick-tunnel cloudflare/cloudflared:latest tunnel --no-autoupdate --url http://host.docker.internal:8008
+docker logs agrivision-quick-tunnel
+```
+
+Stop it when testing is complete:
+
+```powershell
+docker rm -f agrivision-quick-tunnel
+```
+
+### Permanent named tunnel
+
+For a stable farmer-facing URL, the organization needs a real registered domain that is active in Cloudflare DNS. A Zero Trust tunnel route alone is not enough; the hostname must resolve publicly.
+
+If the organization does not yet have a domain, either buy/register one or keep using a temporary quick tunnel for demos.
+
+After the domain is registered and added to Cloudflare, create a named tunnel in the Cloudflare Zero Trust dashboard:
+
+- **Zero Trust > Networks > Tunnels**
+- Create a tunnel, for example `agrivision-windows-pc`
+- Choose Docker or `cloudflared` as the connector
+- Run the connector command on the Windows host
+
+For a Docker connector, Cloudflare provides a token command similar to:
+
+```powershell
+docker run cloudflare/cloudflared:latest tunnel --no-autoupdate run --token <TOKEN>
+```
+
+The connector must remain running for the public URL to work. Verify it locally:
+
+```powershell
+docker ps --filter "ancestor=cloudflare/cloudflared:latest"
+```
+
+Add a published application route:
+
+```text
+Subdomain: agrivision
+Domain: example.com
+Path: empty, or ^/.* if the UI requires a value
+Type: HTTP
+URL: host.docker.internal:8008
+```
+
+The resulting public URL is:
+
+```text
+https://agrivision.example.com
+```
+
+If `cloudflared` is installed directly as a Windows service instead of running inside Docker, use `localhost:8008` as the service URL. If `cloudflared` runs inside Docker, use `host.docker.internal:8008`.
+
+If the hostname returns Cloudflare 404, check that:
+
+- the domain is registered and active in Cloudflare
+- DNS has a CNAME for the subdomain pointing to `<tunnel-id>.cfargotunnel.com`
+- the published route path is empty or `^/.*`
+- the connector status is healthy
+
+If the public URL returns FastAPI `{"detail":"Not Found"}`, the tunnel is reaching the app but forwarding an unexpected path. Open the root URL with a trailing slash:
+
+```text
+https://agrivision.example.com/
+```
+
+### CLI-managed tunnel alternative
+
 Install `cloudflared`, then authenticate it:
 
 ```powershell

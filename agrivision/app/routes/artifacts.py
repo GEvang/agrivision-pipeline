@@ -40,6 +40,7 @@ def artifact(run_id: str, artifact_name: str, embedded: bool = False):
         'orthophoto': report.orthophoto_path,
         'orthophoto-rgb': run.outputs.get('orthophoto_rgb'),
         'orthophoto-mapir': run.outputs.get('orthophoto_mapir'),
+        'orthophoto-thermal': run.outputs.get('orthophoto_thermal'),
         'preview': report.preview_path,
         'log': run.logs_path,
     }
