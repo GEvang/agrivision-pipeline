@@ -243,9 +243,9 @@ def update_settings_ui(
     weather_base_url: str = Form(''),
     irrigation_base_url: str = Form(''),
     pdm_base_url: str = Form(''),
-    pdm_enabled_by_default: bool = Form(False),
-    pdm_default_crop: str = Form('grapevine'),
-    pdm_default_model_key: str = Form('grapevine_powdery_mildew_risk_v1'),
+    pdm_enabled_by_default: bool | None = Form(None),
+    pdm_default_crop: str | None = Form(None),
+    pdm_default_model_key: str | None = Form(None),
     resize_max_long_edge: int | None = Form(None),
     orthophoto_resolution_cm: int | None = Form(None),
 ) -> RedirectResponse:

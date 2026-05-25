@@ -656,7 +656,7 @@ class RunService:
                 else {}
             ),
         }
-        outputs = {}
+        outputs = dict(record.outputs)
         for name, path in candidates.items():
             if not path.exists():
                 continue

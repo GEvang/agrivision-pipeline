@@ -12,7 +12,7 @@ from agrivision.services.runtime import (
     summarize_env_changes,
 )
 
-PDM_REPO_URL = "https://github.com/agstack/OpenAgri-PestAndDiseaseManagement.git"
+PDM_REPO_URL = "https://github.com/openagri-eu/OpenAgri-PestAndDiseaseManagement.git"
 
 
 def _service_dir() -> Path:

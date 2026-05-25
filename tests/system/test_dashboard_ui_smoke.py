@@ -2,7 +2,10 @@ from __future__ import annotations
 
 from pathlib import Path
 
+import numpy as np
+import rasterio
 from fastapi.testclient import TestClient
+from rasterio.transform import from_origin
 
 from agrivision.app import api
 from agrivision.app import dependencies as deps
@@ -60,8 +63,10 @@ def test_dashboard_pages_render(tmp_path: Path, monkeypatch) -> None:
     assert 'Operations' not in dashboard.text
     new_run = client.get('/runs/new', headers={'accept': 'text/html'})
     assert new_run.status_code == 200
+    assert 'Orthophoto Intake' in new_run.text
+    assert 'Save / Generate Orthophotos' in new_run.text
     assert 'Balanced (recommended)' in new_run.text
-    assert 'Saved orthophotos' in new_run.text
+    assert 'Orthophoto Library' in new_run.text
     runs_page = client.get('/runs', headers={'accept': 'text/html'})
     assert runs_page.status_code == 200
     assert 'Reports' in runs_page.text
@@ -86,3 +91,45 @@ def test_dashboard_pages_render(tmp_path: Path, monkeypatch) -> None:
     assert 'Cloudflare setup helper' in settings_page.text
     assert 'Cloudflare Access or equivalent external login is enabled' in settings_page.text
     assert 'Save deployment settings' in settings_page.text
+
+
+def test_merged_orthophoto_form_imports_ready_geotiff(tmp_path: Path, monkeypatch) -> None:
+    storage = StorageService(project_root=tmp_path)
+    run_service = RunService(storage)
+    monkeypatch.setattr(deps, 'storage_service', storage)
+    monkeypatch.setattr(deps, 'run_service', run_service)
+
+    geotiff = tmp_path / 'rgb.tif'
+    with rasterio.open(
+        geotiff,
+        'w',
+        driver='GTiff',
+        width=2,
+        height=2,
+        count=1,
+        dtype='uint8',
+        crs='EPSG:4326',
+        transform=from_origin(23.7, 38.0, 0.0001, 0.0001),
+    ) as dataset:
+        dataset.write(np.ones((1, 2, 2), dtype='uint8'))
+
+    client = TestClient(api.app)
+    with geotiff.open('rb') as handle:
+        response = client.post(
+            '/ui/orthophotos',
+            data={
+                'dataset_name': 'Merged Import',
+                'rgb_source': 'ortho',
+                'mapir_source': 'raw',
+                'thermal_source': 'raw',
+                'orthophoto_preset': 'balanced',
+            },
+            files={'rgb_orthophoto': ('rgb.tif', handle, 'image/tiff')},
+            follow_redirects=False,
+        )
+
+    assert response.status_code == 303
+    run_id = response.headers['location'].rsplit('/', 1)[-1]
+    record = run_service.load_run(run_id)
+    assert record.status == 'completed'
+    assert Path(record.outputs['orthophoto_rgb']).exists()

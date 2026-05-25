@@ -31,3 +31,31 @@ def test_service_status_reports_missing_repos(tmp_path: Path, monkeypatch) -> No
     assert {item['key'] for item in statuses} == {'weather', 'irrigation', 'pdm'}
     assert all(item['state'] == 'missing' for item in statuses)
     assert all(item['repo_exists'] is False for item in statuses)
+
+
+def test_missing_service_repos_reports_only_absent_dirs(tmp_path: Path, monkeypatch) -> None:
+    existing_weather = tmp_path / 'OpenAgri-WeatherService'
+    existing_weather.mkdir()
+
+    class Weather:
+        base_url = 'http://127.0.0.1:8010'
+
+    class Irrigation:
+        base_url = 'http://127.0.0.1:8004'
+        service_dir = 'OpenAgri-IrrigationManagement'
+
+    class Pdm:
+        base_url = 'http://127.0.0.1:8006'
+        service_dir = 'OpenAgri-PestAndDiseaseManagement'
+
+    class Settings:
+        weather = Weather()
+        irrigation = Irrigation()
+        pdm = Pdm()
+
+    monkeypatch.setattr(service_control, 'get_settings', lambda: Settings())
+    monkeypatch.setattr(service_control, 'project_service_dir', lambda name: tmp_path / name)
+
+    missing = service_control.missing_service_repos()
+
+    assert {item['key'] for item in missing} == {'irrigation', 'pdm'}

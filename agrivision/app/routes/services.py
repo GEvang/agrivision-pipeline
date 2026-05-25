@@ -4,6 +4,7 @@ from fastapi import APIRouter, HTTPException
 from fastapi.responses import RedirectResponse
 
 from agrivision.services.service_control import (
+    ensure_missing_services,
     ensure_service,
     restart_service,
     service_statuses,
@@ -20,6 +21,15 @@ def services_page() -> RedirectResponse:
 @router.get('/services/status')
 def services_status() -> list[dict[str, object]]:
     return service_statuses(include_logs=False)
+
+
+@router.post('/ui/services/setup-missing')
+def setup_missing_services_ui() -> RedirectResponse:
+    try:
+        ensure_missing_services(timeout_seconds=90)
+    except Exception as exc:
+        raise HTTPException(status_code=500, detail=str(exc)) from exc
+    return RedirectResponse(url='/', status_code=303)
 
 
 @router.post('/ui/services/{service_key}/start')

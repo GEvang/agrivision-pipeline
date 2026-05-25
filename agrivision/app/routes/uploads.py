@@ -138,26 +138,62 @@ async def create_orthophotos_ui(
     mapir_files: list[UploadFile] = File(default=[]),
     rgb_files: list[UploadFile] = File(default=[]),
     thermal_files: list[UploadFile] = File(default=[]),
+    rgb_orthophoto: UploadFile | None = File(default=None),
+    mapir_orthophoto: UploadFile | None = File(default=None),
+    thermal_orthophoto: UploadFile | None = File(default=None),
+    rgb_source: str = Form('raw'),
+    mapir_source: str = Form('raw'),
+    thermal_source: str = Form('raw'),
     orthophoto_preset: str = Form('balanced'),
     reduce_images: bool | None = Form(None),
 ) -> RedirectResponse:
     preset = ORTHOPHOTO_PRESET_VALUES.get(orthophoto_preset, ORTHOPHOTO_PRESET_VALUES['balanced'])
-    manifest = await upload_images(
-        dataset_name=dataset_name,
-        mapir_files=mapir_files,
-        rgb_files=rgb_files,
-        thermal_files=thermal_files,
-    )
+    source_modes = {
+        'rgb': rgb_source if rgb_source in {'raw', 'ortho'} else 'raw',
+        'mapir': mapir_source if mapir_source in {'raw', 'ortho'} else 'raw',
+        'thermal': thermal_source if thermal_source in {'raw', 'ortho'} else 'raw',
+    }
+    raw_uploads = {
+        'rgb': rgb_files if source_modes['rgb'] == 'raw' else [],
+        'mapir': mapir_files if source_modes['mapir'] == 'raw' else [],
+        'thermal': thermal_files if source_modes['thermal'] == 'raw' else [],
+    }
+    ortho_uploads = {
+        'rgb': rgb_orthophoto if source_modes['rgb'] == 'ortho' else None,
+        'mapir': mapir_orthophoto if source_modes['mapir'] == 'ortho' else None,
+        'thermal': thermal_orthophoto if source_modes['thermal'] == 'ortho' else None,
+    }
+
+    upload_run_id = deps.storage_service.new_run_id()
+    upload_dir = deps.storage_service.upload_dir(upload_run_id)
+    rgb_stored_files, rgb_errors = await _store_images('RGB', raw_uploads['rgb'], upload_dir / 'rgb')
+    mapir_stored_files, mapir_errors = await _store_images('MAPIR', raw_uploads['mapir'], upload_dir / 'mapir')
+    thermal_stored_files, thermal_errors = await _store_images('Thermal', raw_uploads['thermal'], upload_dir / 'thermal')
+    stored = {'rgb': rgb_stored_files, 'mapir': mapir_stored_files, 'thermal': thermal_stored_files}
+    raw_errors = [*rgb_errors, *mapir_errors, *thermal_errors]
+    for kind, files in stored.items():
+        if raw_uploads[kind] and len(files) < deps.MINIMUM_DATASET_IMAGES:
+            raw_errors.append(f'{kind.upper()}: at least {deps.MINIMUM_DATASET_IMAGES} valid images are required.')
+
+    has_raw = any(stored[kind] for kind in CAMERA_KINDS)
+    has_import = any(upload is not None and upload.filename for upload in ortho_uploads.values())
+    if not has_raw and not has_import:
+        raise HTTPException(status_code=400, detail='Choose raw images or a ready orthophoto for at least one camera.')
+    if raw_errors:
+        raise HTTPException(status_code=400, detail=raw_errors)
+
+    manifest = _manifest_payload(upload_run_id, dataset_name, upload_dir, stored)
+    deps.storage_service.write_json(upload_dir / 'manifest.json', manifest.model_dump(mode='json'))
     camera_targets = [
         kind
         for kind in CAMERA_KINDS
-        if len(manifest.get(f'{kind}_files', [])) >= deps.MINIMUM_DATASET_IMAGES
+        if len(getattr(manifest, f'{kind}_files')) >= deps.MINIMUM_DATASET_IMAGES
     ]
     run_request = RunCreateRequest.model_validate(
         {
-            'run_name': f"{manifest['dataset_name']} orthophotos",
-            'dataset_name': manifest['dataset_name'],
-            'upload_run_id': manifest['run_id'],
+            'run_name': f'{manifest.dataset_name} orthophotos',
+            'dataset_name': manifest.dataset_name,
+            'upload_run_id': manifest.run_id,
             'selected_steps': {
                 'resize_images': False,
                 'run_odm': True,
@@ -170,10 +206,51 @@ async def create_orthophotos_ui(
                 'orthophoto_preset': orthophoto_preset,
                 'orthophoto_resolution_cm': preset['resolution_cm'],
                 'camera_targets': camera_targets,
+                'notes': 'Mixed ODM/import orthophoto intake' if has_import and has_raw else None,
             },
         }
     )
     record = deps.run_service.create_run_record(run_request)
+
+    config = load_config()
+    output_dir = (
+        deps.storage_service.layout.project_root
+        / config['paths'].get('runs_output', 'output/runs')
+        / record.run_id
+        / 'orthophotos'
+    )
+    import_errors: list[str] = []
+    imported_outputs: dict[str, str] = {}
+    for camera_kind, upload in ortho_uploads.items():
+        path, camera_errors = await _store_imported_orthophoto(camera_kind, upload, output_dir)
+        import_errors.extend(camera_errors)
+        if path:
+            imported_outputs[ORTHOPHOTO_OUTPUT_KEYS[camera_kind]] = path
+    if import_errors:
+        deps.run_service.update_status(
+            record.run_id,
+            status='failed',
+            errors=import_errors,
+            current_stage='import_orthophotos',
+            stage_message='Imported orthophoto validation failed.',
+        )
+        raise HTTPException(status_code=400, detail=import_errors)
+    if imported_outputs:
+        deps.run_service.update_status(record.run_id, outputs=imported_outputs)
+
+    if not camera_targets:
+        completed = deps.run_service.update_status(
+            record.run_id,
+            status='completed',
+            outputs=imported_outputs,
+            progress_percent=100,
+            current_stage='completed',
+            stage_message='Premade orthophotos imported.',
+            started_at=record.created_at,
+            finished_at=record.created_at,
+        )
+        return RedirectResponse(url=f'/runs/{completed.run_id}', status_code=303)
+
     try:
         result = deps.run_service.start_run(record.run_id)
     except RunStartBlocked as exc:

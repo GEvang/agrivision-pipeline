@@ -9,6 +9,29 @@
   <a class="button-link primary-action" href="/runs/new">Start Processing</a>
 </section>
 
+{% if missing_services %}
+<section class="panel setup-services-panel">
+  <div class="panel-header">
+    <div>
+      <span class="eyebrow">OpenAgri Services</span>
+      <h2>Service Repositories Missing</h2>
+      <p class="muted">Download and start the required companion services before running weather, irrigation, or pest and disease enrichment.</p>
+    </div>
+    <form method="post" action="/ui/services/setup-missing" onsubmit="return confirm('Download and start missing OpenAgri service containers now?');">
+      <button class="primary-action setup-services-button" type="submit">Setup Services</button>
+    </form>
+  </div>
+  <div class="missing-service-list">
+    {% for service in missing_services %}
+    <div>
+      <strong>{{ service.name }}</strong>
+      <span>{{ service.repo_dir }}</span>
+    </div>
+    {% endfor %}
+  </div>
+</section>
+{% endif %}
+
 <section class="metric-grid">
   <div class="metric metric-feature">
     <span class="metric-label">Active runs</span>
@@ -111,7 +134,7 @@
   </section>
 </section>
 
-<section class="panel">
+<section class="panel recent-runs-panel">
   <div class="panel-header">
     <div>
       <span class="eyebrow">History</span>

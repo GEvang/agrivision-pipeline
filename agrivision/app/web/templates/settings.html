@@ -31,28 +31,6 @@
       <label>Pest &amp; Disease base URL<input type="text" name="pdm_base_url" value="{{ non_secret.pdm_base_url }}" /></label>
     </div>
 
-    <div class="settings-group">
-      <h3>Pest &amp; Disease defaults</h3>
-      <label class="toggle-line"><input type="checkbox" name="pdm_enabled_by_default" value="true" {% if non_secret.pdm_enabled_by_default %}checked{% endif %} /> Enable by default</label>
-      <div class="inline-fields">
-        <label>Default crop
-          <select name="pdm_default_crop">
-            <option value="grapevine" {% if non_secret.pdm_default_crop == 'grapevine' %}selected{% endif %}>grapevine</option>
-            <option value="olive" {% if non_secret.pdm_default_crop == 'olive' %}selected{% endif %}>olive</option>
-          </select>
-        </label>
-        <label>Default model key<input type="text" name="pdm_default_model_key" value="{{ non_secret.pdm_default_model_key }}" /></label>
-      </div>
-    </div>
-
-    <div class="settings-group">
-      <h3>Processing</h3>
-      <div class="inline-fields">
-        <label>Orthophoto resolution (cm)<input type="number" name="orthophoto_resolution_cm" value="{{ non_secret.orthophoto_resolution_cm }}" /></label>
-      </div>
-      <p class="muted">ODM uses full-resolution images. The legacy resize utility remains in the codebase but is not used by dashboard runs.</p>
-    </div>
-
     <button type="submit">Save settings</button>
   </form>
 

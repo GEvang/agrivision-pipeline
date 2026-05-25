@@ -229,10 +229,10 @@ def wait_for_any_url(urls: Iterable[str], timeout_seconds: int = 90) -> bool:
     return False
 
 
-def check_first_reachable_url(urls: Sequence[str]) -> bool:
+def check_first_reachable_url(urls: Sequence[str], timeout_seconds: float = 0.3) -> bool:
     for url in urls:
         try:
-            response = requests.get(url, timeout=3)
+            response = requests.get(url, timeout=timeout_seconds)
             if response.status_code < 500:
                 return True
         except requests.RequestException:
@@ -282,7 +282,7 @@ def reconcile_service_runtime(
         compose_up(compose_file, repo_dir, force_recreate=True, build=build_on_recreate)
         restarted = True
     elif not was_reachable:
-        compose_up(compose_file, repo_dir)
+        compose_up(compose_file, repo_dir, build=build_on_recreate)
         started = True
 
     ready = wait_for_any_url(readiness_urls, timeout_seconds=timeout_seconds) if (env_sync.changed or not was_reachable) else True

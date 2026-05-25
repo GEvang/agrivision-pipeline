@@ -44,6 +44,18 @@ ORTHOPHOTO_PRESETS = [
 ]
 
 
+def _artifact_path_exists(value: str) -> bool:
+    path = Path(value)
+    if path.exists():
+        return True
+    normalized = value.replace('\\', '/')
+    marker = '/agrivision-pipeline/'
+    if marker not in normalized:
+        return False
+    relative = normalized.split(marker, 1)[1]
+    return (deps.storage_service.layout.project_root / relative).exists()
+
+
 def _render_new_run_page(
     request: Request,
     *,
@@ -56,12 +68,12 @@ def _render_new_run_page(
     odm_runs_by_upload: dict[str, list[object]] = {}
     for run in deps.run_service.list_runs():
         upload_id = Path(run.input_path).name
-        if run.status != 'completed':
+        if run.status in {'queued', 'running'}:
             continue
         orthophoto_paths = {
             key: value
             for key, value in run.outputs.items()
-            if key in {'orthophoto_rgb', 'orthophoto_mapir', 'orthophoto_thermal'} and value and Path(value).exists()
+            if key in {'orthophoto_rgb', 'orthophoto_mapir', 'orthophoto_thermal'} and value and _artifact_path_exists(value)
         }
         if not orthophoto_paths:
             continue

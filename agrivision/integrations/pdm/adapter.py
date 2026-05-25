@@ -5,7 +5,7 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
 
-from agrivision.config.settings import get_project_root, get_settings
+from agrivision.config.settings import get_project_root, get_settings, load_config
 from agrivision.integrations.pdm.client import (
     PdmClient,
     get_pdm_service_config,
@@ -14,7 +14,7 @@ from agrivision.integrations.pdm.client import (
 from agrivision.services.pdm.bootstrap import bootstrap_pdm_context
 from agrivision.services.pdm.catalog import get_models_for_crop, get_pdm_model
 
-RISK_ORDER = {'low': 1, 'moderate': 2, 'medium': 2, 'high': 3}
+RISK_ORDER = {'low': 1, 'moderate': 2, 'medium': 2, 'high': 3, 'critical': 4}
 
 
 def _artifact_dir() -> Path:
@@ -34,9 +34,17 @@ def _extract_risk_entries(payload: dict[str, Any]) -> list[dict[str, Any]]:
     entries: list[dict[str, Any]] = []
 
     def _append_entry(item: dict[str, Any], parent: dict[str, Any] | None = None) -> None:
-        timestamp = item.get('saref:hasTimestamp') or item.get('timestamp') or item.get('date') or item.get('datetime') or ''
+        timestamp = (
+            item.get('phenomenonTime')
+            or item.get('saref:hasTimestamp')
+            or item.get('timestamp')
+            or item.get('date')
+            or item.get('datetime')
+            or ''
+        )
         risk_level = (
-            item.get('ocsm:hasRiskLevel')
+            item.get('riskClass')
+            or item.get('ocsm:hasRiskLevel')
             or item.get('risk_level')
             or item.get('probability_value')
             or item.get('value')
@@ -51,9 +59,17 @@ def _extract_risk_entries(payload: dict[str, Any]) -> list[dict[str, Any]]:
             {
                 'timestamp': str(timestamp or ''),
                 'risk_level': str(risk_level or ''),
+                'risk_score': item.get('hasSimpleResult') or item.get('risk_score') or item.get('score') or '',
+                'meta': item.get('meta') or '',
                 'model_id': parent.get('@id') or parent.get('id') or item.get('model_id') or '',
                 'eppo_code': parent.get('fsm:eppoCode') or parent.get('eppo_code') or item.get('eppo_code') or '',
-                'description': parent.get('foodie:description') or parent.get('description') or item.get('description') or '',
+                'description': (
+                    parent.get('foodie:description')
+                    or parent.get('description')
+                    or ((parent.get('observedProperty') or {}).get('name') if isinstance(parent.get('observedProperty'), dict) else '')
+                    or item.get('description')
+                    or ''
+                ),
             }
         )
 
@@ -65,7 +81,12 @@ def _extract_risk_entries(payload: dict[str, Any]) -> list[dict[str, Any]]:
         for item in graph:
             if not isinstance(item, dict):
                 continue
-            risks = item.get('ocsm:hasPredictedInfestationRisks') or item.get('ocsm:hasPredictedInfestations') or []
+            risks = (
+                item.get('hasMember')
+                or item.get('ocsm:hasPredictedInfestationRisks')
+                or item.get('ocsm:hasPredictedInfestations')
+                or []
+            )
             if isinstance(risks, list):
                 for risk in risks:
                     if isinstance(risk, dict):
@@ -89,7 +110,10 @@ def _summarize_risks(entries: list[dict[str, Any]], model: dict[str, Any], raw_p
         if raw_text:
             reasons.append(f'Remote response: {raw_text[:200]}')
         return 'Low', reasons, model.get('default_recommendation', 'Maintain routine monitoring.'), {
-            'counts': {'Low': 0, 'Moderate': 0, 'High': 0}, 'latest_timestamp': None, 'highest_timestamp': None
+            'counts': {'Low': 0, 'Moderate': 0, 'High': 0, 'Critical': 0},
+            'latest_timestamp': None,
+            'highest_timestamp': None,
+            'highest_score': None,
         }
     counts: dict[str, int] = {}
     highest = None
@@ -107,9 +131,17 @@ def _summarize_risks(entries: list[dict[str, Any]], model: dict[str, Any], raw_p
             item['risk_level'] = normalized
             highest = item
     risk_level = str(highest.get('risk_level')).title() if highest else None
-    reasons = [f"Remote PDM returned {counts.get('High', 0)} High, {counts.get('Moderate', 0)} Moderate, {counts.get('Low', 0)} Low risk observations."]
+    reasons = [
+        (
+            f"Remote PDM returned {counts.get('Critical', 0)} Critical, "
+            f"{counts.get('High', 0)} High, {counts.get('Moderate', 0)} Moderate, "
+            f"{counts.get('Low', 0)} Low risk observations."
+        )
+    ]
     if highest and highest.get('timestamp'):
         reasons.append(f"Highest remote risk observed at {highest['timestamp']}.")
+    if highest and highest.get('risk_score') not in (None, ''):
+        reasons.append(f"Highest fuzzy risk score: {highest['risk_score']}/100.")
     recommendation = model.get('default_recommendation', 'Maintain routine monitoring.')
     for rule in model.get('risk_rules', []):
         if str(rule.get('label', '')).lower() == str(risk_level or '').lower():
@@ -119,7 +151,135 @@ def _summarize_risks(entries: list[dict[str, Any]], model: dict[str, Any], raw_p
         'counts': counts,
         'latest_timestamp': latest_ts,
         'highest_timestamp': highest.get('timestamp') if highest else None,
+        'highest_score': highest.get('risk_score') if highest else None,
     }
+
+
+def _service_crop_name(model: dict[str, Any], crop: str) -> str:
+    if model.get('fuzzy_crop_name'):
+        return str(model['fuzzy_crop_name'])
+    mapping = {'grapevine': 'Vineyard', 'grape': 'Vineyard', 'olive': 'Olive'}
+    return mapping.get(crop.strip().lower(), crop.strip().title())
+
+
+def _find_crop(crops: list[dict[str, Any]], name: str) -> dict[str, Any] | None:
+    wanted = name.strip().lower()
+    return next((crop for crop in crops if str(crop.get('name', '')).strip().lower() == wanted), None)
+
+
+def _find_threat_model(threat_models: list[dict[str, Any]], model: dict[str, Any]) -> dict[str, Any] | None:
+    aliases = [str(item).lower() for item in model.get('fuzzy_scientific_names', [])]
+    aliases.extend([str(model.get('organism_name', '')).lower(), str(model.get('label', '')).lower()])
+    aliases = [alias for alias in aliases if alias]
+    for threat in threat_models:
+        haystack = ' '.join(
+            str(threat.get(key) or '')
+            for key in ('scientific_name', 'common_name', 'label', 'note')
+        ).lower()
+        if any(alias in haystack for alias in aliases):
+            return threat
+    return None
+
+
+def _location_lat_lon() -> tuple[float, float]:
+    location = load_config().get('location', {})
+    return float(location.get('lat', 0.0)), float(location.get('lon', 0.0))
+
+
+def _ensure_fuzzy_parcel(client: PdmClient, *, model_key: str) -> dict[str, Any]:
+    lat, lon = _location_lat_lon()
+    name = f'agrivision-fuzzy-{model_key}-parcel'
+    for parcel in client.list_parcels():
+        if str(parcel.get('name') or '') == name:
+            return {'parcel': parcel, 'parcel_id': str(parcel.get('id')), 'source': 'existing', 'latitude': lat, 'longitude': lon}
+    try:
+        client.create_parcel_lat_lon(name=name, latitude=lat, longitude=lon)
+    except Exception:
+        # The new PDM service may seed historical weather during parcel creation
+        # and exceed the client timeout even though the parcel is eventually saved.
+        pass
+    for parcel in client.list_parcels():
+        if str(parcel.get('name') or '') == name:
+            return {'parcel': parcel, 'parcel_id': str(parcel.get('id')), 'source': 'created', 'latitude': lat, 'longitude': lon}
+    raise RuntimeError(f'PDM fuzzy parcel {name} could not be created or resolved.')
+
+
+def _collect_fuzzy_snapshot(
+    client: PdmClient,
+    weather_summary: dict[str, Any] | None,
+    base_summary: dict[str, Any],
+    resolved_model: dict[str, Any],
+    resolved_crop: str,
+) -> dict[str, Any]:
+    service_crop_name = _service_crop_name(resolved_model, resolved_crop)
+    crop = _find_crop(client.list_crops(), service_crop_name)
+    if not crop:
+        raise RuntimeError(f'PDM fuzzy crop {service_crop_name!r} is not available.')
+    threat_models = client.list_threat_models(crop_id=str(crop['id']))
+    threat_model = _find_threat_model(threat_models, resolved_model) or (threat_models[0] if threat_models else None)
+    if not threat_model:
+        raise RuntimeError(f'No PDM fuzzy threat models are available for {service_crop_name}.')
+    parcel = _ensure_fuzzy_parcel(client, model_key=resolved_model['key'])
+
+    start = str((weather_summary or {}).get('history_start_date') or '')
+    end = str((weather_summary or {}).get('history_end_date') or '')
+    mode = 'historical' if start and end else 'forecast'
+    try:
+        raw_payload = client.calculate_fuzzy_risk(
+            parcel_id=int(parcel['parcel_id']),
+            threat_model_ids=[str(threat_model['id'])],
+            from_date=start or None,
+            to_date=end or None,
+            mode=mode,
+        )
+    except Exception as exc:
+        raw_payload = client.calculate_fuzzy_risk(
+            parcel_id=int(parcel['parcel_id']),
+            threat_model_ids=[str(threat_model['id'])],
+            mode='forecast',
+        )
+        raw_payload.setdefault('_fallback_reason', str(exc))
+        mode = 'forecast'
+
+    entries = _extract_risk_entries(raw_payload)
+    risk_level, reasons, recommendation, stats = _summarize_risks(entries, resolved_model, raw_payload)
+    base_summary.update(
+        {
+            'status': 'success',
+            'calculation_type': 'fuzzy_risk',
+            'risk_level': risk_level,
+            'risk_score': stats.get('highest_score'),
+            'triggered_conditions': reasons,
+            'recommendation': recommendation,
+            'remote_parcel_id': str(parcel['parcel_id']),
+            'remote_model_id': str(threat_model['id']),
+            'parcel_reference': parcel,
+            'dataset_upload_succeeded': mode == 'historical',
+            'evaluated_from_weather_service': True,
+            'notes': [
+                'Risk level comes from the OpenAgri PDM fuzzy risk engine.',
+                f'PDM crop: {service_crop_name}',
+                f"PDM threat model: {threat_model.get('common_name') or threat_model.get('scientific_name')}",
+                f'Fuzzy risk mode: {mode}',
+            ],
+            'raw_payload': {
+                'crop': crop,
+                'threat_model': threat_model,
+                'remote_result': raw_payload,
+                'risk_entries': entries,
+                'risk_stats': stats,
+            },
+        }
+    )
+    base_summary['time_window'].update(
+        {
+            'remote_latest_timestamp': stats.get('latest_timestamp'),
+            'remote_highest_timestamp': stats.get('highest_timestamp'),
+        }
+    )
+    base_summary['raw_payload_artifact'] = write_pdm_artifact('fuzzy-result', base_summary['raw_payload'])
+    _write_json('summary.json', base_summary)
+    return base_summary
 
 def collect_pdm_snapshot(
     weather_summary: dict[str, Any] | None,
@@ -171,6 +331,13 @@ def collect_pdm_snapshot(
         base_summary['raw_payload_artifact'] = _write_json('summary.json', base_summary)
         return base_summary
 
+    client = PdmClient(get_pdm_service_config())
+    client.login()
+    service = client.probe()
+    base_summary['service_status'] = service
+    if service.get('reachable') and client.supports_fuzzy_risk():
+        return _collect_fuzzy_snapshot(client, weather_summary, base_summary, resolved_model, resolved_crop)
+
     bootstrap = bootstrap_pdm_context(resolved_model['key'], resolved_crop, weather_summary)
     base_summary['service_status'] = bootstrap.get('service', {})
     base_summary['runtime_status'] = bootstrap.get('runtime', {})
@@ -190,8 +357,6 @@ def collect_pdm_snapshot(
         base_summary['raw_payload_artifact'] = _write_json('summary.json', base_summary)
         return base_summary
 
-    client = PdmClient(get_pdm_service_config())
-    client.login()
     raw_payload = client.calculate_risk_index(
         parcel_id=int(base_summary['remote_parcel_id']),
         model_ids=[base_summary['remote_model_id']],

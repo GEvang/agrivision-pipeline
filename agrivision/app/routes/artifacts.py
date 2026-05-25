@@ -12,6 +12,20 @@ from agrivision.config import get_project_root, load_config
 router = APIRouter()
 
 
+def _resolve_artifact_path(value: str) -> Path:
+    path = Path(value)
+    if path.exists():
+        return path
+    normalized = value.replace('\\', '/')
+    marker = '/agrivision-pipeline/'
+    if marker in normalized:
+        relative = normalized.split(marker, 1)[1]
+        candidate = get_project_root() / relative
+        if candidate.exists():
+            return candidate
+    return path
+
+
 def _strip_embedded_report_chrome(html: str) -> str:
     return re.sub(r'<header class="report-appbar">.*?</header>\s*', '', html, count=1, flags=re.DOTALL)
 
@@ -47,7 +61,7 @@ def artifact(run_id: str, artifact_name: str, embedded: bool = False):
     path = options.get(artifact_name)
     if not path:
         raise HTTPException(status_code=404, detail='Artifact not found.')
-    resolved = Path(path)
+    resolved = _resolve_artifact_path(path)
     if not resolved.exists():
         raise HTTPException(status_code=404, detail='Artifact file missing.')
     if artifact_name == 'report':
