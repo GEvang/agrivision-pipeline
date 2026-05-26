@@ -35,7 +35,7 @@
             <p class="muted">For each camera, build a new orthophoto from drone images or use an orthophoto you already have.</p>
           </div>
         </div>
-        <form class="workflow-form" method="post" action="/ui/orthophotos" enctype="multipart/form-data">
+        <form class="workflow-form" method="post" action="/ui/orthophotos" enctype="multipart/form-data" data-async-orthophoto-form data-init-url="/ui/orthophotos/init">
           <div class="form-grid">
             <label>Dataset name<input type="text" name="dataset_name" required /></label>
           </div>
@@ -178,6 +178,91 @@
         });
         syncPanels();
       });
+
+      document.querySelectorAll('[data-async-orthophoto-form]').forEach((form) => {
+        form.addEventListener('submit', async (event) => {
+          if (!window.fetch || !window.FormData || !window.XMLHttpRequest) return;
+          event.preventDefault();
+          const submitButton = form.querySelector('button[type="submit"]');
+          const originalButtonText = submitButton ? submitButton.textContent : '';
+          const formData = new FormData(form);
+          const rawTargets = [];
+          const importTargets = [];
+          ['rgb', 'mapir', 'thermal'].forEach((camera) => {
+            const source = formData.get(`${camera}_source`) || 'raw';
+            const rawFiles = form.querySelector(`input[name="${camera}_files"]`)?.files || [];
+            const orthoFiles = form.querySelector(`input[name="${camera}_orthophoto"]`)?.files || [];
+            if (source === 'raw' && rawFiles.length > 0) rawTargets.push(camera);
+            if (source === 'ortho' && orthoFiles.length > 0) importTargets.push(camera);
+          });
+          if (rawTargets.length === 0 && importTargets.length === 0) {
+            window.alert('Choose images or a ready orthophoto for at least one camera.');
+            return;
+          }
+          if (submitButton) {
+            submitButton.disabled = true;
+            submitButton.textContent = 'Creating run...';
+          }
+          const logWindow = window.open('', '_blank');
+          if (logWindow) {
+            logWindow.document.write('<!doctype html><title>Starting run</title><body style="font-family:Segoe UI,Arial,sans-serif;padding:24px;">Creating run...</body>');
+          }
+          try {
+            const initResponse = await fetch(form.dataset.initUrl, {
+              method: 'POST',
+              headers: { 'content-type': 'application/json', 'accept': 'application/json' },
+              body: JSON.stringify({
+                dataset_name: formData.get('dataset_name') || '',
+                orthophoto_preset: formData.get('orthophoto_preset') || 'balanced',
+                raw_camera_targets: rawTargets,
+                import_camera_targets: importTargets
+              })
+            });
+            const initPayload = await initResponse.json();
+            if (!initResponse.ok) {
+              throw new Error(Array.isArray(initPayload.detail) ? initPayload.detail.join(', ') : initPayload.detail || 'Could not create run.');
+            }
+            if (logWindow) {
+              logWindow.location.href = initPayload.redirect;
+            }
+            if (submitButton) submitButton.textContent = 'Uploading files... 0%';
+            const xhr = new XMLHttpRequest();
+            xhr.open('POST', initPayload.upload_url);
+            xhr.setRequestHeader('accept', 'application/json');
+            xhr.upload.addEventListener('progress', (progressEvent) => {
+              if (!submitButton || !progressEvent.lengthComputable) return;
+              const percent = Math.max(1, Math.min(99, Math.round((progressEvent.loaded / progressEvent.total) * 100)));
+              submitButton.textContent = `Uploading files... ${percent}%`;
+            });
+            xhr.addEventListener('load', () => {
+              if (xhr.status >= 200 && xhr.status < 300) {
+                window.location.href = initPayload.redirect;
+                return;
+              }
+              if (submitButton) {
+                submitButton.disabled = false;
+                submitButton.textContent = originalButtonText;
+              }
+              window.alert('Upload failed. The run page has the failure details.');
+            });
+            xhr.addEventListener('error', () => {
+              if (submitButton) {
+                submitButton.disabled = false;
+                submitButton.textContent = originalButtonText;
+              }
+              window.alert('Upload failed before it reached the dashboard.');
+            });
+            xhr.send(formData);
+          } catch (error) {
+            if (logWindow) logWindow.close();
+            if (submitButton) {
+              submitButton.disabled = false;
+              submitButton.textContent = originalButtonText;
+            }
+            window.alert(error.message || 'Could not start upload.');
+          }
+        });
+      });
     });
   </script>
 
@@ -190,7 +275,7 @@
           <p class="muted">{{ completion_context.dataset_name }}</p>
         </div>
       </div>
-      <form class="workflow-form" method="post" action="/ui/orthophotos/{{ completion_context.run_id }}/complete" enctype="multipart/form-data">
+      <form class="workflow-form" method="post" action="/ui/orthophotos/{{ completion_context.run_id }}/complete" enctype="multipart/form-data" data-async-orthophoto-form data-init-url="/ui/orthophotos/{{ completion_context.run_id }}/complete/init">
         <div class="camera-input-grid">
           {% for camera in completion_context.missing_cameras %}
           <section class="camera-input-card" data-camera-input>

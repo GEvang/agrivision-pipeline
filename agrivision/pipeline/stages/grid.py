@@ -8,6 +8,7 @@ from typing import Optional, cast
 
 import numpy as np
 import rasterio
+from rasterio.enums import Resampling
 
 from agrivision.pipeline.grid.classify import classify_value_absolute, make_grid
 from agrivision.pipeline.grid.io import (
@@ -18,6 +19,91 @@ from agrivision.pipeline.grid.io import (
     save_grid_metadata,
 )
 from agrivision.pipeline.grid.render import save_grid_overlay
+from agrivision.pipeline.stages.vegetation_index import save_png
+
+
+def _save_masked_index_png(arr: np.ndarray, out_png: Path, title: str, out_dir: Path) -> None:
+    max_edge = 1800
+    scale = min(1.0, max_edge / float(max(arr.shape)))
+    if scale < 1.0:
+        row_idx = np.linspace(0, arr.shape[0] - 1, max(1, int(arr.shape[0] * scale))).astype(int)
+        col_idx = np.linspace(0, arr.shape[1] - 1, max(1, int(arr.shape[1] * scale))).astype(int)
+        preview = arr[np.ix_(row_idx, col_idx)]
+    else:
+        preview = arr
+    save_png(preview, out_png, title=title, out_dir=out_dir)
+
+
+def _preview_array(arr: np.ndarray, max_edge: int = 3000) -> np.ndarray:
+    scale = min(1.0, max_edge / float(max(arr.shape)))
+    if scale >= 1.0:
+        return arr
+    row_idx = np.linspace(0, arr.shape[0] - 1, max(1, int(arr.shape[0] * scale))).astype(int)
+    col_idx = np.linspace(0, arr.shape[1] - 1, max(1, int(arr.shape[1] * scale))).astype(int)
+    return arr[np.ix_(row_idx, col_idx)]
+
+
+def _resample_array_to_shape(arr: np.ndarray, shape: tuple[int, int]) -> np.ndarray:
+    row_idx = np.linspace(0, arr.shape[0] - 1, shape[0]).astype(int)
+    col_idx = np.linspace(0, arr.shape[1] - 1, shape[1]).astype(int)
+    return arr[np.ix_(row_idx, col_idx)]
+
+
+def _analysis_mask_from_rgb(rgb_path: Path, shape: tuple[int, int], out_png: Path) -> np.ndarray | None:
+    """Build a pixel-space mask that removes obvious hard surfaces from RGB."""
+    if not rgb_path.exists():
+        return None
+    full_height, full_width = shape
+    scale = min(1.0, 3000 / float(max(shape)))
+    height = max(1, int(full_height * scale))
+    width = max(1, int(full_width * scale))
+    try:
+        with rasterio.open(rgb_path) as src:
+            if src.count < 3:
+                return None
+            rgb = src.read(
+                [1, 2, 3],
+                out_shape=(3, height, width),
+                resampling=Resampling.bilinear,
+            ).astype("float32")
+    except (OSError, rasterio.errors.RasterioError):
+        return None
+
+    red, green, blue = rgb
+    total = red + green + blue
+    finite = np.isfinite(total)
+    brightness = total / 3.0
+    max_channel = np.maximum.reduce([red, green, blue])
+    min_channel = np.minimum.reduce([red, green, blue])
+    saturation = (max_channel - min_channel) / (max_channel + 1e-6)
+    green_ratio = green / (total + 1e-6)
+    red_ratio = red / (total + 1e-6)
+
+    bright_gray_surface = (brightness > 185.0) & (saturation < 0.13)
+    red_roof_surface = (red_ratio > 0.44) & (green_ratio < 0.34)
+    shadow_or_black_surface = brightness < 18.0
+    mask = (
+        finite
+        & (brightness < 235.0)
+        & (saturation > 0.035)
+        & ~bright_gray_surface
+        & ~red_roof_surface
+        & ~shadow_or_black_surface
+    )
+
+    out_png.parent.mkdir(parents=True, exist_ok=True)
+    plt_mask = mask.astype("uint8") * 255
+    import matplotlib.pyplot as plt
+
+    plt.figure(figsize=(8, 8))
+    plt.imshow(plt_mask, cmap="gray", vmin=0, vmax=255)
+    plt.axis("off")
+    plt.tight_layout(pad=0)
+    plt.savefig(out_png, dpi=220, bbox_inches="tight", pad_inches=0)
+    plt.close()
+    print(f"[Grid] Analysis mask saved: {out_png}")
+    print(f"[Grid] Analysis mask retained {float(mask.mean() * 100.0):.1f}% of preview pixels.")
+    return mask
 
 
 def run_grid_report() -> None:
@@ -27,6 +113,7 @@ def run_grid_report() -> None:
     ndvi_meta_json = cast(Path, resolved["ndvi_meta_json"])
     ortho_rgb = cast(Path, resolved["ortho_rgb"])
     grid_png = cast(Path, resolved["grid_png"])
+    analysis_mask_png = cast(Path, resolved["analysis_mask_png"])
     grid_table_csv = cast(Path, resolved["grid_table_csv"])
     grid_categories_csv = cast(Path, resolved["grid_categories_csv"])
     grid_meta_json = cast(Path, resolved["grid_meta_json"])
@@ -53,6 +140,13 @@ def run_grid_report() -> None:
         arr = src.read(1).astype("float32")
 
     arr[~np.isfinite(arr)] = np.nan
+    analysis_arr = arr
+    analysis_mask = _analysis_mask_from_rgb(ortho_rgb, arr.shape, analysis_mask_png)
+    if analysis_mask is not None:
+        analysis_arr = _resample_array_to_shape(arr, analysis_mask.shape)
+        analysis_arr = analysis_arr.copy()
+        analysis_arr[~analysis_mask] = np.nan
+        _save_masked_index_png(analysis_arr, ndvi_tif.with_name("ndvi_color.png"), title=index_name, out_dir=ndvi_tif.parent)
 
     print("[Grid] First pass classification with configured thresholds:")
     print(f"       POOR_MAX={poor_max_cfg}, MEDIUM_MAX={medium_max_cfg}")
@@ -63,7 +157,7 @@ def run_grid_report() -> None:
         return classify_value_absolute(v, poor_max_cfg, medium_max_cfg)
 
     cells, row_edges, col_edges = make_grid(
-        arr,
+        analysis_arr,
         abs_classifier,
         grid_rows,
         grid_cols,
@@ -100,7 +194,7 @@ def run_grid_report() -> None:
             return classify_value_absolute(v, poor_used, medium_used)
 
         cells, row_edges, col_edges = make_grid(
-            arr,
+            analysis_arr,
             dyn_classifier,
             grid_rows,
             grid_cols,
@@ -125,14 +219,14 @@ def run_grid_report() -> None:
             return classify_value_absolute(v, poor_used, medium_used)
 
         cells, row_edges, col_edges = make_grid(
-            arr,
+            analysis_arr,
             dyn_classifier,
             grid_rows,
             grid_cols,
             min_valid_fraction=min_cell_valid_fraction,
         )
 
-    save_grid_overlay(arr, cells, row_edges, col_edges, grid_png, background_path=ortho_rgb)
+    save_grid_overlay(analysis_arr, cells, row_edges, col_edges, grid_png, background_path=ortho_rgb)
     save_cell_table_csv(cells, grid_table_csv, index_name=index_name, index_mode=index_mode)
     save_categories_csv(
         grid_categories_csv,

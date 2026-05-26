@@ -30,6 +30,10 @@ DRIVER_WEIGHTS = {
     "historical_pressure": 0.10,
     "soil_irrigation": 0.10,
 }
+SPATIAL_DRIVER_WEIGHTS = {
+    "ndvi_anomaly": 0.50,
+    "thermal_anomaly": 0.50,
+}
 
 
 def _to_float(value: Any) -> float | None:
@@ -217,6 +221,27 @@ def _score_profile(
     scored: list[dict[str, Any]] = []
     for row in cells:
         cell_id = str(row["cell_id"])
+        if row.get("mean_index") is None:
+            scored.append(
+                {
+                    **row,
+                    "profile_key": profile["key"],
+                    "profile_label": profile["label"],
+                    "seasonality_score": seasonality,
+                    "phenology_score": phenology,
+                    "biological_gate": biological_gate,
+                    "weather_suitability": weather_score,
+                    "ndvi_anomaly": None,
+                    "thermal_anomaly": None,
+                    "historical_pressure": None,
+                    "soil_irrigation": None,
+                    "available_weight": 0.0,
+                    "risk_driver": None,
+                    "final_risk": None,
+                    "risk_category": "no_data",
+                }
+            )
+            continue
         components = {
             "weather": weather_score,
             "ndvi_anomaly": ndvi_scores.get(cell_id),
@@ -224,9 +249,20 @@ def _score_profile(
             "historical_pressure": None,
             "soil_irrigation": soil_irrigation,
         }
-        weighted_sum = sum(DRIVER_WEIGHTS[key] * value for key, value in components.items() if value is not None)
+        spatial_weighted_sum = sum(
+            SPATIAL_DRIVER_WEIGHTS[key] * components[key]
+            for key in SPATIAL_DRIVER_WEIGHTS
+            if components.get(key) is not None
+        )
+        spatial_weight = sum(
+            SPATIAL_DRIVER_WEIGHTS[key]
+            for key in SPATIAL_DRIVER_WEIGHTS
+            if components.get(key) is not None
+        )
+        spatial_signal = spatial_weighted_sum / spatial_weight if spatial_weight else None
+        context_multiplier = 0.25 + (0.75 * weather_score) if weather_score is not None else 0.5
         available_weight = sum(DRIVER_WEIGHTS[key] for key, value in components.items() if value is not None)
-        driver = weighted_sum / available_weight if available_weight else None
+        driver = spatial_signal * context_multiplier if spatial_signal is not None else None
         final = biological_gate * driver if driver is not None else None
         scored.append(
             {
@@ -262,7 +298,12 @@ def _score_profile(
         "mean_risk": float(np.mean(valid_scores)) if valid_scores else None,
         "max_risk": float(np.max(valid_scores)) if valid_scores else None,
         "high_or_above_cells": sum(1 for value in valid_scores if value >= 0.5),
-        "used_inputs": sorted({key for key in DRIVER_WEIGHTS if any(row.get(key) is not None for row in scored)}),
+        "used_inputs": sorted(
+            key
+            for key in DRIVER_WEIGHTS
+            if (key == "weather" and weather_score is not None)
+            or any(row.get(key) is not None for row in scored)
+        ),
         "missing_inputs": ["thermal_anomaly", "historical_pressure"] + ([] if soil_irrigation is not None else ["soil_irrigation"]),
     }
     return scored, summary
@@ -409,9 +450,12 @@ def run_disease_risk_scoring(
         "capture_month_used": month,
         "formula": {
             "biological_gate": "seasonality_score * phenology_score",
-            "risk_driver": DRIVER_WEIGHTS,
-            "missing_inputs": "Weights are renormalized over available inputs.",
-            "final_cell_risk": "biological_gate * normalized_available_risk_driver",
+            "risk_driver": {
+                "spatial_signal": SPATIAL_DRIVER_WEIGHTS,
+                "context_multiplier": "0.25 + (0.75 * weather_suitability)",
+            },
+            "missing_inputs": "Missing inputs are not renormalized; unavailable evidence lowers confidence instead of amplifying available signals.",
+            "final_cell_risk": "biological_gate * spatial_signal * context_multiplier",
         },
         "selected_layer_key": selected.get("profile_key") if selected else None,
         "selected_layer_label": selected.get("profile_label") if selected else None,

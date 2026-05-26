@@ -65,6 +65,7 @@ class RunService:
                 'orthophoto_resolution_cm': request.parameters.orthophoto_resolution_cm,
                 'source_orthophoto_run_id': request.parameters.source_orthophoto_run_id,
                 'camera_targets': request.parameters.camera_targets,
+                'import_camera_targets': request.parameters.import_camera_targets,
                 'pdm_crop': request.parameters.pdm_crop,
                 'pdm_model_key': request.parameters.pdm_model_key,
             },

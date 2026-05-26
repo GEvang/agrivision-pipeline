@@ -6,7 +6,7 @@ from datetime import datetime, timezone
 from pathlib import Path
 
 import rasterio
-from fastapi import APIRouter, File, Form, HTTPException, UploadFile
+from fastapi import APIRouter, Body, File, Form, HTTPException, UploadFile
 from fastapi.responses import RedirectResponse
 from PIL import Image, UnidentifiedImageError
 from rasterio.errors import RasterioIOError
@@ -62,6 +62,67 @@ def _with_upload_validation_stage(record) -> list[StageStatus]:
         ),
         *[StageStatus.model_validate(stage.model_dump()) for stage in record.stages],
     ]
+
+
+def _camera_list(value: object) -> list[str]:
+    if not isinstance(value, list):
+        return []
+    return [str(item) for item in value if str(item) in CAMERA_KINDS]
+
+
+def _create_pending_orthophoto_record(
+    *,
+    dataset_name: str,
+    upload_run_id: str,
+    orthophoto_preset: str,
+    raw_camera_targets: list[str],
+    import_camera_targets: list[str],
+    source_orthophoto_run_id: str | None = None,
+    notes: str | None = None,
+):
+    preset = ORTHOPHOTO_PRESET_VALUES.get(orthophoto_preset, ORTHOPHOTO_PRESET_VALUES['balanced'])
+    has_raw = bool(raw_camera_targets)
+    run_request = RunCreateRequest.model_validate(
+        {
+            'run_name': f'{dataset_name} completed orthophotos' if source_orthophoto_run_id else f'{dataset_name} orthophotos',
+            'dataset_name': dataset_name,
+            'upload_run_id': upload_run_id,
+            'selected_steps': {
+                'resize_images': False,
+                'run_odm': has_raw,
+                'fetch_weather': False,
+                'run_irrigation': False,
+                'run_pdm': False,
+                'generate_report': False,
+            },
+            'parameters': {
+                'orthophoto_preset': orthophoto_preset if has_raw else 'imported',
+                'orthophoto_resolution_cm': preset['resolution_cm'] if has_raw else None,
+                'source_orthophoto_run_id': source_orthophoto_run_id,
+                'camera_targets': raw_camera_targets if has_raw else import_camera_targets,
+                'import_camera_targets': import_camera_targets,
+                'notes': notes,
+            },
+        }
+    )
+    record = deps.run_service.create_run_record(run_request)
+    return deps.run_service.update_status(
+        record.run_id,
+        status='running',
+        current_stage=UPLOAD_VALIDATE_STAGE,
+        stage_message='Waiting for upload',
+        progress_percent=1,
+        started_at=record.created_at,
+        stages=_with_upload_validation_stage(record),
+    )
+
+
+def _pending_upload_response(record) -> dict[str, str]:
+    return {
+        'run_id': record.run_id,
+        'redirect': f'/runs/{record.run_id}',
+        'upload_url': f'/ui/orthophotos/{record.run_id}/files',
+    }
 
 
 async def _store_images(kind: str, uploads: list[UploadFile], target_dir: Path) -> tuple[list[str], list[str]]:
@@ -224,6 +285,50 @@ async def upload_images_ui(
     return RedirectResponse(url=f"/runs/new?upload_run_id={manifest['run_id']}", status_code=303)
 
 
+@router.post('/ui/orthophotos/init')
+async def init_orthophotos_ui(payload: dict = Body(...)) -> dict[str, str]:
+    dataset_name = str(payload.get('dataset_name') or '').strip()
+    if not dataset_name:
+        raise HTTPException(status_code=400, detail='Dataset name is required.')
+    raw_camera_targets = _camera_list(payload.get('raw_camera_targets'))
+    import_camera_targets = _camera_list(payload.get('import_camera_targets'))
+    if not raw_camera_targets and not import_camera_targets:
+        raise HTTPException(status_code=400, detail='Choose raw images or a ready orthophoto for at least one camera.')
+    upload_run_id = deps.storage_service.new_run_id()
+    deps.storage_service.upload_dir(upload_run_id)
+    record = _create_pending_orthophoto_record(
+        dataset_name=dataset_name,
+        upload_run_id=upload_run_id,
+        orthophoto_preset=str(payload.get('orthophoto_preset') or 'balanced'),
+        raw_camera_targets=raw_camera_targets,
+        import_camera_targets=import_camera_targets,
+        notes='Mixed ODM/import orthophoto intake' if raw_camera_targets and import_camera_targets else None,
+    )
+    return _pending_upload_response(record)
+
+
+@router.post('/ui/orthophotos/{run_id}/complete/init')
+async def init_complete_orthophoto_dataset_ui(run_id: str, payload: dict = Body(...)) -> dict[str, str]:
+    source_run = deps.run_service.load_run(run_id)
+    upload_run_id = Path(source_run.input_path).name
+    manifest = deps.storage_service.read_json(deps.storage_service.upload_dir(upload_run_id) / 'manifest.json', default={})
+    dataset_name = str(manifest.get('dataset_name') or source_run.dataset_name)
+    raw_camera_targets = _camera_list(payload.get('raw_camera_targets'))
+    import_camera_targets = _camera_list(payload.get('import_camera_targets'))
+    if not raw_camera_targets and not import_camera_targets:
+        raise HTTPException(status_code=400, detail='Choose images or a ready orthophoto for at least one missing camera.')
+    record = _create_pending_orthophoto_record(
+        dataset_name=dataset_name,
+        upload_run_id=upload_run_id,
+        orthophoto_preset=str(payload.get('orthophoto_preset') or 'balanced'),
+        raw_camera_targets=raw_camera_targets,
+        import_camera_targets=import_camera_targets,
+        source_orthophoto_run_id=run_id,
+        notes='Completed missing orthophotos',
+    )
+    return _pending_upload_response(record)
+
+
 @router.post('/ui/orthophotos')
 async def create_orthophotos_ui(
     dataset_name: str = Form(...),
@@ -284,6 +389,7 @@ async def create_orthophotos_ui(
                 'orthophoto_preset': orthophoto_preset if has_raw else 'imported',
                 'orthophoto_resolution_cm': preset['resolution_cm'] if has_raw else None,
                 'camera_targets': run_camera_targets,
+                'import_camera_targets': import_camera_targets,
                 'notes': 'Mixed ODM/import orthophoto intake' if has_import and has_raw else None,
             },
         }
@@ -493,6 +599,7 @@ async def complete_orthophoto_dataset_ui(
                 'orthophoto_resolution_cm': preset['resolution_cm'] if raw_camera_targets else None,
                 'source_orthophoto_run_id': run_id,
                 'camera_targets': raw_camera_targets if raw_camera_targets else import_camera_targets,
+                'import_camera_targets': import_camera_targets,
                 'notes': 'Completed missing orthophotos',
             },
         }
@@ -680,6 +787,80 @@ def _start_pending_orthophoto_processing(**kwargs) -> None:
         name=f'agrivision-upload-{kwargs["run_id"]}',
     )
     thread.start()
+
+
+@router.post('/ui/orthophotos/{run_id}/files')
+async def upload_pending_orthophoto_files_ui(
+    run_id: str,
+    mapir_files: list[UploadFile] = File(default=[]),
+    rgb_files: list[UploadFile] = File(default=[]),
+    thermal_files: list[UploadFile] = File(default=[]),
+    rgb_orthophoto: UploadFile | None = File(default=None),
+    mapir_orthophoto: UploadFile | None = File(default=None),
+    thermal_orthophoto: UploadFile | None = File(default=None),
+    rgb_source: str = Form('raw'),
+    mapir_source: str = Form('raw'),
+    thermal_source: str = Form('raw'),
+) -> dict[str, str]:
+    record = deps.run_service.load_run(run_id)
+    upload_run_id = Path(record.input_path).name
+    upload_dir = deps.storage_service.upload_dir(upload_run_id)
+    source_run_id = record.parameters.get('source_orthophoto_run_id')
+    source_modes = {
+        'rgb': rgb_source if rgb_source in {'raw', 'ortho'} else 'raw',
+        'mapir': mapir_source if mapir_source in {'raw', 'ortho'} else 'raw',
+        'thermal': thermal_source if thermal_source in {'raw', 'ortho'} else 'raw',
+    }
+    raw_uploads = {
+        'rgb': _selected_uploads(rgb_files) if source_modes['rgb'] == 'raw' else [],
+        'mapir': _selected_uploads(mapir_files) if source_modes['mapir'] == 'raw' else [],
+        'thermal': _selected_uploads(thermal_files) if source_modes['thermal'] == 'raw' else [],
+    }
+    ortho_uploads = {
+        'rgb': rgb_orthophoto if source_modes['rgb'] == 'ortho' else None,
+        'mapir': mapir_orthophoto if source_modes['mapir'] == 'ortho' else None,
+        'thermal': thermal_orthophoto if source_modes['thermal'] == 'ortho' else None,
+    }
+    raw_camera_targets = [kind for kind in CAMERA_KINDS if raw_uploads[kind]]
+    import_camera_targets = [kind for kind in CAMERA_KINDS if _has_upload(ortho_uploads[kind])]
+    if not raw_camera_targets and not import_camera_targets:
+        _fail_pending_orthophoto_run(run_id, ['No files were uploaded.'], 'Upload failed.')
+        raise HTTPException(status_code=400, detail='No files were uploaded.')
+
+    existing = {'rgb': [], 'mapir': [], 'thermal': []}
+    if source_run_id:
+        manifest = deps.storage_service.read_json(upload_dir / 'manifest.json', default={})
+        existing = {
+            'rgb': list(manifest.get('rgb_files', [])),
+            'mapir': list(manifest.get('mapir_files', [])),
+            'thermal': list(manifest.get('thermal_files', [])),
+        }
+
+    deps.run_service.update_status(
+        run_id,
+        status='running',
+        current_stage=UPLOAD_VALIDATE_STAGE,
+        stage_message='Upload received; validating images',
+        progress_percent=max(record.progress_percent, 2),
+    )
+    _log_run_event(run_id, 'Upload received; validating images')
+    pending_root = upload_dir / '.pending' / 'orthophotos' / run_id
+    for camera_kind in raw_camera_targets:
+        await _spool_uploads(raw_uploads[camera_kind], pending_root / 'raw' / camera_kind)
+    for camera_kind in import_camera_targets:
+        upload = ortho_uploads[camera_kind]
+        suffix = Path(upload.filename).suffix.lower() if upload and upload.filename else '.tif'
+        await _spool_imported_orthophoto(upload, pending_root / 'orthos' / f'orthophoto_{camera_kind}{suffix}')
+    _start_pending_orthophoto_processing(
+        run_id=record.run_id,
+        upload_run_id=upload_run_id,
+        dataset_name=record.dataset_name,
+        pending_root=pending_root,
+        raw_camera_targets=raw_camera_targets,
+        import_camera_targets=import_camera_targets,
+        existing_files=existing,
+    )
+    return {'run_id': record.run_id, 'redirect': f'/runs/{record.run_id}'}
 
 
 @router.post('/ui/orthophotos/import')

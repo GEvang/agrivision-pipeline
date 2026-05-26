@@ -80,10 +80,10 @@ DEFAULT_CONFIG: dict[str, Any] = {
         "grid_rows": 17,
         "grid_cols": 17,
         "mapir_profile": {
-            "index_mode": "nir_green",
-            "nir_band": 1,
-            "green_band": 2,
-            "red_band": None,
+            "index_mode": "nir_red",
+            "nir_band": 3,
+            "green_band": None,
+            "red_band": 1,
         },
         "rgb_profile": {
             "index_mode": "pseudo",

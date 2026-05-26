@@ -28,6 +28,7 @@ def render_image_if_exists(title: str, path: Path, output_dir: Path) -> str:
     if not path.exists():
         return render_pending_image(title)
     src = rel_to_report(path, output_dir)
+    src = f"{src}?v={int(path.stat().st_mtime)}"
     return f"""
 <h3>{safe_html(title)}</h3>
 <img src="{safe_html(src)}" alt="{safe_html(title)}" style="max-width: 100%; height: auto; border: 1px solid #ddd;" />

@@ -10,6 +10,7 @@ from agrivision.app import dependencies as deps
 from agrivision.config import get_project_root, load_config
 
 router = APIRouter()
+NO_CACHE_HEADERS = {"Cache-Control": "no-store, max-age=0"}
 
 
 def _resolve_artifact_path(value: str) -> Path:
@@ -42,7 +43,7 @@ def report_asset(run_id: str, asset_path: str) -> FileResponse:
         raise HTTPException(status_code=404, detail='Artifact not found.') from exc
     if not candidate.exists() or not candidate.is_file():
         raise HTTPException(status_code=404, detail='Artifact file missing.')
-    return FileResponse(candidate)
+    return FileResponse(candidate, headers=NO_CACHE_HEADERS)
 
 
 @router.get('/artifacts/{run_id}/{artifact_name}')
@@ -74,8 +75,8 @@ def artifact(run_id: str, artifact_name: str, embedded: bool = False):
         if embedded:
             html = html.replace('<body>', '<body class="report-embedded">', 1)
             html = _strip_embedded_report_chrome(html)
-        return HTMLResponse(content=html)
-    return FileResponse(resolved)
+        return HTMLResponse(content=html, headers=NO_CACHE_HEADERS)
+    return FileResponse(resolved, headers=NO_CACHE_HEADERS)
 
 
 @router.get('/runs/{run_id}/package')

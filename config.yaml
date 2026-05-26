@@ -46,23 +46,15 @@ ndvi:
   # Camera / band profiles
   # ----------------------------
 
-  # MAPIR false-color orthophoto profile (what ODM produced for you is RGBA)
-  # Your gdalinfo shows:
-  #   Band 1 = Red (but in false-color workflows this often contains NIR)
-  #   Band 2 = Green
-  #   Band 3 = Blue
-  #   Band 4 = Alpha
-  #
-  # We therefore treat Band 1 as NIR and Band 2 as Green and compute
-  # a vegetation index of the form:
-  #   (NIR - GREEN) / (NIR + GREEN)
-  #
-  # This is GNDVI-like (not true NDVI). We'll reflect that in code + later in report text.
+  # MAPIR false-color orthophoto profile.
+  # The generated orthophoto's band 2 is saturated/mostly zero, so the
+  # previous (band 1 - band 2) / (band 1 + band 2) index pegged near 1.0.
+  # Band 3 vs band 1 gives a usable spread for demo vegetation-index work.
   mapir_profile:
-    index_mode: "nir_green"   # options we will support: "nir_red" or "nir_green"
-    nir_band: 1
-    green_band: 2
-    red_band: null            # not available as a clean spectral band in this dataset
+    index_mode: "nir_red"     # options we will support: "nir_red" or "nir_green"
+    nir_band: 3
+    green_band: null
+    red_band: 1
 
   # RGB fallback profile (only used if MAPIR orthophoto does not exist)
   # This remains a "pseudo" vegetation index unless RGB truly contains NIR.

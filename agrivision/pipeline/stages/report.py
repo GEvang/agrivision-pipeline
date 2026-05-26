@@ -7,7 +7,7 @@ from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any, Dict, Optional, cast
 
-from agrivision.config.settings import load_config
+from agrivision.config.settings import get_project_root, load_config
 from agrivision.pipeline.report.assets import (
     ensure_report_preview,
     get_index_title,
@@ -142,6 +142,15 @@ def _selected_risk_layer(summary: dict[str, Any]) -> dict[str, Any] | None:
     return None
 
 
+def _report_artifact_path(value: Any) -> Path | None:
+    if not value:
+        return None
+    path = Path(str(value))
+    if path.is_absolute():
+        return path
+    return get_project_root() / path
+
+
 def _risk_target_html(summary: dict[str, Any], selected: dict[str, Any] | None) -> str:
     layers = summary.get("layers")
     if not isinstance(layers, list) or not layers:
@@ -221,7 +230,7 @@ def _risk_copy(selected: dict[str, Any] | None) -> str:
     missing_text = ", ".join(str(item).replace("_", " ") for item in missing) if missing else "none"
     return (
         "No-input risk score using biological seasonality, weather suitability, NDVI cell anomaly, "
-        f"and available context. Missing inputs renormalized: {missing_text}."
+        f"and available context. Missing inputs reduce confidence rather than being renormalized: {missing_text}."
     )
 
 
@@ -271,7 +280,9 @@ def run_report(
     report_quality = _quality_summary(ndvi_meta, grid_meta)
     risk_summary = _load_disease_risk_summary(disease_risk_summary, disease_risk_summary_path)
     selected_risk = _selected_risk_layer(risk_summary)
-    risk_overlay_png = Path(str(selected_risk.get("overlay_png"))) if selected_risk and selected_risk.get("overlay_png") else grid_overlay_png
+    risk_overlay_png = _report_artifact_path(selected_risk.get("overlay_png")) if selected_risk else None
+    if risk_overlay_png is None:
+        risk_overlay_png = grid_overlay_png
     risk_title = str(selected_risk.get("profile_label") or "Risk Index") if selected_risk else "Risk Index"
 
     artifacts_list_html = "\n".join(
