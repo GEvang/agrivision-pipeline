@@ -60,6 +60,8 @@ def _render_new_run_page(
     request: Request,
     *,
     upload_run_id: str | None = None,
+    complete_run_id: str | None = None,
+    camera_kind: str | None = None,
     validation_result: dict[str, object] | None = None,
     form_values: dict[str, object] | None = None,
 ) -> HTMLResponse:
@@ -136,6 +138,29 @@ def _render_new_run_page(
     for item in model_catalog:
         models_by_crop.setdefault(item['crop'], []).append(item)
     settings_view = deps.settings_service.get_settings_view()
+    completion_context = None
+    if complete_run_id and camera_kind in {'rgb', 'mapir', 'thermal'}:
+        try:
+            source_run = deps.run_service.load_run(complete_run_id)
+            upload_id = Path(source_run.input_path).name
+            manifest = deps.storage_service.read_json(deps.storage_service.upload_dir(upload_id) / 'manifest.json', default={})
+            library_item = orthophoto_runs_by_upload.get(upload_id, {})
+            missing_cameras = [
+                {'key': key, 'label': key.upper()}
+                for key in ('rgb', 'mapir', 'thermal')
+                if not library_item.get(f'{key}_ready')
+            ]
+            if not missing_cameras:
+                missing_cameras = [{'key': str(camera_kind), 'label': str(camera_kind).upper()}]
+            completion_context = {
+                'run_id': complete_run_id,
+                'camera_kind': camera_kind,
+                'camera_label': str(camera_kind).upper(),
+                'dataset_name': manifest.get('dataset_name') or source_run.dataset_name,
+                'missing_cameras': missing_cameras,
+            }
+        except Exception:
+            completion_context = None
     return deps.templates.TemplateResponse(
         request,
         'new_run.html',
@@ -152,6 +177,7 @@ def _render_new_run_page(
             'pdm_default_crop': settings_view['non_secret'].get('pdm_default_crop', 'grapevine'),
             'pdm_default_model_key': settings_view['non_secret'].get('pdm_default_model_key', 'grapevine_powdery_mildew_risk_v1'),
             'pdm_enabled_by_default': settings_view['non_secret'].get('pdm_enabled_by_default', True),
+            'completion_context': completion_context,
         },
     )
 
@@ -182,8 +208,18 @@ def _filter_runs(runs, status: str | None = None, query: str | None = None, run_
 
 
 @router.get('/runs/new', response_class=HTMLResponse)
-def new_run_page(request: Request, upload_run_id: str | None = None) -> HTMLResponse:
-    return _render_new_run_page(request, upload_run_id=upload_run_id)
+def new_run_page(
+    request: Request,
+    upload_run_id: str | None = None,
+    complete_run_id: str | None = None,
+    camera_kind: str | None = None,
+) -> HTMLResponse:
+    return _render_new_run_page(
+        request,
+        upload_run_id=upload_run_id,
+        complete_run_id=complete_run_id,
+        camera_kind=camera_kind,
+    )
 
 
 @router.get('/runs')

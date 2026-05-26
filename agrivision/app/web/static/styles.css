@@ -1,5 +1,5 @@
-body { font-family: "Inter", "Segoe UI", Arial, sans-serif; background:#edf3ef; margin: 0; color: #0f1f18; }
-.app-shell { min-height:100vh; display:grid; grid-template-columns:320px minmax(0, 1fr); background:linear-gradient(135deg,#0b2518 0%,#16803c 42%,#edf3ef 42%,#edf3ef 100%); }
+body { font-family: "Inter", "Segoe UI", Arial, sans-serif; background:#dceee9; margin: 0; color: #0f1f18; }
+.app-shell { min-height:100vh; display:grid; grid-template-columns:320px minmax(0, 1fr); background:linear-gradient(145deg,#eef7f3 0%,#dceee9 45%,#c8e3dc 100%); }
 .site-sidebar { position:sticky; top:0; height:100vh; display:flex; flex-direction:column; gap:1.35rem; padding:1.5rem 1.15rem; background:linear-gradient(180deg,#061126 0%,#07182f 48%,#06180f 100%); color:white; border-right:1px solid rgba(255,255,255,0.08); box-shadow:14px 0 34px rgba(7,18,47,0.24); z-index:10; }
 .app-workspace { min-width:0; padding:0.1px 0; }
 .brand-block { display:flex; align-items:center; }
@@ -167,12 +167,13 @@ button.action-chip { font-family:inherit; }
 .run-workflow { padding:0; overflow:hidden; }
 .run-workflow > .panel-header { padding:1rem 1.25rem 0; }
 .workflow-tab-input { position:absolute; opacity:0; pointer-events:none; width:1px; height:1px; margin:0; padding:0; }
-.workflow-tabs { display:grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap:0.5rem; padding:0 1.25rem 1rem; border-bottom:1px solid #e2e8f0; }
+.workflow-tabs { display:grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap:0.5rem; padding:0 1.25rem 1rem; border-bottom:1px solid #e2e8f0; }
 .workflow-tab { display:flex; align-items:center; justify-content:center; min-height:44px; margin:0; border:1px solid #cbd5e1; border-radius:8px; background:#f8fafc; color:#334155; font-weight:700; cursor:pointer; text-align:center; }
 #tab-orthophoto:checked ~ .workflow-tabs label[for="tab-orthophoto"],
 #tab-analysis:checked ~ .workflow-tabs label[for="tab-analysis"] { background:#0f172a; border-color:#0f172a; color:white; }
 .workflow-tab-panel { display:none; padding:1rem 1.25rem 1.25rem; }
 #tab-orthophoto:checked ~ .orthophoto-panel,
+#tab-complete-orthophoto:checked ~ .complete-orthophoto-panel,
 #tab-analysis:checked ~ .analysis-panel { display:block; }
 .workflow-form { display:grid; gap:1rem; }
 .form-grid { display:grid; grid-template-columns: repeat(auto-fit, minmax(230px, 1fr)); gap:1rem; align-items:end; }
@@ -184,6 +185,9 @@ button.action-chip { font-family:inherit; }
 .odm-intake-panel { background:#fbfdfc; }
 .camera-input-grid { display:grid; grid-template-columns:repeat(auto-fit, minmax(320px, 1fr)); gap:0.75rem; }
 .camera-input-card { min-width:0; border:1px solid #d7dee8; border-radius:8px; background:white; padding:0.85rem; display:grid; gap:0.75rem; }
+.completion-camera-list { display:grid; gap:1rem; }
+.completion-camera-form { border:1px solid #e2e8f0; border-radius:8px; background:#ffffff; padding:0.9rem; }
+.completion-input-card { max-width:none; padding:0; border:0; }
 .camera-input-head { display:flex; justify-content:space-between; align-items:center; gap:0.75rem; min-height:42px; }
 .camera-input-head strong { font-size:1rem; }
 .source-toggle { display:inline-grid; grid-template-columns:repeat(2, minmax(132px, 1fr)); gap:0.25rem; padding:0.22rem; border:1px solid #cbd5e1; border-radius:8px; background:#f1f5f9; }
@@ -206,27 +210,24 @@ button.action-chip { font-family:inherit; }
 .orthophoto-grid { display:grid; grid-template-columns:1fr; gap:0.65rem; }
 .orthophoto-card { border:1px solid #d7dee8; border-radius:8px; background:white; padding:0.9rem; display:grid; gap:0.75rem; box-shadow:0 1px 2px rgba(15,23,42,0.04); }
 .orthophoto-card strong, .orthophoto-card span { display:block; }
-.orthophoto-row { grid-template-columns:minmax(220px, 1.15fr) minmax(330px, 1.6fr) auto auto; align-items:center; }
+.orthophoto-row { grid-template-columns:minmax(250px, 0.9fr) minmax(360px, 1.7fr); align-items:center; gap:0.6rem 1rem; }
 .orthophoto-card-head { display:flex; justify-content:space-between; align-items:start; gap:0.75rem; }
 .orthophoto-card-head > div { min-width:0; }
 .orthophoto-card-head strong { overflow-wrap:anywhere; }
-.ortho-meta { display:flex; flex-wrap:wrap; gap:0.45rem; color:#64748b; font-size:0.85rem; }
-.ortho-meta span { border:1px solid #cbd5e1; border-radius:999px; padding:0.2rem 0.45rem; background:white; }
-.ortho-meta .camera-ready { background:#dcfce7; border-color:#86efac; color:#166534; font-weight:800; }
-.ortho-meta .camera-pending { background:#fef9c3; border-color:#fde68a; color:#854d0e; font-weight:800; }
-.ortho-meta .camera-missing { background:#fee2e2; border-color:#fca5a5; color:#991b1b; font-weight:800; }
+.orthophoto-card-head small { display:block; margin-top:0.35rem; color:#475569; font-size:0.84rem; font-weight:800; }
 .ortho-camera-grid { display:grid; grid-template-columns:repeat(3, minmax(0, 1fr)); gap:0.5rem; }
-.camera-tile { min-height:86px; border:1px solid #cbd5e1; border-radius:8px; padding:0.6rem; display:grid; align-content:space-between; gap:0.25rem; background:#f8fafc; }
+.camera-tile-form { margin:0; min-width:0; }
+.camera-tile { min-height:82px; border:1px solid #cbd5e1; border-radius:8px; padding:0.7rem; display:grid; align-content:center; gap:0.35rem; background:#f8fafc; text-decoration:none; box-sizing:border-box; }
+.camera-tile-action { width:100%; height:100%; margin:0; cursor:pointer; transition:transform 0.16s ease, border-color 0.16s ease, box-shadow 0.16s ease; }
+.camera-tile-action:hover { transform:translateY(-1px); box-shadow:0 8px 18px rgba(15,23,42,0.08); }
 .camera-tile span { color:#64748b; font-size:0.78rem; font-weight:800; text-transform:uppercase; }
 .camera-tile strong { font-size:0.98rem; }
-.camera-tile a { font-size:0.85rem; font-weight:800; color:#14532d; text-decoration:none; }
 .camera-tile.camera-ready { background:#f0fdf4; border-color:#86efac; color:#166534; }
 .camera-tile.camera-pending { background:#fff7ed; border-color:#fdba74; color:#9a3412; }
 .camera-tile.camera-missing { background:#f8fafc; border-color:#cbd5e1; color:#64748b; }
-.missing-upload-grid { display:grid; grid-template-columns:repeat(auto-fit, minmax(180px, 1fr)); gap:0.55rem; border-top:1px solid #e2e8f0; padding-top:0.7rem; }
-.missing-upload-grid form { display:grid; gap:0.45rem; margin:0; }
-.missing-upload { margin:0; font-size:0.84rem; color:#475569; }
-.missing-upload input { margin-top:0.25rem; padding:0.45rem; font-size:0.82rem; }
+.camera-tile input[type="file"] { position:absolute; opacity:0; pointer-events:none; width:1px; height:1px; margin:0; padding:0; }
+.orthophoto-row-actions { grid-column:1; display:flex; gap:0.5rem; justify-content:flex-start; align-items:center; }
+.orthophoto-row-actions form { margin:0; }
 .button-row button { width:auto; min-width:150px; margin:0; }
 .settings-layout { display:grid; grid-template-columns:minmax(0, 1fr) minmax(280px, 380px); gap:1rem; align-items:start; }
 .settings-card { display:grid; gap:1rem; }
@@ -264,7 +265,7 @@ button.action-chip { font-family:inherit; }
 .embedded-service-card .log-box { max-height:220px; }
 
 @media (max-width: 900px) {
-  .app-shell { display:block; background:#edf3ef; }
+  .app-shell { display:block; background:linear-gradient(145deg,#eef7f3 0%,#dceee9 45%,#c8e3dc 100%); }
   .site-sidebar { position:relative; height:auto; flex-direction:column; gap:0.9rem; padding:1rem; border-right:0; border-bottom:1px solid rgba(255,255,255,0.08); }
   .nav-board { display:flex; flex-wrap:wrap; justify-content:flex-start; width:100%; }
   .nav-link { flex:1 1 180px; }
@@ -280,6 +281,7 @@ button.action-chip { font-family:inherit; }
   .source-toggle { width:100%; }
   .preset-list { grid-template-columns:1fr; }
   .orthophoto-row { grid-template-columns:1fr; align-items:start; }
+  .orthophoto-row-actions { grid-column:1; justify-content:flex-start; }
   .ortho-camera-grid { grid-template-columns:1fr; }
   .button-row button { width:100%; }
   .settings-layout { grid-template-columns:1fr; }

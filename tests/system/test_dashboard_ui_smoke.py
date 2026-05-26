@@ -1,10 +1,13 @@
 from __future__ import annotations
 
+import time
+from io import BytesIO
 from pathlib import Path
 
 import numpy as np
 import rasterio
 from fastapi.testclient import TestClient
+from PIL import Image
 from rasterio.transform import from_origin
 
 from agrivision.app import api
@@ -15,6 +18,17 @@ from agrivision.services.report_service import ReportService
 from agrivision.services.run_service import RunService
 from agrivision.services.settings_service import SettingsService
 from agrivision.services.storage_service import StorageService
+
+
+def _wait_for_run(run_service: RunService, run_id: str, predicate, timeout: float = 3.0):
+    deadline = time.monotonic() + timeout
+    record = run_service.load_run(run_id)
+    while time.monotonic() < deadline:
+        record = run_service.load_run(run_id)
+        if predicate(record):
+            return record
+        time.sleep(0.05)
+    return record
 
 
 def test_dashboard_pages_render(tmp_path: Path, monkeypatch) -> None:
@@ -56,6 +70,51 @@ def test_dashboard_pages_render(tmp_path: Path, monkeypatch) -> None:
         'run_dir': str(run_dir),
     })
     (run_dir / 'run.log').write_text('ok', encoding='utf-8')
+    upload_dir = storage.upload_dir('ortho-upload')
+    storage.write_json(upload_dir / 'manifest.json', {
+        'run_id': 'ortho-upload',
+        'dataset_name': 'Ortho Smoke',
+        'upload_dir': str(upload_dir),
+        'files': [],
+        'rgb_files': [],
+        'mapir_files': [],
+        'thermal_files': [],
+        'created_at': '2026-03-24T10:00:00Z',
+    })
+    ortho_dir = tmp_path / 'output' / 'runs' / 'ortho-run' / 'orthophotos'
+    ortho_dir.mkdir(parents=True, exist_ok=True)
+    ortho_path = ortho_dir / 'orthophoto_rgb.tif'
+    ortho_path.write_bytes(b'placeholder')
+    storage.write_json(storage.run_dir('ortho-run') / 'status.json', {
+        'run_id': 'ortho-run',
+        'created_at': '2026-03-24T11:00:00Z',
+        'updated_at': '2026-03-24T11:00:00Z',
+        'dataset_name': 'Ortho Smoke',
+        'input_path': str(upload_dir),
+        'status': 'completed',
+        'progress_percent': 100,
+        'current_stage': 'completed',
+        'stage_message': 'Orthophoto completed',
+        'selected_steps': {
+            'resize_images': False,
+            'run_odm': True,
+            'fetch_weather': False,
+            'run_irrigation': False,
+            'run_pdm': False,
+            'generate_report': False,
+        },
+        'started_at': '2026-03-24T11:00:05Z',
+        'finished_at': '2026-03-24T11:05:05Z',
+        'parameters': {'orthophoto_preset': 'balanced', 'orthophoto_resolution_cm': 3, 'camera_targets': ['rgb']},
+        'outputs': {'orthophoto_rgb': str(ortho_path)},
+        'errors': [],
+        'stages': [],
+        'logs_path': str(storage.run_dir('ortho-run') / 'run.log'),
+        'run_name': 'Ortho Smoke orthophotos',
+        'field_name': None,
+        'run_dir': str(storage.run_dir('ortho-run')),
+    })
+    (storage.run_dir('ortho-run') / 'run.log').write_text('ok', encoding='utf-8')
 
     client = TestClient(api.app)
     dashboard = client.get('/', headers={'accept': 'text/html'})
@@ -67,6 +126,20 @@ def test_dashboard_pages_render(tmp_path: Path, monkeypatch) -> None:
     assert 'Save / Generate Orthophotos' in new_run.text
     assert 'Balanced (recommended)' in new_run.text
     assert 'Orthophoto Library' in new_run.text
+    assert 'Complete Orthophoto' not in new_run.text
+    assert 'complete_run_id=' in new_run.text
+    assert 'camera_kind=mapir' in new_run.text
+    complete_page = client.get('/runs/new?complete_run_id=ortho-run&camera_kind=mapir', headers={'accept': 'text/html'})
+    assert complete_page.status_code == 200
+    assert 'Complete dataset' in complete_page.text
+    assert 'Orthophoto Creation' not in complete_page.text
+    assert 'Perform Parcel Analysis' not in complete_page.text
+    assert 'Missing orthophotos' in complete_page.text
+    assert 'Process Missing Orthophotos' in complete_page.text
+    assert 'MAPIR drone images' in complete_page.text
+    assert 'THERMAL drone images' in complete_page.text
+    assert 'Build from images' in complete_page.text
+    assert 'Use ready orthophoto' in complete_page.text
     runs_page = client.get('/runs', headers={'accept': 'text/html'})
     assert runs_page.status_code == 200
     assert 'Reports' in runs_page.text
@@ -130,6 +203,42 @@ def test_merged_orthophoto_form_imports_ready_geotiff(tmp_path: Path, monkeypatc
 
     assert response.status_code == 303
     run_id = response.headers['location'].rsplit('/', 1)[-1]
-    record = run_service.load_run(run_id)
+    record = _wait_for_run(run_service, run_id, lambda item: item.status == 'completed')
     assert record.status == 'completed'
     assert Path(record.outputs['orthophoto_rgb']).exists()
+
+
+def test_orthophoto_form_allows_rgb_only_with_empty_other_inputs(tmp_path: Path, monkeypatch) -> None:
+    storage = StorageService(project_root=tmp_path)
+    run_service = RunService(storage)
+    monkeypatch.setattr(deps, 'storage_service', storage)
+    monkeypatch.setattr(deps, 'run_service', run_service)
+    monkeypatch.setattr(run_service, 'start_run', lambda run_id: run_service.load_run(run_id))
+
+    def jpg_bytes(color: tuple[int, int, int]) -> bytes:
+        buffer = BytesIO()
+        Image.new('RGB', (8, 8), color).save(buffer, format='JPEG')
+        return buffer.getvalue()
+
+    client = TestClient(api.app)
+    response = client.post(
+        '/ui/orthophotos',
+        data={
+            'dataset_name': 'RGB Only',
+            'rgb_source': 'raw',
+            'mapir_source': 'raw',
+            'thermal_source': 'raw',
+            'orthophoto_preset': 'balanced',
+        },
+        files=[
+            ('rgb_files', ('rgb-1.jpg', jpg_bytes((255, 0, 0)), 'image/jpeg')),
+            ('rgb_files', ('rgb-2.jpg', jpg_bytes((0, 255, 0)), 'image/jpeg')),
+        ],
+        follow_redirects=False,
+    )
+
+    assert response.status_code == 303
+    run_id = response.headers['location'].rsplit('/', 1)[-1]
+    record = _wait_for_run(run_service, run_id, lambda item: item.current_stage != 'upload_validate')
+    assert record.parameters['camera_targets'] == ['rgb']
+    assert record.errors == []

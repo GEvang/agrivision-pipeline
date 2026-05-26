@@ -3,17 +3,28 @@
 <section class="panel run-workflow">
   <div class="panel-header">
     <div>
-      <h2>Start Processing</h2>
-      <p class="muted">Create orthophotos first, then run parcel analysis from an orthophoto dataset.</p>
+      <h2>{{ 'Complete dataset' if completion_context else 'Start Processing' }}</h2>
+      <p class="muted">
+        {% if completion_context %}
+        Add the missing orthophotos for {{ completion_context.dataset_name }}.
+        {% else %}
+        Create orthophotos first, then run parcel analysis from an orthophoto dataset.
+        {% endif %}
+      </p>
     </div>
   </div>
 
-  <input class="workflow-tab-input" type="radio" name="workflow_tab" id="tab-orthophoto" {% if not validation_result %}checked{% endif %} />
+  <input class="workflow-tab-input" type="radio" name="workflow_tab" id="tab-orthophoto" {% if not validation_result and not completion_context %}checked{% endif %} />
+  {% if completion_context %}
+  <input class="workflow-tab-input" type="radio" name="workflow_tab" id="tab-complete-orthophoto" checked />
+  {% endif %}
   <input class="workflow-tab-input" type="radio" name="workflow_tab" id="tab-analysis" {% if validation_result %}checked{% endif %} />
+  {% if not completion_context %}
   <div class="workflow-tabs" role="tablist">
     <label for="tab-orthophoto" class="workflow-tab">1. Orthophoto Creation</label>
     <label for="tab-analysis" class="workflow-tab">2. Perform Parcel Analysis</label>
   </div>
+  {% endif %}
 
   <div class="workflow-tab-panel orthophoto-panel">
     <div class="odm-workspace">
@@ -99,54 +110,49 @@
             <div>
               <strong>{{ item.run_name or item.dataset_name }}</strong>
               <span>{{ item.created_at | system_datetime }}</span>
+              <small>Quality used: {{ item.preset }}{% if item.resolution_cm and item.resolution_cm != '-' %}, {{ item.resolution_cm }} cm{% endif %}</small>
             </div>
           </div>
           <div class="ortho-camera-grid">
-            <div class="camera-tile camera-{{ 'ready' if item.rgb_ready else 'pending' if item.rgb_uploaded else 'missing' }}">
+            {% if item.rgb_ready %}
+            <a class="camera-tile camera-ready camera-tile-action" href="/artifacts/{{ item.rgb_run_id or item.run_id }}/orthophoto-rgb">
               <span>RGB</span>
-              <strong>{{ 'Ready' if item.rgb_ready else 'Uploaded' if item.rgb_uploaded else 'Missing' }}</strong>
-              {% if item.rgb_ready %}<a href="/artifacts/{{ item.rgb_run_id or item.run_id }}/orthophoto-rgb">Open</a>{% endif %}
-            </div>
-            <div class="camera-tile camera-{{ 'ready' if item.mapir_ready else 'pending' if item.mapir_uploaded else 'missing' }}">
+              <strong>Open</strong>
+            </a>
+            {% else %}
+            <a class="camera-tile camera-{{ 'pending' if item.rgb_uploaded else 'missing' }} camera-tile-action" href="/runs/new?complete_run_id={{ item.run_id }}&camera_kind=rgb">
+              <span>RGB</span>
+              <strong>{{ 'Add source' if item.rgb_uploaded else 'Missing' }}</strong>
+            </a>
+            {% endif %}
+            {% if item.mapir_ready %}
+            <a class="camera-tile camera-ready camera-tile-action" href="/artifacts/{{ item.mapir_run_id or item.run_id }}/orthophoto-mapir">
               <span>MAPIR</span>
-              <strong>{{ 'Ready' if item.mapir_ready else 'Uploaded' if item.mapir_uploaded else 'Missing' }}</strong>
-              {% if item.mapir_ready %}<a href="/artifacts/{{ item.mapir_run_id or item.run_id }}/orthophoto-mapir">Open</a>{% endif %}
-            </div>
-            <div class="camera-tile camera-{{ 'ready' if item.thermal_ready else 'pending' if item.thermal_uploaded else 'missing' }}">
+              <strong>Open</strong>
+            </a>
+            {% else %}
+            <a class="camera-tile camera-{{ 'pending' if item.mapir_uploaded else 'missing' }} camera-tile-action" href="/runs/new?complete_run_id={{ item.run_id }}&camera_kind=mapir">
+              <span>MAPIR</span>
+              <strong>{{ 'Add source' if item.mapir_uploaded else 'Missing' }}</strong>
+            </a>
+            {% endif %}
+            {% if item.thermal_ready %}
+            <a class="camera-tile camera-ready camera-tile-action" href="/artifacts/{{ item.thermal_run_id or item.run_id }}/orthophoto-thermal">
               <span>Thermal</span>
-              <strong>{{ 'Ready' if item.thermal_ready else 'Uploaded' if item.thermal_uploaded else 'Missing' }}</strong>
-              {% if item.thermal_ready %}<a href="/artifacts/{{ item.thermal_run_id or item.run_id }}/orthophoto-thermal">Open</a>{% endif %}
-            </div>
+              <strong>Open</strong>
+            </a>
+            {% else %}
+            <a class="camera-tile camera-{{ 'pending' if item.thermal_uploaded else 'missing' }} camera-tile-action" href="/runs/new?complete_run_id={{ item.run_id }}&camera_kind=thermal">
+              <span>Thermal</span>
+              <strong>{{ 'Add source' if item.thermal_uploaded else 'Missing' }}</strong>
+            </a>
+            {% endif %}
           </div>
-          <div class="ortho-meta">
-            <span>{{ item.resolution_cm }} cm</span>
-            <span>{{ item.preset }}</span>
-          </div>
-          <div class="table-actions">
-            <a class="action-chip" href="/runs/{{ item.run_id }}">Run</a>
+          <div class="orthophoto-row-actions">
+            <a class="action-chip" href="/runs/{{ item.run_id }}">Logs</a>
             <form method="post" action="/ui/orthophotos/{{ item.run_id }}/delete" onsubmit="return confirm('Delete this saved orthophoto set?');">
               <button class="action-chip danger-text" type="submit">Delete</button>
             </form>
-          </div>
-          <div class="missing-upload-grid">
-            {% if not item.rgb_ready %}
-            <form method="post" action="/ui/orthophotos/{{ item.run_id }}/upload/rgb" enctype="multipart/form-data">
-              <label class="missing-upload">Add RGB<input type="file" name="files" multiple required /></label>
-              <button class="action-chip" type="submit">Generate RGB</button>
-            </form>
-            {% endif %}
-            {% if not item.mapir_ready %}
-            <form method="post" action="/ui/orthophotos/{{ item.run_id }}/upload/mapir" enctype="multipart/form-data">
-              <label class="missing-upload">Add MAPIR<input type="file" name="files" multiple required /></label>
-              <button class="action-chip" type="submit">Generate MAPIR</button>
-            </form>
-            {% endif %}
-            {% if not item.thermal_ready %}
-            <form method="post" action="/ui/orthophotos/{{ item.run_id }}/upload/thermal" enctype="multipart/form-data">
-              <label class="missing-upload">Add Thermal<input type="file" name="files" multiple required /></label>
-              <button class="action-chip" type="submit">Generate Thermal</button>
-            </form>
-            {% endif %}
           </div>
         </div>
         {% endfor %}
@@ -158,20 +164,78 @@
   </div>
 
   <script>
-    document.querySelectorAll('[data-camera-input]').forEach((card) => {
-      const rawPanel = card.querySelector('.source-panel-raw');
-      const orthoPanel = card.querySelector('.source-panel-ortho');
-      const syncPanels = () => {
-        const selected = card.querySelector('input[type="radio"]:checked')?.value || 'raw';
-        rawPanel.hidden = selected !== 'raw';
-        orthoPanel.hidden = selected !== 'ortho';
-      };
-      card.querySelectorAll('input[type="radio"]').forEach((input) => {
-        input.addEventListener('change', syncPanels);
+    window.addEventListener('DOMContentLoaded', () => {
+      document.querySelectorAll('[data-camera-input]').forEach((card) => {
+        const rawPanel = card.querySelector('.source-panel-raw');
+        const orthoPanel = card.querySelector('.source-panel-ortho');
+        const syncPanels = () => {
+          const selected = card.querySelector('input[type="radio"]:checked')?.value || 'raw';
+          rawPanel.hidden = selected !== 'raw';
+          orthoPanel.hidden = selected !== 'ortho';
+        };
+        card.querySelectorAll('input[type="radio"]').forEach((input) => {
+          input.addEventListener('change', syncPanels);
+        });
+        syncPanels();
       });
-      syncPanels();
     });
   </script>
+
+  {% if completion_context %}
+  <div class="workflow-tab-panel complete-orthophoto-panel">
+    <section class="odm-action-panel odm-intake-panel">
+      <div class="section-title-row">
+        <div>
+          <h3>Missing orthophotos</h3>
+          <p class="muted">{{ completion_context.dataset_name }}</p>
+        </div>
+      </div>
+      <form class="workflow-form" method="post" action="/ui/orthophotos/{{ completion_context.run_id }}/complete" enctype="multipart/form-data">
+        <div class="camera-input-grid">
+          {% for camera in completion_context.missing_cameras %}
+          <section class="camera-input-card" data-camera-input>
+            <div class="camera-input-head">
+              <strong>{{ camera.label }}</strong>
+              <div class="source-toggle" role="radiogroup" aria-label="{{ camera.label }} source">
+                <label>
+                  <input type="radio" name="{{ camera.key }}_source" value="raw" checked />
+                  <span>Build from images</span>
+                </label>
+                <label>
+                  <input type="radio" name="{{ camera.key }}_source" value="ortho" />
+                  <span>Use ready orthophoto</span>
+                </label>
+              </div>
+            </div>
+            <div class="source-panel source-panel-raw">
+              <label>{{ camera.label }} drone images<input type="file" name="{{ camera.key }}_files" multiple /></label>
+            </div>
+            <div class="source-panel source-panel-ortho" hidden>
+              <label>{{ camera.label }} ready orthophoto<input type="file" name="{{ camera.key }}_orthophoto" accept=".tif,.tiff" /></label>
+            </div>
+          </section>
+          {% endfor %}
+        </div>
+        <fieldset class="compact-fieldset">
+          <legend>Quality preset</legend>
+          <div class="preset-list">
+            {% for preset in orthophoto_presets %}
+            <label class="preset-option">
+              <input type="radio" name="orthophoto_preset" value="{{ preset.key }}" {% if preset.key == 'balanced' %}checked{% endif %} />
+              <span>
+                <strong>{{ preset.label }}</strong>
+                <small>{{ preset.resolution_cm }} cm orthophoto</small>
+                <small>{{ preset.description }}</small>
+              </span>
+            </label>
+            {% endfor %}
+          </div>
+        </fieldset>
+        <button type="submit">Process Missing Orthophotos</button>
+      </form>
+    </section>
+  </div>
+  {% endif %}
 
   <div class="workflow-tab-panel analysis-panel">
     <form class="workflow-form" method="post" action="/ui/runs">
