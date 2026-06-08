@@ -18,6 +18,10 @@ python run.py --doctor
 - creates `.env` from `.env.example` when missing
 - standardizes the local virtual environment at `.venv`
 
+The installer expects `python3`. It warns when `gdalinfo` is missing because GDAL is required for raster and orthophoto workflows.
+
+On Windows PowerShell, use the manual setup from the README or run the Docker Compose flow.
+
 ## Configuration
 
 - keep non-secret settings in `config.yaml`

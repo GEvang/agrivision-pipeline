@@ -11,35 +11,50 @@ FastAPI publishes machine-readable and human-readable API documentation:
 - `GET /redoc` for ReDoc
 
 ### Health
+
 - `GET /health`
 - `GET /doctor`
 
 ### Uploads
+
 - `POST /uploads/images`
   - multipart form
   - validates file types, duplicate names, empty files, and unreadable images
   - stores datasets under `data/uploads/<upload_id>/`
 
 ### Runs
+
 - `GET /runs`
 - `GET /runs/{run_id}`
 - `POST /runs`
+- `POST /runs/validate`
+- `GET /runs/{run_id}/status`
+- `POST /runs/{run_id}/stop`
+- `GET /runs/{run_id}/package`
 
 ### Reports
+
 - `GET /reports`
 - `GET /reports/{run_id}`
+- `GET /reports/{run_id}/view`
 
-### Settings
+### Settings and services
+
 - `GET /settings`
 - `POST /settings`
 - `POST /settings/credentials`
+- `GET /services/status`
 
 ### Artifacts
+
 - `GET /artifacts/{run_id}/report`
 - `GET /artifacts/{run_id}/orthophoto`
+- `GET /artifacts/{run_id}/orthophoto-rgb`
+- `GET /artifacts/{run_id}/orthophoto-mapir`
+- `GET /artifacts/{run_id}/orthophoto-thermal`
 - `GET /artifacts/{run_id}/preview`
 - `GET /artifacts/{run_id}/log`
-- `GET /runs/{run_id}/package`
+- `GET /artifacts/{run_id}/report-assets/{asset_path}`
 
 Run packages include:
 
@@ -59,11 +74,11 @@ Run packages include:
 
 Each run is stored under `runtime/runs/<run_id>/`.
 
-- `params.json` — selected steps and submitted parameters
-- `status.json` — current status, timestamps, outputs, errors
-- `outputs.json` — discovered report / orthophoto paths
-- `run.log` — captured pipeline log
-- `previews/` — derived orthophoto preview images
+- `params.json`: selected steps and submitted parameters
+- `status.json`: current status, timestamps, outputs, errors
+- `outputs.json`: discovered report / orthophoto paths
+- `run.log`: captured pipeline log
+- `previews/`: derived orthophoto preview images
 
 ## Security model
 

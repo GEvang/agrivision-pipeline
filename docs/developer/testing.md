@@ -2,9 +2,9 @@
 
 ## Test suites
 
-- `tests/unit/` — pure logic and helper behavior
-- `tests/integration/` — cross-module integration checks
-- `tests/system/` — CLI and end-to-end smoke checks
+- `tests/unit/`: pure logic and helper behavior
+- `tests/integration/`: cross-module integration checks
+- `tests/system/`: CLI and end-to-end smoke checks
 
 ## Recommended commands
 
@@ -13,15 +13,16 @@ make test
 python -m pytest tests/unit -q
 python -m pytest tests/integration -q
 python -m pytest tests/system -q
-python -m pytest --cov=agrivision --cov-report=term-missing
+python -m pytest tests --cov=agrivision --cov-report=term-missing
 ```
 
 ## CI expectations
 
 Continuous integration validates:
 
-- linting;
-- unit/integration/system tests;
-- coverage reporting;
-- compose-file validation; and
-- Dockerfile buildability.
+- Python 3.11 and 3.12 installation;
+- `make lint`;
+- `python -m pytest tests --cov=agrivision --cov-report=term-missing`;
+- `make smoke-config`;
+- `docker compose -f docker-compose.yml config`; and
+- `docker build -f Dockerfile -t agrivision-ci-root .`.

@@ -4,13 +4,12 @@
 
 1. load configuration and environment overrides;
 2. resolve project, input, and output paths;
-3. optionally resize source imagery;
-4. run or reuse ODM orthophoto generation;
-5. compute vegetation-index products;
-6. generate grid classifications and summaries;
-7. fetch or map weather and irrigation enrichment data;
-8. write metadata and report assets;
-9. render the HTML report.
+3. run or reuse ODM orthophoto generation;
+4. compute vegetation-index products;
+5. generate grid classifications and summaries;
+6. fetch or map weather and irrigation enrichment data;
+7. write metadata and report assets;
+8. render the HTML report.
 
 ## Control flow notes
 

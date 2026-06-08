@@ -22,7 +22,6 @@ External OpenAgri services have different offline characteristics:
 ## Low-resource recommendations
 
 - Use the dashboard Orthophoto Creation quality presets, starting with `Preview` or `Balanced`.
-- Use reduced images for first-pass field validation.
 - Keep Docker Desktop memory high enough for ODM on Windows; large image sets can be killed by the container runtime.
 - Export run packages after successful analysis so `manifest.json`, `metadata/run_metadata.jsonld`, rasters, and report files can move together.
 
