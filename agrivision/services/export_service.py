@@ -91,7 +91,7 @@ class RunExportService:
             '@type': ['SoftwareApplication', 'ocsm:AgriVisionRun'],
             'identifier': run.run_id,
             'name': run.run_name or run.dataset_name,
-            'softwareVersion': '0.1.0',
+            'softwareVersion': '1.0.0',
             'actionStatus': run.status,
             'dateCreated': run.created_at.isoformat(),
             'dateModified': run.updated_at.isoformat() if run.updated_at else None,

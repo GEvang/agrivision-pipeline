@@ -4,14 +4,14 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "agrivision-pipeline"
-version = "0.1.0"
+version = "1.0.0"
 description = "Drone imagery pipeline for orthophotos, vegetation analysis, grid assessment, and farmer-ready reporting."
 readme = "README.md"
 requires-python = ">=3.11"
 authors = [
   { name = "AgriVision contributors" }
 ]
-license = { file = "LICENSE" }
+license = "EUPL-1.2"
 dependencies = [
   "affine>=2.4.0",
   "attrs>=25.4.0",

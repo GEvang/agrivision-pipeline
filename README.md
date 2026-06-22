@@ -226,6 +226,6 @@ tests/                 Unit, integration, and system tests
 
 ## License and Contributions
 
-This repository is licensed under MIT; see `LICENSE`.
+This repository is licensed under the European Union Public Licence (EUPL) v1.2; see `LICENSE`.
 
 No dedicated contribution guide is currently present. For changes, follow the existing style, keep secrets out of config and commits, run `make lint` and `make test`, and update documentation when behavior or commands change. See `docs/developer/release.md` for release and license review notes.
