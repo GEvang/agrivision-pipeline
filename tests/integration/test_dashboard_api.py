@@ -8,6 +8,7 @@ from PIL import Image
 
 from agrivision.app import api
 from agrivision.app import dependencies as deps
+from agrivision.app.schemas.runs import RunCreateRequest
 from agrivision.services.report_service import ReportService
 from agrivision.services.run_service import RunService, RunStartBlocked
 from agrivision.services.settings_service import SettingsService
@@ -148,3 +149,70 @@ def test_api_create_run_returns_conflict_when_another_run_is_active(tmp_path: Pa
 
     assert response.status_code == 409
     assert 'Another run is already active (active-run).' in response.json()['detail']
+
+
+def test_dashboard_startup_reconciles_orphaned_active_runs(tmp_path: Path, monkeypatch) -> None:
+    storage = StorageService(project_root=tmp_path)
+    run_service = RunService(storage)
+    report_service = ReportService(run_service=run_service)
+    config_path = tmp_path / 'config.yaml'
+    config_path.write_text('weather:\n  base_url: http://example\n', encoding='utf-8')
+    settings_service = SettingsService(config_path=config_path, env_path=tmp_path / '.env')
+
+    monkeypatch.setattr(deps, 'storage_service', storage)
+    monkeypatch.setattr(deps, 'run_service', run_service)
+    monkeypatch.setattr(deps, 'report_service', report_service)
+    monkeypatch.setattr(deps, 'settings_service', settings_service)
+
+    upload_dir = storage.upload_dir('upload-seed')
+    (upload_dir / 'rgb').mkdir(parents=True, exist_ok=True)
+    (upload_dir / 'mapir').mkdir(parents=True, exist_ok=True)
+
+    queued = run_service.create_run_record(
+        RunCreateRequest.model_validate(
+            {
+                'run_name': 'Queued Run',
+                'dataset_name': 'Dataset API',
+                'upload_run_id': 'upload-seed',
+                'selected_steps': {
+                    'resize_images': False,
+                    'run_odm': True,
+                    'fetch_weather': False,
+                    'generate_report': True,
+                },
+                'parameters': {'preset': 'default'},
+            }
+        )
+    )
+    running = run_service.create_run_record(
+        RunCreateRequest.model_validate(
+            {
+                'run_name': 'Running Run',
+                'dataset_name': 'Dataset API',
+                'upload_run_id': 'upload-seed',
+                'selected_steps': {
+                    'resize_images': False,
+                    'run_odm': True,
+                    'fetch_weather': False,
+                    'generate_report': True,
+                },
+                'parameters': {'preset': 'default'},
+            }
+        )
+    )
+    run_service.update_status(running.run_id, status='running')
+    run_service.update_stage(running.run_id, 'run_odm_rgb', 'running', 'Running ODM RGB')
+
+    with TestClient(api.app) as client:
+        response = client.get('/runs', headers={'accept': 'application/json'})
+        assert response.status_code == 200
+
+    queued_record = run_service.load_run(queued.run_id)
+    running_record = run_service.load_run(running.run_id)
+
+    for record in (queued_record, running_record):
+        assert record.status == 'cancelled'
+        assert record.finished_at is not None
+        assert record.stage_message == RunService.RESTART_RECONCILIATION_MESSAGE
+        assert record.errors == [RunService.RESTART_RECONCILIATION_MESSAGE]
+        assert all(stage.state != 'running' for stage in record.stages)

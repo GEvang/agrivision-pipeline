@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from contextlib import asynccontextmanager
 from pathlib import Path
 
 from fastapi import FastAPI
@@ -18,7 +19,13 @@ from agrivision.app.routes import (
     uploads,
 )
 
-app = FastAPI(title='AgriVision Dashboard', version='0.2.0')
+@asynccontextmanager
+async def lifespan(_: FastAPI):
+    deps.run_service.reconcile_orphaned_runs()
+    yield
+
+
+app = FastAPI(title='AgriVision Dashboard', version='0.2.0', lifespan=lifespan)
 app.mount('/static', StaticFiles(directory=str(Path(__file__).parent / 'web' / 'static')), name='static')
 
 deps.templates.env.filters['system_datetime'] = format_system_datetime

@@ -33,6 +33,8 @@ class RunStartBlocked(RuntimeError):
 
 
 class RunService:
+    RESTART_RECONCILIATION_MESSAGE = 'Interrupted because the dashboard process restarted before the run completed.'
+
     def __init__(self, storage: StorageService | None = None) -> None:
         self.storage = storage or StorageService()
         self._lock = threading.Lock()
@@ -193,6 +195,24 @@ class RunService:
                 )
             )
         return cleared
+
+    def reconcile_orphaned_runs(self) -> list[RunRecord]:
+        reconciled: list[RunRecord] = []
+        for record in self.list_runs():
+            if record.status not in {'queued', 'running'}:
+                continue
+            reconciled.append(
+                self.finalize_run_status(
+                    record.run_id,
+                    status='cancelled',
+                    current_stage='cancelled',
+                    stage_message=self.RESTART_RECONCILIATION_MESSAGE,
+                    error_message=self.RESTART_RECONCILIATION_MESSAGE,
+                    running_stage_state='cancelled',
+                    running_stage_message=self.RESTART_RECONCILIATION_MESSAGE,
+                )
+            )
+        return reconciled
 
     def clear_incomplete_runs(self) -> int:
         cleared = 0
