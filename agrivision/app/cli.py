@@ -67,7 +67,21 @@ def main() -> None:
         print(json.dumps({'removed': removed}, indent=2))
         return
     if args.serve_dashboard:
-        subprocess.run([sys.executable, '-m', 'uvicorn', 'agrivision.app.api:app', '--host', args.host, '--port', str(args.port)], check=False)
+        result = subprocess.run(
+            [
+                sys.executable,
+                '-m',
+                'uvicorn',
+                'agrivision.app.api:app',
+                '--host',
+                args.host,
+                '--port',
+                str(args.port),
+            ],
+            check=False,
+        )
+        if result.returncode != 0:
+            raise SystemExit(result.returncode)
         return
 
     run_full_pipeline(
