@@ -8,6 +8,7 @@ from PIL import Image
 
 from agrivision.app import api
 from agrivision.app import dependencies as deps
+from agrivision.app.routes import uploads as upload_routes
 from agrivision.app.schemas.runs import RunCreateRequest
 from agrivision.services.report_service import ReportService
 from agrivision.services.run_service import RunService, RunStartBlocked
@@ -216,3 +217,89 @@ def test_dashboard_startup_reconciles_orphaned_active_runs(tmp_path: Path, monke
         assert record.stage_message == RunService.RESTART_RECONCILIATION_MESSAGE
         assert record.errors == [RunService.RESTART_RECONCILIATION_MESSAGE]
         assert all(stage.state != 'running' for stage in record.stages)
+
+
+def test_upload_rejects_duplicate_filenames_across_groups_and_cleans_up(tmp_path: Path, monkeypatch) -> None:
+    storage = StorageService(project_root=tmp_path)
+    run_service = RunService(storage)
+    report_service = ReportService(run_service=run_service)
+    config_path = tmp_path / 'config.yaml'
+    config_path.write_text('weather:\n  base_url: http://example\n', encoding='utf-8')
+    settings_service = SettingsService(config_path=config_path, env_path=tmp_path / '.env')
+
+    monkeypatch.setattr(deps, 'storage_service', storage)
+    monkeypatch.setattr(deps, 'run_service', run_service)
+    monkeypatch.setattr(deps, 'report_service', report_service)
+    monkeypatch.setattr(deps, 'settings_service', settings_service)
+
+    client = TestClient(api.app)
+    files = [
+        ('mapir_files', ('shared.png', _image_bytes(), 'image/png')),
+        ('mapir_files', ('mapir-b.png', _image_bytes(), 'image/png')),
+        ('rgb_files', ('shared.png', _image_bytes(), 'image/png')),
+        ('rgb_files', ('rgb-b.png', _image_bytes(), 'image/png')),
+    ]
+
+    response = client.post('/uploads/images', data={'dataset_name': 'Dataset API'}, files=files)
+
+    assert response.status_code == 400
+    assert any('duplicate or invalid name' in item for item in response.json()['detail'])
+    assert list(storage.layout.uploads_root.glob('*')) == []
+
+
+def test_upload_rejects_datasets_over_size_limit_and_cleans_up(tmp_path: Path, monkeypatch) -> None:
+    storage = StorageService(project_root=tmp_path)
+    run_service = RunService(storage)
+    report_service = ReportService(run_service=run_service)
+    config_path = tmp_path / 'config.yaml'
+    config_path.write_text('weather:\n  base_url: http://example\n', encoding='utf-8')
+    settings_service = SettingsService(config_path=config_path, env_path=tmp_path / '.env')
+
+    monkeypatch.setattr(deps, 'storage_service', storage)
+    monkeypatch.setattr(deps, 'run_service', run_service)
+    monkeypatch.setattr(deps, 'report_service', report_service)
+    monkeypatch.setattr(deps, 'settings_service', settings_service)
+    monkeypatch.setattr(upload_routes, 'MAX_DATASET_BYTES', 32)
+
+    client = TestClient(api.app)
+    files = [
+        ('mapir_files', ('mapir-a.png', _image_bytes(), 'image/png')),
+        ('mapir_files', ('mapir-b.png', _image_bytes(), 'image/png')),
+        ('rgb_files', ('rgb-a.png', _image_bytes(), 'image/png')),
+        ('rgb_files', ('rgb-b.png', _image_bytes(), 'image/png')),
+    ]
+
+    response = client.post('/uploads/images', data={'dataset_name': 'Dataset API'}, files=files)
+
+    assert response.status_code == 400
+    assert any('dataset exceeds the 32 byte limit' in item for item in response.json()['detail'])
+    assert list(storage.layout.uploads_root.glob('*')) == []
+
+
+def test_upload_rejects_excess_files_per_group_and_cleans_up(tmp_path: Path, monkeypatch) -> None:
+    storage = StorageService(project_root=tmp_path)
+    run_service = RunService(storage)
+    report_service = ReportService(run_service=run_service)
+    config_path = tmp_path / 'config.yaml'
+    config_path.write_text('weather:\n  base_url: http://example\n', encoding='utf-8')
+    settings_service = SettingsService(config_path=config_path, env_path=tmp_path / '.env')
+
+    monkeypatch.setattr(deps, 'storage_service', storage)
+    monkeypatch.setattr(deps, 'run_service', run_service)
+    monkeypatch.setattr(deps, 'report_service', report_service)
+    monkeypatch.setattr(deps, 'settings_service', settings_service)
+    monkeypatch.setattr(upload_routes, 'MAX_FILES_PER_GROUP', 1)
+
+    client = TestClient(api.app)
+    files = [
+        ('mapir_files', ('mapir-a.png', _image_bytes(), 'image/png')),
+        ('mapir_files', ('mapir-b.png', _image_bytes(), 'image/png')),
+        ('rgb_files', ('rgb-a.png', _image_bytes(), 'image/png')),
+        ('rgb_files', ('rgb-b.png', _image_bytes(), 'image/png')),
+    ]
+
+    response = client.post('/uploads/images', data={'dataset_name': 'Dataset API'}, files=files)
+
+    assert response.status_code == 400
+    assert any('no more than 1 files are allowed' in item for item in response.json()['detail'])
+    assert list(storage.layout.uploads_root.glob('*')) == []
