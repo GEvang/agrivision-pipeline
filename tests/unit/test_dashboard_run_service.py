@@ -204,7 +204,9 @@ def test_mark_start_blocked_records_clear_operator_message(tmp_path: Path) -> No
     assert blocked.status == 'cancelled'
     assert blocked.current_stage == 'blocked'
     assert blocked.stage_message == 'Another run is already active (run-123).'
+    assert blocked.finished_at is not None
     assert blocked.errors == ['Another run is already active (run-123).']
+    assert all(stage.state != 'running' for stage in blocked.stages)
 
 
 def test_odm_only_run_does_not_include_services(tmp_path: Path) -> None:
@@ -250,6 +252,8 @@ def test_request_stop_marks_running_run_cancelled(tmp_path: Path, monkeypatch) -
 
     record = service.create_run_record(_request('upload-seed'))
     service.update_status(record.run_id, status='running')
+    service.update_stage(record.run_id, 'stage_inputs', 'completed', 'Inputs staged')
+    service.update_stage(record.run_id, 'run_odm_rgb', 'running', 'Running ODM RGB')
 
     stopped = service.request_stop(record.run_id)
 
@@ -258,6 +262,10 @@ def test_request_stop_marks_running_run_cancelled(tmp_path: Path, monkeypatch) -
     assert stopped.finished_at is not None
     assert 'Run stopped by operator.' in stopped.errors
     assert stopped.errors.count('Run stopped by operator.') == 1
+    stage_states = {stage.key: stage.state for stage in stopped.stages}
+    assert stage_states['run_odm_rgb'] == 'cancelled'
+    assert stage_states['run_odm_mapir'] == 'skipped'
+    assert all(stage.state != 'running' for stage in stopped.stages)
 
 
 def test_failed_run_stores_diagnostic_summary_and_raw_log(tmp_path: Path, monkeypatch) -> None:
@@ -272,6 +280,7 @@ def test_failed_run_stores_diagnostic_summary_and_raw_log(tmp_path: Path, monkey
     monkeypatch.setattr(service, '_discover_outputs', lambda run_dir: {})
 
     def fail_pipeline(**kwargs) -> None:
+        kwargs['progress_callback']('run_odm_rgb', 'Running ODM RGB')
         raise RuntimeError('ODM-RGB failed with exit code 139. Docker mount args were --volumes-from app.')
 
     monkeypatch.setattr('agrivision.services.run_service.run_full_pipeline', fail_pipeline)
@@ -280,9 +289,48 @@ def test_failed_run_stores_diagnostic_summary_and_raw_log(tmp_path: Path, monkey
     log_text = Path(failed.logs_path).read_text(encoding='utf-8')
 
     assert failed.status == 'failed'
+    assert failed.finished_at is not None
     assert 'crashed during reconstruction' in failed.stage_message
     assert failed.errors == [failed.stage_message]
     assert 'Raw error: ODM-RGB failed with exit code 139' in log_text
+    stage_states = {stage.key: stage.state for stage in failed.stages}
+    assert stage_states['run_odm_rgb'] == 'failed'
+    assert stage_states['run_odm_mapir'] == 'skipped'
+    assert all(stage.state != 'running' for stage in failed.stages)
+
+
+def test_finalize_run_status_is_idempotent_for_terminal_runs(tmp_path: Path) -> None:
+    storage = StorageService(project_root=tmp_path)
+    upload_dir = storage.upload_dir('upload-seed')
+    (upload_dir / 'rgb').mkdir(parents=True, exist_ok=True)
+    (upload_dir / 'mapir').mkdir(parents=True, exist_ok=True)
+    service = RunService(storage)
+    record = service.create_run_record(_request('upload-seed'))
+    service.update_status(record.run_id, status='running')
+    service.update_stage(record.run_id, 'run_odm_rgb', 'running', 'Running ODM RGB')
+
+    first = service.finalize_run_status(
+        record.run_id,
+        status='cancelled',
+        current_stage='cancelled',
+        stage_message='Run stopped by operator.',
+        error_message='Run stopped by operator.',
+        running_stage_state='cancelled',
+        running_stage_message='Stopped by operator.',
+    )
+    second = service.finalize_run_status(
+        record.run_id,
+        status='cancelled',
+        current_stage='cancelled',
+        stage_message='Run stopped by operator.',
+        error_message='Run stopped by operator.',
+        running_stage_state='cancelled',
+        running_stage_message='Stopped by operator.',
+    )
+
+    assert second.finished_at == first.finished_at
+    assert second.errors == ['Run stopped by operator.']
+    assert all(stage.state != 'running' for stage in second.stages)
 
 
 def test_delete_run_removes_only_runtime_run_dir(tmp_path: Path) -> None:

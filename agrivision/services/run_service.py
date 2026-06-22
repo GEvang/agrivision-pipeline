@@ -182,14 +182,14 @@ class RunService:
             if thread is not None and thread.is_alive():
                 continue
             cleared.append(
-                self.update_status(
+                self.finalize_run_status(
                     record.run_id,
                     status='cancelled',
                     current_stage='cancelled',
                     stage_message='Cleared stale active run.',
-                    errors=self._append_unique_error(record.errors, 'Cleared stale active run.'),
-                    finished_at=datetime.now(timezone.utc),
-                    stages=self._cancel_stages(record.stages),
+                    error_message='Cleared stale active run.',
+                    running_stage_state='cancelled',
+                    running_stage_message='Cleared stale active run.',
                 )
             )
         return cleared
@@ -206,14 +206,14 @@ class RunService:
             thread = self._threads.get(record.run_id)
             if thread is not None and thread.is_alive():
                 continue
-            self.update_status(
+            self.finalize_run_status(
                 record.run_id,
                 status='cancelled',
                 current_stage='cancelled',
                 stage_message='Cleared incomplete run.',
-                errors=self._append_unique_error(record.errors, 'Cleared incomplete run.'),
-                finished_at=datetime.now(timezone.utc),
-                stages=self._cancel_stages(record.stages),
+                error_message='Cleared incomplete run.',
+                running_stage_state='cancelled',
+                running_stage_message='Cleared incomplete run.',
             )
             self.delete_run(record.run_id)
             cleared += 1
@@ -298,17 +298,68 @@ class RunService:
         )
 
     def _cancel_stages(self, stages: list[StageStatus]) -> list[StageStatus]:
-        cancelled_stages = [StageStatus.model_validate(stage.model_dump()) for stage in stages]
-        for stage in cancelled_stages:
+        return self._finalize_stages(
+            stages,
+            running_state='cancelled',
+            running_message='Stopped by operator.',
+        )
+
+    def _finalize_stages(
+        self,
+        stages: list[StageStatus],
+        *,
+        running_state: str,
+        running_message: str | None,
+        pending_state: str = 'skipped',
+    ) -> list[StageStatus]:
+        finalized_stages = [StageStatus.model_validate(stage.model_dump()) for stage in stages]
+        for stage in finalized_stages:
             if stage.state == 'running':
-                stage.state = 'cancelled'
-                stage.message = 'Stopped by operator'
+                stage.state = running_state  # type: ignore[misc]
+                stage.message = running_message
             elif stage.state == 'pending':
-                stage.state = 'skipped'
-        return cancelled_stages
+                stage.state = pending_state  # type: ignore[misc]
+        return finalized_stages
 
     def _append_unique_error(self, errors: list[str], message: str) -> list[str]:
         return errors if message in errors else [*errors, message]
+
+    def finalize_run_status(
+        self,
+        run_id: str,
+        *,
+        status: str,
+        current_stage: str,
+        stage_message: str,
+        outputs: dict[str, str] | None = None,
+        errors: list[str] | None = None,
+        error_message: str | None = None,
+        running_stage_state: str | None = None,
+        running_stage_message: str | None = None,
+        progress_percent: int | None = None,
+    ) -> RunRecord:
+        record = self.load_run(run_id)
+        final_errors = errors
+        if final_errors is None:
+            final_errors = record.errors if error_message is None else self._append_unique_error(record.errors, error_message)
+        stages = record.stages
+        if running_stage_state is not None:
+            stages = self._finalize_stages(
+                record.stages,
+                running_state=running_stage_state,
+                running_message=running_stage_message,
+            )
+        return self.update_status(
+            run_id,
+            status=status,
+            outputs=outputs,
+            errors=final_errors,
+            progress_percent=progress_percent,
+            current_stage=current_stage,
+            stage_message=stage_message,
+            finished_at=record.finished_at or datetime.now(timezone.utc),
+            stages=stages,
+        )
 
     def _active_run_blocker(self, run_id: str) -> RunRecord | None:
         for candidate in self.list_runs():
@@ -319,15 +370,14 @@ class RunService:
         return None
 
     def mark_start_blocked(self, run_id: str, message: str) -> RunRecord:
-        record = self.load_run(run_id)
-        return self.update_status(
+        return self.finalize_run_status(
             run_id,
             status='cancelled',
             current_stage='blocked',
             stage_message=message,
-            errors=self._append_unique_error(record.errors, message),
-            finished_at=datetime.now(timezone.utc),
-            stages=self._cancel_stages(record.stages),
+            error_message=message,
+            running_stage_state='cancelled',
+            running_stage_message=message,
         )
 
     def stage_inputs_for_run(self, run_id: str) -> None:
@@ -430,14 +480,14 @@ class RunService:
         event = self._cancel_events.setdefault(run_id, threading.Event())
         event.set()
         self._stop_odm_containers()
-        return self.update_status(
+        return self.finalize_run_status(
             run_id,
             status='cancelled',
             current_stage='cancelled',
             stage_message='Run stopped by operator.',
-            errors=self._append_unique_error(record.errors, 'Run stopped by operator.'),
-            finished_at=datetime.now(timezone.utc),
-            stages=self._cancel_stages(record.stages),
+            error_message='Run stopped by operator.',
+            running_stage_state='cancelled',
+            running_stage_message='Stopped by operator.',
         )
 
     def launch_run(self, run_id: str) -> RunRecord:
@@ -498,7 +548,7 @@ class RunService:
                     )
             self._raise_if_cancelled(run_id)
             outputs = self._discover_outputs(Path(record.run_dir))
-            self.update_status(
+            self.finalize_run_status(
                 run_id,
                 status='completed',
                 outputs=outputs,
@@ -506,32 +556,29 @@ class RunService:
                 progress_percent=100,
                 current_stage='completed',
                 stage_message='Pipeline completed',
-                finished_at=datetime.now(timezone.utc),
             )
         except RunCancelled as exc:
-            record = self.load_run(run_id)
-            self.update_status(
+            self.finalize_run_status(
                 run_id,
                 status='cancelled',
                 current_stage='cancelled',
-                errors=self._append_unique_error(record.errors, str(exc)),
-                finished_at=datetime.now(timezone.utc),
                 stage_message=str(exc),
-                stages=self._cancel_stages(record.stages),
+                error_message=str(exc),
+                running_stage_state='cancelled',
+                running_stage_message='Stopped by operator.',
             )
             with log_path.open('a', encoding='utf-8') as log_handle:
                 log_handle.write(f"\n[dashboard] Run cancelled: {exc}\n")
         except Exception as exc:
             if self._cancel_events.get(run_id, threading.Event()).is_set():
-                record = self.load_run(run_id)
-                self.update_status(
+                self.finalize_run_status(
                     run_id,
                     status='cancelled',
                     current_stage='cancelled',
-                    errors=self._append_unique_error(record.errors, 'Run stopped by operator.'),
-                    finished_at=datetime.now(timezone.utc),
                     stage_message='Run stopped by operator.',
-                    stages=self._cancel_stages(record.stages),
+                    error_message='Run stopped by operator.',
+                    running_stage_state='cancelled',
+                    running_stage_message='Stopped by operator.',
                 )
                 with log_path.open('a', encoding='utf-8') as log_handle:
                     log_handle.write(f"\n[dashboard] Run cancelled: {exc}\n")
@@ -539,14 +586,16 @@ class RunService:
             outputs = self._discover_outputs(Path(record.run_dir))
             raw_error = str(exc)
             summary = summarize_failure(raw_error)
-            self.update_stage(run_id, self.load_run(run_id).current_stage or 'pipeline', 'failed', summary)
-            self.update_status(
+            failed_record = self.update_stage(run_id, self.load_run(run_id).current_stage or 'pipeline', 'failed', summary)
+            self.finalize_run_status(
                 run_id,
                 status='failed',
                 outputs=outputs,
-                errors=[summary],
-                finished_at=datetime.now(timezone.utc),
+                current_stage=failed_record.current_stage,
                 stage_message=summary,
+                error_message=summary,
+                running_stage_state='failed',
+                running_stage_message=summary,
             )
             with log_path.open('a', encoding='utf-8') as log_handle:
                 log_handle.write(f"\n[dashboard] Run failed: {summary}\n")
