@@ -28,6 +28,10 @@ class RunCancelled(RuntimeError):
     pass
 
 
+class RunStartBlocked(RuntimeError):
+    pass
+
+
 class RunService:
     def __init__(self, storage: StorageService | None = None) -> None:
         self.storage = storage or StorageService()
@@ -306,6 +310,26 @@ class RunService:
     def _append_unique_error(self, errors: list[str], message: str) -> list[str]:
         return errors if message in errors else [*errors, message]
 
+    def _active_run_blocker(self, run_id: str) -> RunRecord | None:
+        for candidate in self.list_runs():
+            if candidate.run_id == run_id:
+                continue
+            if candidate.status in {'queued', 'running'}:
+                return candidate
+        return None
+
+    def mark_start_blocked(self, run_id: str, message: str) -> RunRecord:
+        record = self.load_run(run_id)
+        return self.update_status(
+            run_id,
+            status='cancelled',
+            current_stage='blocked',
+            stage_message=message,
+            errors=self._append_unique_error(record.errors, message),
+            finished_at=datetime.now(timezone.utc),
+            stages=self._cancel_stages(record.stages),
+        )
+
     def stage_inputs_for_run(self, run_id: str) -> None:
         record = self.load_run(run_id)
         config = load_config()
@@ -378,6 +402,12 @@ class RunService:
         record = self.load_run(run_id)
         if run_id in self._threads and self._threads[run_id].is_alive():
             return record
+        blocker = self._active_run_blocker(run_id)
+        if blocker is not None:
+            raise RunStartBlocked(
+                f'Another run is already active ({blocker.run_id}). '
+                'Wait for it to finish or stop it before starting a new run.'
+            )
         self._cancel_events[run_id] = threading.Event()
         record = self.update_status(
             run_id,

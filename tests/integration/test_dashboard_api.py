@@ -9,7 +9,7 @@ from PIL import Image
 from agrivision.app import api
 from agrivision.app import dependencies as deps
 from agrivision.services.report_service import ReportService
-from agrivision.services.run_service import RunService
+from agrivision.services.run_service import RunService, RunStartBlocked
 from agrivision.services.settings_service import SettingsService
 from agrivision.services.storage_service import StorageService
 
@@ -91,3 +91,60 @@ def test_api_create_run_upload_reports_and_settings(tmp_path: Path, monkeypatch)
     credentials = client.post('/settings/credentials', json={'weather_password': 'demo-pass'})
     assert credentials.status_code == 200
     assert credentials.json()['credentials']['weather_password'] != 'demo-pass'
+
+
+def test_api_create_run_returns_conflict_when_another_run_is_active(tmp_path: Path, monkeypatch) -> None:
+    storage = StorageService(project_root=tmp_path)
+    run_service = RunService(storage)
+    report_service = ReportService(run_service=run_service)
+    config_path = tmp_path / 'config.yaml'
+    config_path.write_text('weather:\n  base_url: http://example\n', encoding='utf-8')
+    settings_service = SettingsService(config_path=config_path, env_path=tmp_path / '.env')
+
+    monkeypatch.setattr(deps, 'storage_service', storage)
+    monkeypatch.setattr(deps, 'run_service', run_service)
+    monkeypatch.setattr(deps, 'report_service', report_service)
+    monkeypatch.setattr(deps, 'settings_service', settings_service)
+
+    upload_dir = storage.upload_dir('upload-seed')
+    (upload_dir / 'rgb').mkdir(parents=True, exist_ok=True)
+    (upload_dir / 'mapir').mkdir(parents=True, exist_ok=True)
+    storage.write_json(
+        upload_dir / 'manifest.json',
+        {
+            'run_id': 'upload-seed',
+            'dataset_name': 'Dataset API',
+            'upload_dir': str(upload_dir),
+            'files': ['rgb/a.png', 'rgb/b.png', 'mapir/a.png', 'mapir/b.png'],
+            'rgb_files': ['a.png', 'b.png'],
+            'mapir_files': ['a.png', 'b.png'],
+            'created_at': '2026-06-22T00:00:00Z',
+        },
+    )
+
+    def block_start(run_id: str):
+        raise RunStartBlocked(
+            'Another run is already active (active-run). Wait for it to finish or stop it before starting a new run.'
+        )
+
+    monkeypatch.setattr(run_service, 'start_run', block_start)
+
+    client = TestClient(api.app)
+    response = client.post(
+        '/runs',
+        json={
+            'run_name': 'Blocked Run',
+            'dataset_name': 'Dataset API',
+            'upload_run_id': 'upload-seed',
+            'selected_steps': {
+                'resize_images': False,
+                'run_odm': True,
+                'fetch_weather': False,
+                'generate_report': True,
+            },
+            'parameters': {'preset': 'default'},
+        },
+    )
+
+    assert response.status_code == 409
+    assert 'Another run is already active (active-run).' in response.json()['detail']

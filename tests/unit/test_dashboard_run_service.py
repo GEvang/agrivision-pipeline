@@ -3,7 +3,7 @@ from __future__ import annotations
 from pathlib import Path
 
 from agrivision.app.schemas.runs import RunCreateRequest
-from agrivision.services.run_service import RunService
+from agrivision.services.run_service import RunService, RunStartBlocked
 from agrivision.services.storage_service import StorageService
 
 
@@ -46,6 +46,165 @@ def test_run_record_creation_and_status_update(tmp_path: Path) -> None:
     updated = service.update_status(record.run_id, status='running', outputs={'report_html': 'output/report/index.html'})
     assert updated.status == 'running'
     assert updated.outputs['report_html'].endswith('index.html')
+
+
+def test_start_run_blocks_when_another_run_is_running(tmp_path: Path) -> None:
+    storage = StorageService(project_root=tmp_path)
+    upload_dir = storage.upload_dir('upload-seed')
+    (upload_dir / 'rgb').mkdir(parents=True, exist_ok=True)
+    (upload_dir / 'mapir').mkdir(parents=True, exist_ok=True)
+    service = RunService(storage)
+    active = service.create_run_record(_request('upload-seed'))
+    pending = service.create_run_record(_request('upload-seed'))
+    service.update_status(active.run_id, status='running')
+
+    try:
+        service.start_run(pending.run_id)
+    except RunStartBlocked as exc:
+        message = str(exc)
+    else:
+        raise AssertionError('Expected active run to block a new run')
+
+    assert active.run_id in message
+    assert service.load_run(pending.run_id).status == 'queued'
+
+
+def test_start_run_blocks_when_another_run_is_queued(tmp_path: Path) -> None:
+    storage = StorageService(project_root=tmp_path)
+    upload_dir = storage.upload_dir('upload-seed')
+    (upload_dir / 'rgb').mkdir(parents=True, exist_ok=True)
+    (upload_dir / 'mapir').mkdir(parents=True, exist_ok=True)
+    service = RunService(storage)
+    queued = service.create_run_record(_request('upload-seed'))
+    pending = service.create_run_record(_request('upload-seed'))
+
+    try:
+        service.start_run(pending.run_id)
+    except RunStartBlocked as exc:
+        message = str(exc)
+    else:
+        raise AssertionError('Expected queued run to block a new run')
+
+    assert queued.run_id in message
+    assert service.load_run(pending.run_id).status == 'queued'
+
+
+def test_start_run_blocks_non_odm_runs_while_another_run_is_active(tmp_path: Path) -> None:
+    storage = StorageService(project_root=tmp_path)
+    upload_dir = storage.upload_dir('upload-seed')
+    (upload_dir / 'rgb').mkdir(parents=True, exist_ok=True)
+    (upload_dir / 'mapir').mkdir(parents=True, exist_ok=True)
+    service = RunService(storage)
+    active = service.create_run_record(_request('upload-seed'))
+    reuse_request = RunCreateRequest.model_validate(
+        {
+            'run_name': 'Reuse orthophotos',
+            'dataset_name': 'Dataset 1',
+            'upload_run_id': 'upload-seed',
+            'selected_steps': {
+                'resize_images': False,
+                'run_odm': False,
+                'fetch_weather': True,
+                'run_irrigation': False,
+                'run_pdm': False,
+                'generate_report': True,
+            },
+            'parameters': {'source_orthophoto_run_id': active.run_id},
+        }
+    )
+    pending = service.create_run_record(reuse_request)
+    service.update_status(active.run_id, status='running')
+
+    try:
+        service.start_run(pending.run_id)
+    except RunStartBlocked as exc:
+        message = str(exc)
+    else:
+        raise AssertionError('Expected active run to block non-ODM run')
+
+    assert active.run_id in message
+
+
+def test_start_run_allows_new_run_after_terminal_status(tmp_path: Path) -> None:
+    storage = StorageService(project_root=tmp_path)
+    upload_dir = storage.upload_dir('upload-seed')
+    (upload_dir / 'rgb').mkdir(parents=True, exist_ok=True)
+    (upload_dir / 'mapir').mkdir(parents=True, exist_ok=True)
+    service = RunService(storage)
+    finished = service.create_run_record(_request('upload-seed'))
+    pending = service.create_run_record(_request('upload-seed'))
+    service.update_status(finished.run_id, status='completed')
+
+    calls: list[str] = []
+
+    def fake_execute(run_id: str) -> None:
+        calls.append(run_id)
+
+    service._execute_run = fake_execute  # type: ignore[method-assign]
+    result = service.start_run(pending.run_id)
+
+    assert result.status == 'running'
+    assert calls == [pending.run_id]
+
+
+def test_start_run_allows_new_run_after_failed_status(tmp_path: Path) -> None:
+    storage = StorageService(project_root=tmp_path)
+    upload_dir = storage.upload_dir('upload-seed')
+    (upload_dir / 'rgb').mkdir(parents=True, exist_ok=True)
+    (upload_dir / 'mapir').mkdir(parents=True, exist_ok=True)
+    service = RunService(storage)
+    failed = service.create_run_record(_request('upload-seed'))
+    pending = service.create_run_record(_request('upload-seed'))
+    service.update_status(failed.run_id, status='failed')
+
+    calls: list[str] = []
+
+    def fake_execute(run_id: str) -> None:
+        calls.append(run_id)
+
+    service._execute_run = fake_execute  # type: ignore[method-assign]
+    result = service.start_run(pending.run_id)
+
+    assert result.status == 'running'
+    assert calls == [pending.run_id]
+
+
+def test_start_run_allows_new_run_after_cancelled_status(tmp_path: Path) -> None:
+    storage = StorageService(project_root=tmp_path)
+    upload_dir = storage.upload_dir('upload-seed')
+    (upload_dir / 'rgb').mkdir(parents=True, exist_ok=True)
+    (upload_dir / 'mapir').mkdir(parents=True, exist_ok=True)
+    service = RunService(storage)
+    cancelled = service.create_run_record(_request('upload-seed'))
+    pending = service.create_run_record(_request('upload-seed'))
+    service.update_status(cancelled.run_id, status='cancelled')
+
+    calls: list[str] = []
+
+    def fake_execute(run_id: str) -> None:
+        calls.append(run_id)
+
+    service._execute_run = fake_execute  # type: ignore[method-assign]
+    result = service.start_run(pending.run_id)
+
+    assert result.status == 'running'
+    assert calls == [pending.run_id]
+
+
+def test_mark_start_blocked_records_clear_operator_message(tmp_path: Path) -> None:
+    storage = StorageService(project_root=tmp_path)
+    upload_dir = storage.upload_dir('upload-seed')
+    (upload_dir / 'rgb').mkdir(parents=True, exist_ok=True)
+    (upload_dir / 'mapir').mkdir(parents=True, exist_ok=True)
+    service = RunService(storage)
+    record = service.create_run_record(_request('upload-seed'))
+
+    blocked = service.mark_start_blocked(record.run_id, 'Another run is already active (run-123).')
+
+    assert blocked.status == 'cancelled'
+    assert blocked.current_stage == 'blocked'
+    assert blocked.stage_message == 'Another run is already active (run-123).'
+    assert blocked.errors == ['Another run is already active (run-123).']
 
 
 def test_odm_only_run_does_not_include_services(tmp_path: Path) -> None:

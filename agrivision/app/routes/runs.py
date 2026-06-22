@@ -8,6 +8,7 @@ from fastapi.responses import HTMLResponse, RedirectResponse
 from agrivision.app import dependencies as deps
 from agrivision.app.schemas.runs import RunCreateRequest
 from agrivision.services.pdm.catalog import PDM_MODEL_CATALOG
+from agrivision.services.run_service import RunStartBlocked
 
 router = APIRouter()
 
@@ -195,7 +196,11 @@ def get_run(run_id: str, request: Request):
 @router.post('/runs')
 def create_run(request: RunCreateRequest) -> dict[str, str]:
     record = deps.run_service.create_run_record(request)
-    result = deps.run_service.start_run(record.run_id)
+    try:
+        result = deps.run_service.start_run(record.run_id)
+    except RunStartBlocked as exc:
+        deps.run_service.mark_start_blocked(record.run_id, str(exc))
+        raise HTTPException(status_code=409, detail=str(exc)) from exc
     return {'run_id': result.run_id, 'status': result.status, 'redirect': f'/runs/{result.run_id}'}
 
 
@@ -275,7 +280,29 @@ def create_run_ui(
                 'generate_report': generate_report,
             },
         )
-    created = create_run(run_request)
+    try:
+        created = create_run(run_request)
+    except HTTPException as exc:
+        if exc.status_code != 409:
+            raise
+        validation_with_block = dict(validation)
+        validation_with_block['ok'] = False
+        validation_with_block.setdefault('blockers', [])
+        validation_with_block['blockers'] = [*validation_with_block['blockers'], str(exc.detail)]
+        return _render_new_run_page(
+            request,
+            upload_run_id=upload_run_id,
+            validation_result=validation_with_block,
+            form_values={
+                'run_name': run_name,
+                'fetch_weather': fetch_weather,
+                'run_irrigation': run_irrigation,
+                'run_pdm': run_pdm,
+                'pdm_crop': pdm_crop,
+                'pdm_model_key': pdm_model_key,
+                'generate_report': generate_report,
+            },
+        )
     return RedirectResponse(url=created['redirect'], status_code=303)
 
 
