@@ -444,6 +444,34 @@ class RunService:
             target.parent.mkdir(parents=True, exist_ok=True)
             shutil.copy2(source_file, target)
 
+    def _clear_discoverable_outputs_for_run(self, record: RunRecord) -> None:
+        config = load_config()
+        project_root = self.storage.layout.project_root
+        candidate_paths: list[Path] = []
+
+        if not self._is_orthophoto_creation_run(record):
+            ndvi_root = project_root / config['paths']['ndvi_output']
+            candidate_paths.extend([
+                ndvi_root / 'ndvi.tif',
+                ndvi_root / 'metadata.json',
+                ndvi_root / 'grid_metadata.json',
+            ])
+        if record.selected_steps.run_odm:
+            candidate_paths.extend([
+                project_root / config['paths']['odm_project_root_rgb'] / 'project' / 'odm_orthophoto' / 'odm_orthophoto.tif',
+                project_root / config['paths']['odm_project_root_mapir'] / 'project' / 'odm_orthophoto' / 'odm_orthophoto.tif',
+            ])
+        if record.selected_steps.generate_report:
+            report_root = project_root / config['paths']['output_root']
+            candidate_paths.extend([
+                report_root / 'report_latest.html',
+                report_root / 'report' / 'index.html',
+            ])
+
+        for path in candidate_paths:
+            if path.exists() and path.is_file():
+                path.unlink()
+
     def ensure_latest_orthophoto_run_saved(self) -> RunRecord | None:
         latest_run = next(
             (
@@ -537,6 +565,7 @@ class RunService:
         try:
             self._raise_if_cancelled(run_id)
             self.update_stage(run_id, 'stage_inputs', 'running', 'Staging MAPIR and RGB inputs')
+            self._clear_discoverable_outputs_for_run(record)
             self.stage_inputs_for_run(run_id)
             source_orthophoto_run_id = record.parameters.get('source_orthophoto_run_id')
             if source_orthophoto_run_id and not record.selected_steps.run_odm:

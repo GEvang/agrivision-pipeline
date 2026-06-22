@@ -299,6 +299,58 @@ def test_failed_run_stores_diagnostic_summary_and_raw_log(tmp_path: Path, monkey
     assert all(stage.state != 'running' for stage in failed.stages)
 
 
+def test_launch_run_does_not_attach_stale_global_outputs(tmp_path: Path, monkeypatch) -> None:
+    storage = StorageService(project_root=tmp_path)
+    upload_dir = storage.upload_dir('upload-seed')
+    (upload_dir / 'rgb').mkdir(parents=True, exist_ok=True)
+    (upload_dir / 'mapir').mkdir(parents=True, exist_ok=True)
+    service = RunService(storage)
+    record = service.create_run_record(_request('upload-seed'))
+
+    output_root = tmp_path / 'output'
+    ndvi_dir = output_root / 'ndvi'
+    report_dir = output_root / 'report'
+    rgb_ortho = tmp_path / 'odm_rgb' / 'project' / 'odm_orthophoto' / 'odm_orthophoto.tif'
+    mapir_ortho = tmp_path / 'odm_mapir' / 'project' / 'odm_orthophoto' / 'odm_orthophoto.tif'
+
+    ndvi_dir.mkdir(parents=True, exist_ok=True)
+    report_dir.mkdir(parents=True, exist_ok=True)
+    rgb_ortho.parent.mkdir(parents=True, exist_ok=True)
+    mapir_ortho.parent.mkdir(parents=True, exist_ok=True)
+
+    (output_root / 'report_latest.html').write_text('<html>stale latest</html>', encoding='utf-8')
+    (report_dir / 'index.html').write_text('<html>stale report</html>', encoding='utf-8')
+    (ndvi_dir / 'ndvi.tif').write_text('stale ndvi', encoding='utf-8')
+    (ndvi_dir / 'metadata.json').write_text('{}', encoding='utf-8')
+    (ndvi_dir / 'grid_metadata.json').write_text('{}', encoding='utf-8')
+    rgb_ortho.write_text('stale rgb', encoding='utf-8')
+    mapir_ortho.write_text('stale mapir', encoding='utf-8')
+
+    monkeypatch.setattr(service, 'stage_inputs_for_run', lambda run_id: None)
+    monkeypatch.setattr('agrivision.services.run_service.run_full_pipeline', lambda **kwargs: None)
+    monkeypatch.setattr('agrivision.services.run_service.load_config', lambda: {
+        'paths': {
+            'output_root': 'output',
+            'runs_output': 'output/runs',
+            'ndvi_output': 'output/ndvi',
+            'odm_project_root_rgb': 'odm_rgb',
+            'odm_project_root_mapir': 'odm_mapir',
+            'images_full': 'images/full',
+            'images_full_mapir': 'images/full_mapir',
+        }
+    })
+
+    completed = service.launch_run(record.run_id)
+
+    assert completed.status == 'completed'
+    assert completed.outputs == {}
+    assert not (output_root / 'report_latest.html').exists()
+    assert not (report_dir / 'index.html').exists()
+    assert not (ndvi_dir / 'ndvi.tif').exists()
+    assert not rgb_ortho.exists()
+    assert not mapir_ortho.exists()
+
+
 def test_finalize_run_status_is_idempotent_for_terminal_runs(tmp_path: Path) -> None:
     storage = StorageService(project_root=tmp_path)
     upload_dir = storage.upload_dir('upload-seed')
