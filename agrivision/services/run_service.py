@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import contextlib
+import json
 import re
 import shutil
 import subprocess
@@ -8,7 +9,7 @@ import threading
 from datetime import datetime, timezone
 from pathlib import Path
 
-from agrivision.app.schemas.runs import RunCreateRequest, RunRecord, StageStatus
+from agrivision.app.schemas.runs import RunCreateRequest, RunRecord, StageStatus, StepSelection
 from agrivision.config import get_project_root, load_config
 from agrivision.pipeline.orchestrator import run_full_pipeline
 from agrivision.services.failure_diagnostics import summarize_failure
@@ -34,6 +35,7 @@ class RunStartBlocked(RuntimeError):
 
 class RunService:
     RESTART_RECONCILIATION_MESSAGE = 'Interrupted because the dashboard process restarted before the run completed.'
+    CORRUPTED_RUN_MESSAGE = 'Run record is corrupted and requires manual cleanup.'
 
     def __init__(self, storage: StorageService | None = None) -> None:
         self.storage = storage or StorageService()
@@ -132,17 +134,51 @@ class RunService:
 
     def load_run(self, run_id: str) -> RunRecord:
         path = self.storage.run_dir(run_id) / 'status.json'
-        return RunRecord.model_validate(self.storage.read_json(path))
+        return self._load_run_record(path)
 
     def list_runs(self) -> list[RunRecord]:
         runs: list[RunRecord] = []
         for status_path in sorted(self.storage.layout.runs_root.glob('*/status.json'), reverse=True):
-            try:
-                runs.append(RunRecord.model_validate(self.storage.read_json(status_path)))
-            except Exception:
-                continue
+            runs.append(self._load_run_record(status_path))
         runs.sort(key=lambda item: item.created_at, reverse=True)
         return runs
+
+    def _load_run_record(self, status_path: Path) -> RunRecord:
+        try:
+            return RunRecord.model_validate(self.storage.read_json(status_path))
+        except Exception as exc:
+            return self._corrupted_run_record(status_path, exc)
+
+    def _corrupted_run_record(self, status_path: Path, exc: Exception) -> RunRecord:
+        run_dir = status_path.parent
+        payload: dict[str, object] = {}
+        with contextlib.suppress(OSError, json.JSONDecodeError):
+            loaded = json.loads(status_path.read_text(encoding='utf-8'))
+            if isinstance(loaded, dict):
+                payload = loaded
+        now = datetime.now(timezone.utc)
+        return RunRecord(
+            run_id=str(payload.get('run_id') or run_dir.name),
+            created_at=now,
+            updated_at=now,
+            started_at=None,
+            finished_at=now,
+            dataset_name=str(payload.get('dataset_name') or run_dir.name),
+            input_path=str(payload.get('input_path') or ''),
+            status='failed',
+            progress_percent=0,
+            current_stage='corrupted',
+            stage_message=self.CORRUPTED_RUN_MESSAGE,
+            selected_steps=StepSelection.model_validate(payload.get('selected_steps') or {}),
+            parameters={},
+            outputs={},
+            errors=[f'{self.CORRUPTED_RUN_MESSAGE} ({exc})'],
+            stages=[],
+            logs_path=str(payload.get('logs_path') or (run_dir / 'run.log')),
+            run_name=str(payload.get('run_name')) if payload.get('run_name') else None,
+            field_name=str(payload.get('field_name')) if payload.get('field_name') else None,
+            run_dir=str(payload.get('run_dir') or run_dir),
+        )
 
     def _existing_run_dir(self, run_id: str) -> Path:
         candidate = (self.storage.layout.runs_root / run_id).resolve()

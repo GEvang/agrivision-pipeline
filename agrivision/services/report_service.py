@@ -52,9 +52,9 @@ class ReportService:
         )
 
     def _quality_summary(self, run: RunRecord) -> dict[str, Any]:
-        ndvi_meta = self._read_json(self._metadata_path(run, 'ndvi_metadata', 'metadata.json'))
-        grid_meta = self._read_json(self._metadata_path(run, 'grid_metadata', 'grid_metadata.json'))
-        if not ndvi_meta and not grid_meta:
+        ndvi_meta, ndvi_error = self._read_json(self._metadata_path(run, 'ndvi_metadata', 'metadata.json'))
+        grid_meta, grid_error = self._read_json(self._metadata_path(run, 'grid_metadata', 'grid_metadata.json'))
+        if not ndvi_meta and not grid_meta and not ndvi_error and not grid_error:
             return {}
 
         valid_pixels = ndvi_meta.get('valid_pixels', {}) if isinstance(ndvi_meta, dict) else {}
@@ -68,8 +68,14 @@ class ReportService:
         saturated_low = self._as_float(distribution.get('saturated_low_percent'))
         quality_flags = [str(item) for item in flags if str(item).strip()]
         state = 'ok'
+        if ndvi_error:
+            state = 'error'
+            quality_flags.append(ndvi_error)
+        if grid_error:
+            state = 'error'
+            quality_flags.append(grid_error)
         if quality_flags:
-            state = 'warn'
+            state = 'warn' if state != 'error' else state
         if valid_percent is not None and valid_percent < 20:
             state = 'error'
             quality_flags.append('Very low valid vegetation-index coverage.')
@@ -105,15 +111,17 @@ class ReportService:
             return Path(configured)
         return None
 
-    def _read_json(self, path: Path | None) -> dict[str, Any]:
+    def _read_json(self, path: Path | None) -> tuple[dict[str, Any], str | None]:
         if path is None or not path.exists():
-            return {}
+            return {}, None
         try:
             import json
             payload = json.loads(path.read_text(encoding='utf-8'))
         except Exception:
-            return {}
-        return payload if isinstance(payload, dict) else {}
+            return {}, f'Unreadable metadata: {path.name}.'
+        if not isinstance(payload, dict):
+            return {}, f'Invalid metadata format: {path.name}.'
+        return payload, None
 
     def _as_float(self, value: Any) -> float | None:
         try:

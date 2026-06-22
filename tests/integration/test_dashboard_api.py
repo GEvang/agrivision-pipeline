@@ -303,3 +303,33 @@ def test_upload_rejects_excess_files_per_group_and_cleans_up(tmp_path: Path, mon
     assert response.status_code == 400
     assert any('no more than 1 files are allowed' in item for item in response.json()['detail'])
     assert list(storage.layout.uploads_root.glob('*')) == []
+
+
+def test_runs_api_surfaces_corrupted_run_records(tmp_path: Path, monkeypatch) -> None:
+    storage = StorageService(project_root=tmp_path)
+    run_service = RunService(storage)
+    report_service = ReportService(run_service=run_service)
+    config_path = tmp_path / 'config.yaml'
+    config_path.write_text('weather:\n  base_url: http://example\n', encoding='utf-8')
+    settings_service = SettingsService(config_path=config_path, env_path=tmp_path / '.env')
+
+    monkeypatch.setattr(deps, 'storage_service', storage)
+    monkeypatch.setattr(deps, 'run_service', run_service)
+    monkeypatch.setattr(deps, 'report_service', report_service)
+    monkeypatch.setattr(deps, 'settings_service', settings_service)
+
+    run_dir = storage.run_dir('broken-run')
+    (run_dir / 'status.json').write_text('{"run_id":"broken-run"', encoding='utf-8')
+
+    with TestClient(api.app) as client:
+        response = client.get('/runs', headers={'accept': 'application/json'})
+        detail = client.get('/runs/broken-run', headers={'accept': 'application/json'})
+
+    assert response.status_code == 200
+    payload = response.json()
+    assert len(payload) == 1
+    assert payload[0]['run_id'] == 'broken-run'
+    assert payload[0]['current_stage'] == 'corrupted'
+    assert payload[0]['status'] == 'failed'
+    assert detail.status_code == 200
+    assert detail.json()['stage_message'] == RunService.CORRUPTED_RUN_MESSAGE

@@ -474,6 +474,36 @@ def test_clear_stuck_active_runs_cancels_runs_without_live_thread(tmp_path: Path
     assert 'Cleared stale active run.' in loaded.errors
 
 
+def test_list_runs_surfaces_corrupted_status_records(tmp_path: Path) -> None:
+    storage = StorageService(project_root=tmp_path)
+    service = RunService(storage)
+    run_dir = storage.run_dir('broken-run')
+    (run_dir / 'status.json').write_text('{"run_id": "broken-run", "dataset_name": "Broken"', encoding='utf-8')
+
+    runs = service.list_runs()
+
+    assert [run.run_id for run in runs] == ['broken-run']
+    broken = runs[0]
+    assert broken.status == 'failed'
+    assert broken.current_stage == 'corrupted'
+    assert broken.stage_message == RunService.CORRUPTED_RUN_MESSAGE
+    assert 'requires manual cleanup' in broken.errors[0]
+
+
+def test_load_run_returns_placeholder_for_corrupted_status_record(tmp_path: Path) -> None:
+    storage = StorageService(project_root=tmp_path)
+    service = RunService(storage)
+    run_dir = storage.run_dir('broken-run')
+    (run_dir / 'status.json').write_text('{"status": "running"', encoding='utf-8')
+
+    broken = service.load_run('broken-run')
+
+    assert broken.run_id == 'broken-run'
+    assert broken.status == 'failed'
+    assert broken.current_stage == 'corrupted'
+    assert broken.finished_at is not None
+
+
 def test_update_status_uses_storage_run_dir_for_legacy_record_paths(tmp_path: Path) -> None:
     storage = StorageService(project_root=tmp_path)
     service = RunService(storage)
