@@ -99,6 +99,72 @@ def _write_weather_debug_artifact(payload: Dict[str, Any]) -> None:
     _write_json(paths["weather_debug_path"], payload)
 
 
+def _extract_lat_lon_from_wkt(wkt: str) -> tuple[float, float] | None:
+    text = (wkt or "").strip()
+    if not text.upper().startswith("POINT"):
+        return None
+    try:
+        coords = text[text.index("(") + 1 : text.rindex(")")].replace(",", " ").split()
+        lat = float(coords[0])
+        lon = float(coords[1])
+        return lat, lon
+    except (IndexError, ValueError):
+        return None
+
+
+def _count_eto_values(payload: Any) -> Optional[int]:
+    if isinstance(payload, list):
+        return len(payload)
+    if not isinstance(payload, dict):
+        return None
+    for key in ("@graph", "calculations", "eto", "data", "results"):
+        value = payload.get(key)
+        if isinstance(value, list):
+            return len(value)
+    return None
+
+
+def _summarize_eto_values(payload: Any) -> Dict[str, Any]:
+    entries: list[Any] = []
+    if isinstance(payload, list):
+        entries = payload
+    elif isinstance(payload, dict):
+        for key in ("@graph", "calculations", "eto", "data", "results"):
+            value = payload.get(key)
+            if isinstance(value, list):
+                entries = value
+                break
+
+    values: list[float] = []
+    dates: list[str] = []
+    for item in entries:
+        if not isinstance(item, dict):
+            continue
+        raw_value = (
+            item.get("hasSimpleResult")
+            or item.get("eto")
+            or item.get("value")
+            or item.get("calculation")
+            or item.get("result")
+        )
+        try:
+            values.append(float(raw_value))
+        except (TypeError, ValueError):
+            pass
+        raw_date = item.get("resultTime") or item.get("date") or item.get("day")
+        if raw_date:
+            dates.append(str(raw_date))
+
+    if not values:
+        return {}
+    return {
+        "min_mm": round(min(values), 3),
+        "max_mm": round(max(values), 3),
+        "average_mm": round(sum(values) / len(values), 3),
+        "dates": sorted(set(dates)),
+    }
+
+
 # ----------------------------
 # HTTP helpers
 # ----------------------------
@@ -239,6 +305,45 @@ def fetch_eto_get_calculations(
     url = f"{base_url}/api/v1/eto/get-calculations/{int(location_id)}/from/{from_date}/to/{to_date}/"
     if formatting:
         url = f"{url}?{urllib.parse.urlencode({'formatting': formatting})}"
+    return _http_json("GET", url, headers={"Authorization": f"Bearer {token}"})
+
+
+def fetch_and_store_eto(
+    *,
+    base_url: str,
+    token: str,
+    location_id: int,
+    latitude: float,
+    longitude: float,
+    from_date: str,
+    to_date: str,
+    formatting: str = "JSON-LD",
+) -> Tuple[int, Any]:
+    params = {
+        "location_id": int(location_id),
+        "latitude": latitude,
+        "longitude": longitude,
+        "from_date": from_date,
+        "to_date": to_date,
+        "formatting": formatting,
+    }
+    url = f"{base_url}/api/v1/eto/fetch-and-store-eto/?{urllib.parse.urlencode(params)}"
+    return _http_json("GET", url, headers={"Authorization": f"Bearer {token}"})
+
+
+def fetch_eto_options(*, base_url: str, token: str) -> Tuple[int, Any]:
+    return _http_json("GET", f"{base_url}/api/v1/eto/option-types/", headers={"Authorization": f"Bearer {token}"})
+
+
+def fetch_soil_moisture(
+    *,
+    base_url: str,
+    token: str,
+    parcel_id: int,
+    from_date: str,
+    to_date: str,
+) -> Tuple[int, Any]:
+    url = f"{base_url}/api/v1/dataset/soil-moisture/{int(parcel_id)}/from/{from_date}/to/{to_date}"
     return _http_json("GET", url, headers={"Authorization": f"Bearer {token}"})
 
 
@@ -468,7 +573,7 @@ def _authenticate_irrigation(
             token = None
         else:
             if verbose:
-                print(f"[Irrigation] ✅ Existing token valid for: {me.get('email', email)}")
+                print(f"[Irrigation] Existing token valid for: {me.get('email', email)}")
             return {
                 "ok": True,
                 "token": token,
@@ -528,7 +633,7 @@ def _authenticate_irrigation(
         _write_token_artifact(base_url, token_type, token, email)
 
     if verbose:
-        print("[Irrigation] ✅ Logged in and token stored")
+        print("[Irrigation] Logged in and token stored")
 
     # Validate newly acquired token
     ok, me = _token_valid(base_url, token)
@@ -647,22 +752,40 @@ def _fetch_eto_state(
         location_id=int(effective_location_id),
         from_date=from_date_str,
         to_date=to_date_str,
-        formatting="JSON",
+        formatting="JSON-LD",
     )
     eto_ok = 200 <= eto_status < 300
 
-    eto_count: Optional[int] = None
-    if isinstance(eto_resp, list):
-        eto_count = len(eto_resp)
-    elif isinstance(eto_resp, dict):
-        if isinstance(eto_resp.get("calculations"), list):
-            eto_count = len(eto_resp["calculations"])
-        elif isinstance(eto_resp.get("eto"), list):
-            eto_count = len(eto_resp["eto"])
-        elif isinstance(eto_resp.get("data"), list):
-            eto_count = len(eto_resp["data"])
-        elif isinstance(eto_resp.get("results"), list):
-            eto_count = len(eto_resp["results"])
+    eto_count = _count_eto_values(eto_resp)
+    stored_eto_resp: Any = None
+    stored_eto_status: Optional[int] = None
+    lat_lon = _extract_lat_lon_from_wkt(str(get_settings().irrigation.default_parcel_wkt))
+    if eto_ok and eto_count == 0 and lat_lon:
+        stored_eto_status, stored_eto_resp = fetch_and_store_eto(
+            base_url=base_url,
+            token=token,
+            location_id=int(effective_location_id),
+            latitude=lat_lon[0],
+            longitude=lat_lon[1],
+            from_date=from_date_str,
+            to_date=to_date_str,
+            formatting="JSON-LD",
+        )
+        if 200 <= stored_eto_status < 300:
+            eto_resp = stored_eto_resp
+            eto_status = stored_eto_status
+            eto_count = _count_eto_values(eto_resp)
+            notes.append("ETo was fetched and stored from weather data because no stored calculations existed yet.")
+
+    options_status, options_resp = fetch_eto_options(base_url=base_url, token=token)
+    options_summary = options_resp if 200 <= options_status < 300 and isinstance(options_resp, dict) else {}
+    soil_status, soil_resp = fetch_soil_moisture(
+        base_url=base_url,
+        token=token,
+        parcel_id=int(effective_location_id),
+        from_date=from_date_str,
+        to_date=to_date_str,
+    )
 
     if write_artifacts:
         _write_eto_artifact(
@@ -672,10 +795,22 @@ def _fetch_eto_state(
                     "location_id": int(effective_location_id),
                     "from_date": from_date_str,
                     "to_date": to_date_str,
-                    "formatting": "JSON",
+                    "formatting": "JSON-LD",
                 },
                 "http_status": eto_status,
                 "response": eto_resp,
+                "fetch_and_store": {
+                    "http_status": stored_eto_status,
+                    "response": stored_eto_resp,
+                },
+                "option_types": {
+                    "http_status": options_status,
+                    "response": options_resp,
+                },
+                "soil_moisture": {
+                    "http_status": soil_status,
+                    "response": soil_resp,
+                },
             }
         )
 
@@ -712,9 +847,17 @@ def _fetch_eto_state(
             "location_id": int(effective_location_id),
             "from_date": from_date_str,
             "to_date": to_date_str,
+            "formatting": "JSON-LD",
             "http_status": eto_status,
             "ok": eto_ok,
             "count": eto_count,
+            "statistics": _summarize_eto_values(eto_resp),
+            "option_types": options_summary,
+            "soil_moisture": {
+                "http_status": soil_status,
+                "ok": 200 <= soil_status < 300,
+                "available": soil_resp not in ({}, None),
+            },
             "artifact_path": str(paths["eto_path"]),
             "preview": eto_preview,
             "weather_debug": weather_debug,

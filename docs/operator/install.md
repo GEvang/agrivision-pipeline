@@ -18,9 +18,17 @@ python run.py --doctor
 - creates `.env` from `.env.example` when missing
 - standardizes the local virtual environment at `.venv`
 
+The installer expects `python3`. It warns when `gdalinfo` is missing because GDAL is required for raster and orthophoto workflows.
+
+On Windows PowerShell, use the manual setup from the README or run the Docker Compose flow.
+
 ## Configuration
 
 - keep non-secret settings in `config.yaml`
 - create local secrets with `cp .env.example .env` and then fill the required values
 - keep secrets in `.env` or exported environment variables
 - never commit real credentials into `config.yaml` or `.env`
+
+## Windows self-hosting
+
+For a Windows workstation that serves the dashboard through Cloudflare Tunnel, follow `docs/operator/windows-self-hosting.md` after the local dashboard runs successfully.

@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import subprocess
+from concurrent.futures import ThreadPoolExecutor
 from urllib.error import URLError
 from urllib.request import Request as UrlRequest
 from urllib.request import urlopen
@@ -8,12 +9,17 @@ from urllib.request import urlopen
 from agrivision.config import load_config
 
 
-def url_health(name: str, base_url: str, paths: tuple[str, ...] = ('/health', '/docs', '/openapi.json')) -> dict[str, str]:
+def url_health(
+    name: str,
+    base_url: str,
+    paths: tuple[str, ...] = ('/health', '/docs', '/openapi.json'),
+    timeout: float = 0.2,
+) -> dict[str, str]:
     for path in paths:
         url = base_url.rstrip('/') + path
         try:
             request = UrlRequest(url, method='GET')
-            with urlopen(request, timeout=0.8) as response:
+            with urlopen(request, timeout=timeout) as response:
                 if 200 <= response.status < 500:
                     state = 'ok' if response.status < 400 else 'warn'
                     return {'name': name, 'state': state, 'detail': f'HTTP {response.status}', 'target': url}
@@ -41,9 +47,11 @@ def docker_health() -> dict[str, str]:
 
 def service_health() -> list[dict[str, str]]:
     config = load_config()
-    return [
-        docker_health(),
-        url_health('Weather', config.get('weather', {}).get('base_url', '')),
-        url_health('Irrigation', config.get('irrigation', {}).get('base_url', '')),
-        url_health('PDM', config.get('pdm', {}).get('base_url', '')),
+    checks = [
+        docker_health,
+        lambda: url_health('Weather', config.get('weather', {}).get('base_url', '')),
+        lambda: url_health('Irrigation', config.get('irrigation', {}).get('base_url', '')),
+        lambda: url_health('PDM', config.get('pdm', {}).get('base_url', '')),
     ]
+    with ThreadPoolExecutor(max_workers=len(checks)) as executor:
+        return list(executor.map(lambda check: check(), checks))

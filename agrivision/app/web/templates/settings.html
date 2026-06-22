@@ -31,28 +31,6 @@
       <label>Pest &amp; Disease base URL<input type="text" name="pdm_base_url" value="{{ non_secret.pdm_base_url }}" /></label>
     </div>
 
-    <div class="settings-group">
-      <h3>Pest &amp; Disease defaults</h3>
-      <label class="toggle-line"><input type="checkbox" name="pdm_enabled_by_default" value="true" {% if non_secret.pdm_enabled_by_default %}checked{% endif %} /> Enable by default</label>
-      <div class="inline-fields">
-        <label>Default crop
-          <select name="pdm_default_crop">
-            <option value="grapevine" {% if non_secret.pdm_default_crop == 'grapevine' %}selected{% endif %}>grapevine</option>
-            <option value="olive" {% if non_secret.pdm_default_crop == 'olive' %}selected{% endif %}>olive</option>
-          </select>
-        </label>
-        <label>Default model key<input type="text" name="pdm_default_model_key" value="{{ non_secret.pdm_default_model_key }}" /></label>
-      </div>
-    </div>
-
-    <div class="settings-group">
-      <h3>Processing</h3>
-      <div class="inline-fields">
-        <label>Resize max long edge<input type="number" name="resize_max_long_edge" value="{{ non_secret.resize_max_long_edge }}" /></label>
-        <label>Orthophoto resolution (cm)<input type="number" name="orthophoto_resolution_cm" value="{{ non_secret.orthophoto_resolution_cm }}" /></label>
-      </div>
-    </div>
-
     <button type="submit">Save settings</button>
   </form>
 
@@ -121,5 +99,100 @@
     </article>
     {% endfor %}
   </div>
+</section>
+
+{% set deployment = deployment_status|default(none) %}
+<section class="panel settings-card deployment-card service-{{ deployment.state if deployment else 'warn' }}" id="deployment">
+  <div class="settings-section-head">
+    <h2>Deployment</h2>
+    <p class="muted">Host readiness for local and self-hosted use.</p>
+  </div>
+  {% if deployment %}
+  <div class="deployment-summary">
+    <span class="health-dot"></span>
+    <div>
+      <strong>{{ deployment.deployment_mode|replace('_', ' ')|title }}</strong>
+      <p class="muted">{{ deployment.public_url or 'Local dashboard only' }}</p>
+    </div>
+  </div>
+  <dl class="server-status-list">
+    <dt>Free disk</dt>
+    <dd class="status-value status-value-{{ deployment.disk_state }}">
+      {{ deployment.free_disk_gb if deployment.free_disk_gb is not none else 'Unknown' }} GB
+      <span class="muted">min {{ deployment.min_free_disk_gb }} GB</span>
+    </dd>
+    <dt>Docker</dt>
+    <dd class="status-value status-value-{{ deployment.docker.state }}">
+      {{ deployment.docker.detail }}
+    </dd>
+    <dt>Active ODM</dt>
+    <dd>
+      {{ deployment.active_odm_count }} / {{ deployment.max_active_odm_runs }}
+    </dd>
+    <dt>Version</dt>
+    <dd>{{ deployment.git_commit }}</dd>
+  </dl>
+  {% if deployment.active_odm_runs %}
+  <details>
+    <summary>Active orthophoto runs</summary>
+    <ul>
+      {% for run_id in deployment.active_odm_runs %}
+      <li><a href="/runs/{{ run_id }}">{{ run_id }}</a></li>
+      {% endfor %}
+    </ul>
+  </details>
+  {% endif %}
+  <div class="settings-group cloudflare-checklist">
+    <h3>Cloudflare Tunnel checklist</h3>
+    <div class="checklist-grid">
+      {% for check in deployment.cloudflare_checks %}
+      <div class="checklist-item checklist-{{ check.state }}">
+        <span class="health-dot"></span>
+        <div>
+          <strong>{{ check.name }}</strong>
+          <p class="muted">{{ check.detail }}</p>
+        </div>
+      </div>
+      {% endfor %}
+    </div>
+  </div>
+  <details class="cloudflare-setup">
+    <summary>Cloudflare setup helper</summary>
+    <dl class="server-status-list">
+      <dt>Hostname</dt>
+      <dd>{{ deployment.cloudflare_setup.hostname or 'Set Public URL first' }}</dd>
+      <dt>Tunnel target</dt>
+      <dd>{{ deployment.cloudflare_setup.local_service }}</dd>
+    </dl>
+    <p class="muted">Run these commands in PowerShell after installing cloudflared.</p>
+    <pre class="snippet-box">{% for command in deployment.cloudflare_setup.commands %}{{ command }}
+{% endfor %}</pre>
+    <p class="muted">Cloudflare tunnel config:</p>
+    <pre class="snippet-box">{{ deployment.cloudflare_setup.config }}</pre>
+  </details>
+  {% else %}
+  <p class="muted">Restart the dashboard container to load the latest deployment status code.</p>
+  {% endif %}
+  <form class="deployment-form" method="post" action="/ui/settings/deployment">
+    <div class="inline-fields">
+      <label>Mode
+        <select name="deployment_mode">
+          <option value="local" {% if non_secret.deployment_mode == 'local' %}selected{% endif %}>Local</option>
+          <option value="self_hosted" {% if non_secret.deployment_mode == 'self_hosted' %}selected{% endif %}>Self hosted</option>
+          <option value="cloud" {% if non_secret.deployment_mode == 'cloud' %}selected{% endif %}>Cloud</option>
+        </select>
+      </label>
+      <label>Public URL<input type="url" name="public_url" value="{{ non_secret.public_url }}" placeholder="https://agrivision.example.com" /></label>
+    </div>
+    <div class="inline-fields">
+      <label>Minimum free disk (GB)<input type="number" min="0" max="10000" name="min_free_disk_gb" value="{{ non_secret.min_free_disk_gb }}" /></label>
+      <label>Max active ODM runs<input type="number" min="1" max="10" name="max_active_odm_runs" value="{{ non_secret.max_active_odm_runs }}" /></label>
+    </div>
+    <label class="toggle-line">
+      <input type="checkbox" name="external_access_protection_confirmed" value="true" {% if non_secret.external_access_protection_confirmed %}checked{% endif %} />
+      Cloudflare Access or equivalent external login is enabled
+    </label>
+    <button type="submit">Save deployment settings</button>
+  </form>
 </section>
 {% endblock %}

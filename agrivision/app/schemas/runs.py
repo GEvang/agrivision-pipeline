@@ -26,6 +26,8 @@ class RunParameters(BaseModel):
     orthophoto_preset: str | None = None
     orthophoto_resolution_cm: int | None = Field(default=None, ge=1, le=20)
     source_orthophoto_run_id: str | None = None
+    camera_targets: list[str] = Field(default_factory=list)
+    import_camera_targets: list[str] = Field(default_factory=list)
     pdm_crop: str | None = None
     pdm_model_key: str | None = None
 
@@ -98,6 +100,7 @@ class UploadManifest(BaseModel):
     files: list[str]
     mapir_files: list[str] = Field(default_factory=list)
     rgb_files: list[str] = Field(default_factory=list)
+    thermal_files: list[str] = Field(default_factory=list)
     created_at: datetime
 
 

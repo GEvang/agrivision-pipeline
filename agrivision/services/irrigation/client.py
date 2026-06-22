@@ -248,7 +248,9 @@ def list_locations() -> List[Location]:
 
     items: Any = payload
     if isinstance(payload, dict):
-        items = payload.get("data") or payload.get("results") or payload.get("items") or payload
+        items = payload.get("locations")
+        if items is None:
+            items = payload.get("data") or payload.get("results") or payload.get("items") or payload
 
     if isinstance(items, dict):
         return [Location(id=_extract_id(items), raw=items)]
@@ -280,15 +282,79 @@ def create_location_from_wkt(wkt_polygon: str) -> Location:
 # Public API: ETo
 # ---------------------------------------------------------------------------
 
-def get_eto_calculations(location_id: Any, from_date: date, to_date: date) -> EtoResult:
+def get_eto_calculations(
+    location_id: Any,
+    from_date: date,
+    to_date: date,
+    *,
+    crop: str | None = None,
+    stage: str | None = None,
+    formatting: str = "JSON-LD",
+) -> EtoResult:
     """
     GET /api/v1/eto/get-calculations/{location_id}/from/{from_date}/to/{to_date}
     """
     path = f"/api/v1/eto/get-calculations/{location_id}/from/{from_date.isoformat()}/to/{to_date.isoformat()}/"
-    resp = _request("GET", path)
+    params = {"formatting": formatting}
+    if crop:
+        params["crop"] = crop
+    if stage:
+        params["stage"] = stage
+    resp = _request("GET", path, params=params)
     resp.raise_for_status()
     payload = _json_or_text(resp)
     return EtoResult(location_id=location_id, from_date=from_date, to_date=to_date, raw=payload)
+
+
+def list_eto_options() -> Dict[str, Any]:
+    """
+    GET /api/v1/eto/option-types/
+    """
+    resp = _request("GET", "/api/v1/eto/option-types/")
+    resp.raise_for_status()
+    return _json_or_text(resp)
+
+
+def fetch_and_store_eto(
+    *,
+    location_id: Any,
+    latitude: float,
+    longitude: float,
+    from_date: date,
+    to_date: date,
+    crop: str | None = None,
+    stage: str | None = None,
+    formatting: str = "JSON-LD",
+) -> EtoResult:
+    """
+    GET /api/v1/eto/fetch-and-store-eto/
+    """
+    params: Dict[str, Any] = {
+        "location_id": int(location_id),
+        "latitude": latitude,
+        "longitude": longitude,
+        "from_date": from_date.isoformat(),
+        "to_date": to_date.isoformat(),
+        "formatting": formatting,
+    }
+    if crop:
+        params["crop"] = crop
+    if stage:
+        params["stage"] = stage
+    resp = _request("GET", "/api/v1/eto/fetch-and-store-eto/", params=params)
+    resp.raise_for_status()
+    payload = _json_or_text(resp)
+    return EtoResult(location_id=location_id, from_date=from_date, to_date=to_date, raw=payload)
+
+
+def get_soil_moisture(parcel_id: Any, from_date: date, to_date: date) -> Dict[str, Any]:
+    """
+    GET /api/v1/dataset/soil-moisture/{parcel_id}/from/{from_date}/to/{to_date}
+    """
+    path = f"/api/v1/dataset/soil-moisture/{parcel_id}/from/{from_date.isoformat()}/to/{to_date.isoformat()}"
+    resp = _request("GET", path)
+    resp.raise_for_status()
+    return _json_or_text(resp)
 
 
 # ---------------------------------------------------------------------------

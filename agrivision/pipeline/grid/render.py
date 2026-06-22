@@ -5,15 +5,23 @@ from __future__ import annotations
 from pathlib import Path
 from typing import Dict, List, Tuple
 
+import matplotlib.patheffects as path_effects
 import matplotlib.pyplot as plt
 import numpy as np
 import rasterio
+from matplotlib.patches import Rectangle
 
 COLOR_BY_CLASS = {
-    "poor": "red",
-    "medium": "yellow",
-    "good": "lime",
-    "no_data": "gray",
+    "poor": "#ef1d16",
+    "medium": "#f5c400",
+    "good": "#1fa447",
+    "no_data": "#8a8f98",
+}
+TEXT_BY_CLASS = {
+    "poor": "#ef1d16",
+    "medium": "#f5c400",
+    "good": "#00e53b",
+    "no_data": "#8a8f98",
 }
 
 MAX_DISPLAY_SIDE = 2500
@@ -101,11 +109,7 @@ def save_grid_overlay(
 
     plt.axis("off")
 
-    for x in col_edges:
-        plt.axvline(x=x * scale, color="black", linewidth=0.5, alpha=0.5)
-    for y in row_edges:
-        plt.axhline(y=y * scale, color="black", linewidth=0.5, alpha=0.5)
-
+    ax = plt.gca()
     for cell in cells:
         cls = cell["class"]
         if cls == "no_data":
@@ -113,21 +117,46 @@ def save_grid_overlay(
 
         r0, r1 = cell["r0"], cell["r1"]
         c0, c1 = cell["c0"], cell["c1"]
+        x = c0 * scale
+        y = r0 * scale
+        width = max((c1 - c0) * scale, 1)
+        height = max((r1 - r0) * scale, 1)
         y_center = ((r0 + r1) / 2.0) * scale
         x_center = ((c0 + c1) / 2.0) * scale
         label = cell["cell_id"]
-        color = COLOR_BY_CLASS.get(cls, "white")
+        fill_color = COLOR_BY_CLASS.get(cls, "#ffffff")
+        text_color = TEXT_BY_CLASS.get(cls, "#ffffff")
 
-        plt.text(
+        ax.add_patch(
+            Rectangle(
+                (x, y),
+                width,
+                height,
+                facecolor=fill_color,
+                edgecolor="white",
+                linewidth=0.7,
+                alpha=0.48,
+                zorder=2,
+            )
+        )
+
+        text = plt.text(
             x_center,
             y_center,
             label,
-            color=color,
+            color=text_color,
             fontsize=7,
             ha="center",
             va="center",
             fontweight="bold",
+            zorder=4,
         )
+        text.set_path_effects([path_effects.withStroke(linewidth=1.2, foreground="black", alpha=0.55)])
+
+    for x in col_edges:
+        plt.axvline(x=x * scale, color="white", linewidth=0.45, alpha=0.65, zorder=3)
+    for y in row_edges:
+        plt.axhline(y=y * scale, color="white", linewidth=0.45, alpha=0.65, zorder=3)
 
     plt.tight_layout(pad=0)
     plt.savefig(out_path, dpi=300, bbox_inches="tight", pad_inches=0)

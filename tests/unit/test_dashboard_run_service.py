@@ -3,7 +3,7 @@ from __future__ import annotations
 from pathlib import Path
 
 from agrivision.app.schemas.runs import RunCreateRequest
-from agrivision.services.run_service import RunService
+from agrivision.services.run_service import RunService, RunStartBlocked
 from agrivision.services.storage_service import StorageService
 
 
@@ -46,6 +46,51 @@ def test_run_record_creation_and_status_update(tmp_path: Path) -> None:
     updated = service.update_status(record.run_id, status='running', outputs={'report_html': 'output/report/index.html'})
     assert updated.status == 'running'
     assert updated.outputs['report_html'].endswith('index.html')
+
+
+def test_start_run_blocks_second_active_odm_run(tmp_path: Path, monkeypatch) -> None:
+    storage = StorageService(project_root=tmp_path)
+    upload_dir = storage.upload_dir('upload-seed')
+    (upload_dir / 'rgb').mkdir(parents=True, exist_ok=True)
+    (upload_dir / 'mapir').mkdir(parents=True, exist_ok=True)
+    (upload_dir / 'rgb' / 'a.jpg').write_bytes(b'123')
+    (upload_dir / 'mapir' / 'b.jpg').write_bytes(b'123')
+    service = RunService(storage)
+    monkeypatch.setattr(
+        'agrivision.services.run_service.load_config',
+        lambda: {'app': {'max_active_odm_runs': 1}},
+    )
+    active = service.create_run_record(_request('upload-seed'))
+    service.update_status(active.run_id, status='running')
+    pending = service.create_run_record(_request('upload-seed'))
+
+    try:
+        service.start_run(pending.run_id)
+    except RunStartBlocked as exc:
+        message = str(exc)
+    else:
+        raise AssertionError('Expected second active ODM run to be blocked')
+
+    assert active.run_id in message
+    assert service.load_run(pending.run_id).status == 'queued'
+
+
+def test_mark_start_blocked_cancels_run_with_error(tmp_path: Path) -> None:
+    storage = StorageService(project_root=tmp_path)
+    upload_dir = storage.upload_dir('upload-seed')
+    (upload_dir / 'rgb').mkdir(parents=True, exist_ok=True)
+    (upload_dir / 'mapir').mkdir(parents=True, exist_ok=True)
+    (upload_dir / 'rgb' / 'a.jpg').write_bytes(b'123')
+    (upload_dir / 'mapir' / 'b.jpg').write_bytes(b'123')
+    service = RunService(storage)
+    record = service.create_run_record(_request('upload-seed'))
+
+    blocked = service.mark_start_blocked(record.run_id, 'Another ODM run is already active.')
+
+    assert blocked.status == 'cancelled'
+    assert blocked.current_stage == 'blocked'
+    assert blocked.stage_message == 'Another ODM run is already active.'
+    assert blocked.errors == ['Another ODM run is already active.']
 
 
 def test_odm_only_run_does_not_include_services(tmp_path: Path) -> None:

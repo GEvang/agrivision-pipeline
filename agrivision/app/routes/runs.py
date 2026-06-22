@@ -8,6 +8,7 @@ from fastapi.responses import HTMLResponse, RedirectResponse
 from agrivision.app import dependencies as deps
 from agrivision.app.schemas.runs import RunCreateRequest
 from agrivision.services.pdm.catalog import PDM_MODEL_CATALOG
+from agrivision.services.run_service import RunStartBlocked
 
 router = APIRouter()
 
@@ -16,14 +17,14 @@ ORTHOPHOTO_PRESETS = [
         'key': 'preview',
         'label': 'Preview',
         'resolution_cm': 8,
-        'reduce_images': True,
-        'description': 'Fastest run for checking image coverage.',
+        'reduce_images': False,
+        'description': 'Lowest orthophoto detail for checking image coverage.',
     },
     {
         'key': 'balanced',
         'label': 'Balanced (recommended)',
         'resolution_cm': 3,
-        'reduce_images': True,
+        'reduce_images': False,
         'description': 'Good default for dashboard analysis and normal field reports.',
     },
     {
@@ -43,41 +44,75 @@ ORTHOPHOTO_PRESETS = [
 ]
 
 
+def _artifact_path_exists(value: str) -> bool:
+    path = Path(value)
+    if path.exists():
+        return True
+    normalized = value.replace('\\', '/')
+    marker = '/agrivision-pipeline/'
+    if marker not in normalized:
+        return False
+    relative = normalized.split(marker, 1)[1]
+    return (deps.storage_service.layout.project_root / relative).exists()
+
+
 def _render_new_run_page(
     request: Request,
     *,
     upload_run_id: str | None = None,
+    complete_run_id: str | None = None,
+    camera_kind: str | None = None,
     validation_result: dict[str, object] | None = None,
     form_values: dict[str, object] | None = None,
 ) -> HTMLResponse:
     deps.run_service.ensure_latest_orthophoto_run_saved()
-    orthophoto_runs: list[dict[str, object]] = []
+    orthophoto_runs_by_upload: dict[str, dict[str, object]] = {}
     odm_runs_by_upload: dict[str, list[object]] = {}
     for run in deps.run_service.list_runs():
         upload_id = Path(run.input_path).name
-        if not run.selected_steps.run_odm or run.status != 'completed':
+        if run.status in {'queued', 'running'}:
             continue
         orthophoto_paths = {
             key: value
             for key, value in run.outputs.items()
-            if key in {'orthophoto_rgb', 'orthophoto_mapir'} and value and Path(value).exists()
+            if key in {'orthophoto_rgb', 'orthophoto_mapir', 'orthophoto_thermal'} and value and _artifact_path_exists(value)
         }
         if not orthophoto_paths:
             continue
+        manifest = deps.storage_service.read_json(deps.storage_service.upload_dir(upload_id) / 'manifest.json', default={})
         odm_runs_by_upload.setdefault(upload_id, []).append(run)
-        orthophoto_runs.append(
+        item = orthophoto_runs_by_upload.setdefault(
+            upload_id,
             {
                 'run_id': run.run_id,
                 'upload_run_id': upload_id,
                 'dataset_name': run.dataset_name,
                 'run_name': run.run_name,
                 'created_at': run.created_at,
-                'mapir_ready': 'orthophoto_mapir' in orthophoto_paths,
-                'rgb_ready': 'orthophoto_rgb' in orthophoto_paths,
+                'mapir_ready': False,
+                'rgb_ready': False,
+                'thermal_ready': False,
+                'mapir_uploaded': bool(manifest.get('mapir_files', [])),
+                'rgb_uploaded': bool(manifest.get('rgb_files', [])),
+                'thermal_uploaded': bool(manifest.get('thermal_files', [])),
                 'preset': run.parameters.get('orthophoto_preset') or '-',
                 'resolution_cm': run.parameters.get('orthophoto_resolution_cm') or '-',
-            }
+            },
         )
+        item['rgb_ready'] = bool(item.get('rgb_ready')) or 'orthophoto_rgb' in orthophoto_paths
+        item['mapir_ready'] = bool(item.get('mapir_ready')) or 'orthophoto_mapir' in orthophoto_paths
+        item['thermal_ready'] = bool(item.get('thermal_ready')) or 'orthophoto_thermal' in orthophoto_paths
+        if 'orthophoto_rgb' in orthophoto_paths:
+            item['rgb_run_id'] = run.run_id
+        if 'orthophoto_mapir' in orthophoto_paths:
+            item['mapir_run_id'] = run.run_id
+        if 'orthophoto_thermal' in orthophoto_paths:
+            item['thermal_run_id'] = run.run_id
+        if run.created_at > item['created_at']:  # type: ignore[operator]
+            item['run_id'] = run.run_id
+            item['created_at'] = run.created_at
+
+    orthophoto_runs = sorted(orthophoto_runs_by_upload.values(), key=lambda item: item['created_at'], reverse=True)
 
     uploads: list[dict[str, object]] = []
     for path in sorted(deps.storage_service.layout.uploads_root.iterdir(), reverse=True):
@@ -91,6 +126,7 @@ def _render_new_run_page(
                 'dataset_name': manifest.get('dataset_name') or path.name,
                 'mapir_count': len(manifest.get('mapir_files', [])),
                 'rgb_count': len(manifest.get('rgb_files', [])),
+                'thermal_count': len(manifest.get('thermal_files', [])),
                 'orthophoto_ready': bool(odm_runs),
                 'orthophoto_run_id': getattr(odm_runs[0], 'run_id', None) if odm_runs else None,
                 'selected': path.name == upload_run_id,
@@ -102,6 +138,29 @@ def _render_new_run_page(
     for item in model_catalog:
         models_by_crop.setdefault(item['crop'], []).append(item)
     settings_view = deps.settings_service.get_settings_view()
+    completion_context = None
+    if complete_run_id and camera_kind in {'rgb', 'mapir', 'thermal'}:
+        try:
+            source_run = deps.run_service.load_run(complete_run_id)
+            upload_id = Path(source_run.input_path).name
+            manifest = deps.storage_service.read_json(deps.storage_service.upload_dir(upload_id) / 'manifest.json', default={})
+            library_item = orthophoto_runs_by_upload.get(upload_id, {})
+            missing_cameras = [
+                {'key': key, 'label': key.upper()}
+                for key in ('rgb', 'mapir', 'thermal')
+                if not library_item.get(f'{key}_ready')
+            ]
+            if not missing_cameras:
+                missing_cameras = [{'key': str(camera_kind), 'label': str(camera_kind).upper()}]
+            completion_context = {
+                'run_id': complete_run_id,
+                'camera_kind': camera_kind,
+                'camera_label': str(camera_kind).upper(),
+                'dataset_name': manifest.get('dataset_name') or source_run.dataset_name,
+                'missing_cameras': missing_cameras,
+            }
+        except Exception:
+            completion_context = None
     return deps.templates.TemplateResponse(
         request,
         'new_run.html',
@@ -118,6 +177,7 @@ def _render_new_run_page(
             'pdm_default_crop': settings_view['non_secret'].get('pdm_default_crop', 'grapevine'),
             'pdm_default_model_key': settings_view['non_secret'].get('pdm_default_model_key', 'grapevine_powdery_mildew_risk_v1'),
             'pdm_enabled_by_default': settings_view['non_secret'].get('pdm_enabled_by_default', True),
+            'completion_context': completion_context,
         },
     )
 
@@ -148,8 +208,18 @@ def _filter_runs(runs, status: str | None = None, query: str | None = None, run_
 
 
 @router.get('/runs/new', response_class=HTMLResponse)
-def new_run_page(request: Request, upload_run_id: str | None = None) -> HTMLResponse:
-    return _render_new_run_page(request, upload_run_id=upload_run_id)
+def new_run_page(
+    request: Request,
+    upload_run_id: str | None = None,
+    complete_run_id: str | None = None,
+    camera_kind: str | None = None,
+) -> HTMLResponse:
+    return _render_new_run_page(
+        request,
+        upload_run_id=upload_run_id,
+        complete_run_id=complete_run_id,
+        camera_kind=camera_kind,
+    )
 
 
 @router.get('/runs')
@@ -195,7 +265,11 @@ def get_run(run_id: str, request: Request):
 @router.post('/runs')
 def create_run(request: RunCreateRequest) -> dict[str, str]:
     record = deps.run_service.create_run_record(request)
-    result = deps.run_service.start_run(record.run_id)
+    try:
+        result = deps.run_service.start_run(record.run_id)
+    except RunStartBlocked as exc:
+        deps.run_service.mark_start_blocked(record.run_id, str(exc))
+        raise HTTPException(status_code=409, detail=str(exc)) from exc
     return {'run_id': result.run_id, 'status': result.status, 'redirect': f'/runs/{result.run_id}'}
 
 

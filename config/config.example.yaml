@@ -11,8 +11,6 @@ paths:
 
   # RGB images (default dataset for current pipeline)
   images_full: "data/images_full/rgb"
-  images_resized: "data/images_resized/rgb"
-
   # ODM projects
   # For backwards compatibility, odm_project_root points to the RGB project.
   odm_project_root: "data/odm_project_rgb"
@@ -25,13 +23,6 @@ paths:
 
   # MAPIR image paths (for multispectral / false-color)
   images_full_mapir: "data/images_full/mapir"
-  images_resized_mapir: "data/images_resized/mapir"
-
-resize:
-  # Only how we resize, not whether.
-  # Whether the resize step runs is controlled by the CLI flag: --run-resize
-  max_long_edge: 3000
-
 ndvi:
   # Classification thresholds (used by grid/report)
   poor_max: 0.25
@@ -86,6 +77,13 @@ irrigation:
 orthophoto:
   odm_docker_image: "opendronemap/odm:latest"
   orthophoto_resolution_cm: 1
+
+app:
+  deployment_mode: "local"  # local, self_hosted, or cloud
+  public_url: ""
+  min_free_disk_gb: 50
+  max_active_odm_runs: 1
+  external_access_protection_confirmed: false
 
 
 pdm:

@@ -2,11 +2,42 @@
 {% block content %}
 <section class="dashboard-hero">
   <div>
-    <p class="muted">{{ total_runs }} total runs, {{ active_runs }} active</p>
+    <span class="eyebrow">Pipeline Overview</span>
+    <h2>Dashboard</h2>
+    <p class="muted">{{ total_runs }} total runs, {{ active_runs }} active. Monitor services, review outputs, and continue field analysis.</p>
   </div>
+  <a class="button-link primary-action" href="/runs/new">Start Processing</a>
 </section>
 
+{% if missing_services %}
+<section class="panel setup-services-panel">
+  <div class="panel-header">
+    <div>
+      <span class="eyebrow">OpenAgri Services</span>
+      <h2>Service Repositories Missing</h2>
+      <p class="muted">Download and start the required companion services before running weather, irrigation, or pest and disease enrichment.</p>
+    </div>
+    <form method="post" action="/ui/services/setup-missing" onsubmit="return confirm('Download and start missing OpenAgri service containers now?');">
+      <button class="primary-action setup-services-button" type="submit">Setup Services</button>
+    </form>
+  </div>
+  <div class="missing-service-list">
+    {% for service in missing_services %}
+    <div>
+      <strong>{{ service.name }}</strong>
+      <span>{{ service.repo_dir }}</span>
+    </div>
+    {% endfor %}
+  </div>
+</section>
+{% endif %}
+
 <section class="metric-grid">
+  <div class="metric metric-feature">
+    <span class="metric-label">Active runs</span>
+    <strong>{{ active_runs }}</strong>
+    <small>{{ total_runs }} total pipeline runs</small>
+  </div>
   {% for key, value in status_summary.items() %}
   <div class="metric">
     <span class="metric-label">{{ key }}</span>
@@ -21,87 +52,92 @@
   {% endfor %}
 </section>
 
-<section class="panel">
-  <div class="panel-header">
-    <div>
-      <h2>Service Health</h2>
-      <p class="muted">Runtime checks before starting a pipeline run.</p>
-    </div>
-  </div>
-  <div class="service-grid">
-    {% for service in service_health %}
-    <div class="service-tile service-{{ service.state }}">
+<section class="dashboard-command-grid">
+  <section class="panel latest-report-panel">
+    <div class="panel-header">
       <div>
-        <strong>{{ service.name }}</strong>
-        <span>{{ service.detail }}</span>
+        <span class="eyebrow">Latest Output</span>
+        <h2>Latest Report</h2>
+        {% if latest_report %}
+        <p class="muted">Run {{ latest_report.run_id }} - {{ latest_report.dataset_name }}</p>
+        {% else %}
+        <p class="muted">No completed reports yet.</p>
+        {% endif %}
       </div>
-      <span class="health-dot"></span>
-    </div>
-    {% endfor %}
-  </div>
-</section>
-
-<section class="panel">
-  <div class="panel-header">
-    <div>
-      <h2>Latest Report</h2>
       {% if latest_report %}
-      <p class="muted">Run {{ latest_report.run_id }} - {{ latest_report.dataset_name }}</p>
+      <a class="button-link" href="/reports/{{ latest_report.run_id }}/view">Open report</a>
       {% else %}
-      <p class="muted">No completed reports yet.</p>
+      <a class="button-link" href="/runs/new">Start Processing</a>
       {% endif %}
     </div>
     {% if latest_report %}
-    <a class="button-link" href="/reports/{{ latest_report.run_id }}/view">Open report</a>
-    {% else %}
-    <a class="button-link" href="/runs/new">Start Processing</a>
+    <div class="report-summary report-summary-feature">
+      <div>
+        <span class="summary-label">Status</span>
+        <strong class="status-badge status-{{ latest_report.status }}">{{ latest_report.status }}</strong>
+      </div>
+      <div>
+        <span class="summary-label">Created</span>
+        <strong>{{ latest_report.created_at | system_datetime }}</strong>
+      </div>
+      <div>
+        <span class="summary-label">Artifacts</span>
+        <strong>{% if latest_report.orthophoto_path %}Orthophoto ready{% else %}Report only{% endif %}</strong>
+      </div>
+      {% if latest_report.quality %}
+      <div>
+        <span class="summary-label">Index Quality</span>
+        <strong class="quality-state quality-{{ latest_report.quality.state }}">{{ latest_report.quality.state }}</strong>
+      </div>
+      <div>
+        <span class="summary-label">Valid Pixels</span>
+        <strong>{{ '%.1f'|format(latest_report.quality.valid_percent) if latest_report.quality.valid_percent is not none else '-' }}%</strong>
+      </div>
+      <div>
+        <span class="summary-label">Classification</span>
+        <strong>{{ latest_report.quality.classification_mode or '-' }}</strong>
+      </div>
+      {% endif %}
+    </div>
+    {% if latest_report.quality and latest_report.quality.flags %}
+    <div class="quality-alert">
+      <strong>Quality warnings</strong>
+      <ul>
+        {% for flag in latest_report.quality.flags %}
+        <li>{{ flag }}</li>
+        {% endfor %}
+      </ul>
+    </div>
     {% endif %}
-  </div>
-  {% if latest_report %}
-  <div class="report-summary">
-    <div>
-      <span class="summary-label">Status</span>
-      <strong class="status-badge status-{{ latest_report.status }}">{{ latest_report.status }}</strong>
-    </div>
-    <div>
-      <span class="summary-label">Created</span>
-      <strong>{{ latest_report.created_at | system_datetime }}</strong>
-    </div>
-    <div>
-      <span class="summary-label">Artifacts</span>
-      <strong>{% if latest_report.orthophoto_path %}Orthophoto ready{% else %}Report only{% endif %}</strong>
-    </div>
-    {% if latest_report.quality %}
-    <div>
-      <span class="summary-label">Index Quality</span>
-      <strong class="quality-state quality-{{ latest_report.quality.state }}">{{ latest_report.quality.state }}</strong>
-    </div>
-    <div>
-      <span class="summary-label">Valid Pixels</span>
-      <strong>{{ '%.1f'|format(latest_report.quality.valid_percent) if latest_report.quality.valid_percent is not none else '-' }}%</strong>
-    </div>
-    <div>
-      <span class="summary-label">Classification</span>
-      <strong>{{ latest_report.quality.classification_mode or '-' }}</strong>
-    </div>
     {% endif %}
-  </div>
-  {% if latest_report.quality and latest_report.quality.flags %}
-  <div class="quality-alert">
-    <strong>Quality warnings</strong>
-    <ul>
-      {% for flag in latest_report.quality.flags %}
-      <li>{{ flag }}</li>
+  </section>
+
+  <section class="panel service-health-panel">
+    <div class="panel-header">
+      <div>
+        <span class="eyebrow">Runtime</span>
+        <h2>Service Health</h2>
+        <p class="muted">Runtime checks before starting a pipeline run.</p>
+      </div>
+    </div>
+    <div class="service-grid service-grid-compact">
+      {% for service in service_health %}
+      <div class="service-tile service-{{ service.state }}">
+        <div>
+          <strong>{{ service.name }}</strong>
+          <span>{{ service.detail }}</span>
+        </div>
+        <span class="health-dot"></span>
+      </div>
       {% endfor %}
-    </ul>
-  </div>
-  {% endif %}
-  {% endif %}
+    </div>
+  </section>
 </section>
 
-<section class="panel">
+<section class="panel recent-runs-panel">
   <div class="panel-header">
     <div>
+      <span class="eyebrow">History</span>
       <h2>Recent Runs</h2>
       <p class="muted">Showing the latest 10. Use filters to focus the table.</p>
     </div>
