@@ -196,14 +196,23 @@ class RunService:
             raise FileNotFoundError(f'Run not found: {run_id}')
         return candidate
 
+    def _runs_output_root(self) -> Path:
+        relative_root = load_config()['paths'].get('runs_output', 'output/runs')
+        return self.storage.layout.project_root / relative_root
+
+    def _run_output_dir(self, run_id: str) -> Path:
+        return self._runs_output_root() / run_id
+
+    def _run_orthophoto_output_dir(self, run_id: str) -> Path:
+        return self._run_output_dir(run_id) / 'orthophotos'
+
     def delete_run(self, run_id: str) -> None:
         run_dir = self._existing_run_dir(run_id)
         record = RunRecord.model_validate(self.storage.read_json(run_dir / 'status.json'))
         if record.status in {'queued', 'running'}:
             raise ValueError('Active runs must be stopped before deletion.')
         shutil.rmtree(run_dir)
-        runs_output_root = self.storage.layout.project_root / load_config()['paths'].get('runs_output', 'output/runs')
-        run_output_dir = runs_output_root / run_id
+        run_output_dir = self._run_output_dir(run_id)
         if run_output_dir.exists():
             shutil.rmtree(run_output_dir)
 
@@ -705,17 +714,14 @@ class RunService:
         return f"{_slugify_report_name(base_name)}.html"
 
     def _persist_report_for_run(self, record: RunRecord, source_report: Path) -> Path:
-        config = load_config()
-        runs_output_root = self.storage.layout.project_root / config['paths'].get('runs_output', 'output/runs')
-        run_output_dir = runs_output_root / record.run_id
+        run_output_dir = self._run_output_dir(record.run_id)
         run_output_dir.mkdir(parents=True, exist_ok=True)
         destination = run_output_dir / self._report_filename_for_run(record)
         shutil.copy2(source_report, destination)
         return destination
 
     def _persist_output_for_run(self, record: RunRecord, source_path: Path, filename: str) -> Path:
-        runs_output_root = self.storage.layout.project_root / load_config()['paths'].get('runs_output', 'output/runs')
-        run_output_dir = runs_output_root / record.run_id / 'orthophotos'
+        run_output_dir = self._run_orthophoto_output_dir(record.run_id)
         run_output_dir.mkdir(parents=True, exist_ok=True)
         destination = run_output_dir / filename
         shutil.copy2(source_path, destination)

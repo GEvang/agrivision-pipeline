@@ -410,6 +410,52 @@ def test_delete_run_removes_matching_run_output_dir(tmp_path: Path) -> None:
     assert not run_output_dir.exists()
 
 
+def test_run_output_helpers_respect_configured_runs_output_root(tmp_path: Path, monkeypatch) -> None:
+    storage = StorageService(project_root=tmp_path)
+    service = RunService(storage)
+    run_dir = storage.run_dir('run-configured')
+    storage.write_json(run_dir / 'status.json', {
+        'run_id': 'run-configured',
+        'created_at': '2026-03-29T00:00:00Z',
+        'updated_at': '2026-03-29T00:00:00Z',
+        'started_at': None,
+        'finished_at': None,
+        'dataset_name': 'Dataset 1',
+        'input_path': str(tmp_path / 'data' / 'uploads' / 'upload-seed'),
+        'status': 'running',
+        'progress_percent': 0,
+        'current_stage': 'generate_report',
+        'stage_message': 'Generating report',
+        'selected_steps': {'resize_images': False, 'run_odm': True, 'fetch_weather': False, 'generate_report': True},
+        'parameters': {},
+        'outputs': {},
+        'errors': [],
+        'stages': [],
+        'logs_path': str(run_dir / 'run.log'),
+        'run_name': 'Configured Output Run',
+        'field_name': None,
+        'run_dir': str(run_dir),
+    })
+    workspace_dir = run_dir / 'workspace'
+    output_root = workspace_dir / 'output'
+    report_latest = output_root / 'report_latest.html'
+    report_latest.parent.mkdir(parents=True, exist_ok=True)
+    report_latest.write_text('<html></html>', encoding='utf-8')
+    rgb_ortho = workspace_dir / 'data' / 'odm_project_rgb' / 'project' / 'odm_orthophoto' / 'odm_orthophoto.tif'
+    rgb_ortho.parent.mkdir(parents=True)
+    rgb_ortho.write_text('rgb', encoding='utf-8')
+
+    monkeypatch.setattr(
+        'agrivision.services.run_service.load_config',
+        lambda: {'paths': {'runs_output': 'artifacts/per-run'}},
+    )
+
+    outputs = service._discover_outputs(run_dir)
+
+    assert Path(outputs['report_html']).parent == tmp_path / 'artifacts' / 'per-run' / 'run-configured'
+    assert Path(outputs['orthophoto_rgb']).parent == tmp_path / 'artifacts' / 'per-run' / 'run-configured' / 'orthophotos'
+
+
 def test_clear_incomplete_removes_failed_and_cancelled_runs(tmp_path: Path) -> None:
     storage = StorageService(project_root=tmp_path)
     upload_dir = storage.upload_dir('upload-seed')
