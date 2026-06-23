@@ -328,27 +328,16 @@ def test_launch_run_does_not_attach_stale_global_outputs(tmp_path: Path, monkeyp
 
     monkeypatch.setattr(service, 'stage_inputs_for_run', lambda run_id: None)
     monkeypatch.setattr('agrivision.services.run_service.run_full_pipeline', lambda **kwargs: None)
-    monkeypatch.setattr('agrivision.services.run_service.load_config', lambda: {
-        'paths': {
-            'output_root': 'output',
-            'runs_output': 'output/runs',
-            'ndvi_output': 'output/ndvi',
-            'odm_project_root_rgb': 'odm_rgb',
-            'odm_project_root_mapir': 'odm_mapir',
-            'images_full': 'images/full',
-            'images_full_mapir': 'images/full_mapir',
-        }
-    })
 
     completed = service.launch_run(record.run_id)
 
     assert completed.status == 'completed'
     assert completed.outputs == {}
-    assert not (output_root / 'report_latest.html').exists()
-    assert not (report_dir / 'index.html').exists()
-    assert not (ndvi_dir / 'ndvi.tif').exists()
-    assert not rgb_ortho.exists()
-    assert not mapir_ortho.exists()
+    assert (output_root / 'report_latest.html').exists()
+    assert (report_dir / 'index.html').exists()
+    assert (ndvi_dir / 'ndvi.tif').exists()
+    assert rgb_ortho.exists()
+    assert mapir_ortho.exists()
 
 
 def test_finalize_run_status_is_idempotent_for_terminal_runs(tmp_path: Path) -> None:
@@ -564,31 +553,20 @@ def test_discover_outputs_copies_report_to_per_run_output(tmp_path: Path, monkey
         'field_name': None,
         'run_dir': str(run_dir),
     })
-    output_root = tmp_path / 'output'
+    workspace_dir = run_dir / 'workspace'
+    output_root = workspace_dir / 'output'
     report_latest = output_root / 'report_latest.html'
     report_latest.parent.mkdir(parents=True, exist_ok=True)
     report_latest.write_text('<html></html>', encoding='utf-8')
     ndvi_dir = output_root / 'ndvi'
     ndvi_dir.mkdir(parents=True, exist_ok=True)
     (ndvi_dir / 'ndvi.tif').write_text('x', encoding='utf-8')
-    rgb_ortho = tmp_path / 'odm_rgb' / 'project' / 'odm_orthophoto' / 'odm_orthophoto.tif'
+    rgb_ortho = workspace_dir / 'data' / 'odm_project_rgb' / 'project' / 'odm_orthophoto' / 'odm_orthophoto.tif'
     rgb_ortho.parent.mkdir(parents=True)
     rgb_ortho.write_text('rgb', encoding='utf-8')
-    mapir_ortho = tmp_path / 'odm_mapir' / 'project' / 'odm_orthophoto' / 'odm_orthophoto.tif'
+    mapir_ortho = workspace_dir / 'data' / 'odm_project_mapir' / 'project' / 'odm_orthophoto' / 'odm_orthophoto.tif'
     mapir_ortho.parent.mkdir(parents=True)
     mapir_ortho.write_text('mapir', encoding='utf-8')
-
-    monkeypatch.setattr('agrivision.services.run_service.load_config', lambda: {
-        'paths': {
-            'output_root': 'output',
-            'ndvi_output': 'output/ndvi',
-            'odm_project_root_rgb': 'odm_rgb',
-            'odm_project_root_mapir': 'odm_mapir',
-            'images_full': 'images/full',
-            'images_full_mapir': 'images/full_mapir',
-        }
-    })
-
     outputs = service._discover_outputs(run_dir)
     saved_report = Path(outputs['report_html'])
     assert saved_report.exists()
@@ -637,29 +615,37 @@ def test_orthophoto_only_outputs_do_not_attach_stale_analysis_files(tmp_path: Pa
     (output_root / 'ndvi' / 'ndvi.tif').write_text('stale ndvi', encoding='utf-8')
     (output_root / 'ndvi' / 'metadata.json').write_text('{}', encoding='utf-8')
     (output_root / 'ndvi' / 'grid_metadata.json').write_text('{}', encoding='utf-8')
-    rgb_ortho = tmp_path / 'odm_rgb' / 'project' / 'odm_orthophoto' / 'odm_orthophoto.tif'
+    workspace_dir = run_dir / 'workspace'
+    rgb_ortho = workspace_dir / 'data' / 'odm_project_rgb' / 'project' / 'odm_orthophoto' / 'odm_orthophoto.tif'
     rgb_ortho.parent.mkdir(parents=True)
     rgb_ortho.write_text('rgb', encoding='utf-8')
-    mapir_ortho = tmp_path / 'odm_mapir' / 'project' / 'odm_orthophoto' / 'odm_orthophoto.tif'
+    mapir_ortho = workspace_dir / 'data' / 'odm_project_mapir' / 'project' / 'odm_orthophoto' / 'odm_orthophoto.tif'
     mapir_ortho.parent.mkdir(parents=True)
     mapir_ortho.write_text('mapir', encoding='utf-8')
-
-    monkeypatch.setattr('agrivision.services.run_service.load_config', lambda: {
-        'paths': {
-            'output_root': 'output',
-            'runs_output': 'output/runs',
-            'ndvi_output': 'output/ndvi',
-            'odm_project_root_rgb': 'odm_rgb',
-            'odm_project_root_mapir': 'odm_mapir',
-            'images_full': 'images/full',
-            'images_full_mapir': 'images/full_mapir',
-        }
-    })
-
     outputs = service._discover_outputs(run_dir)
 
     assert sorted(outputs) == ['orthophoto_mapir', 'orthophoto_rgb']
     assert Path(outputs['orthophoto_rgb']).parent == tmp_path / 'output' / 'runs' / 'ortho-only' / 'orthophotos'
+
+
+def test_stage_inputs_for_run_stages_files_inside_workspace(tmp_path: Path) -> None:
+    storage = StorageService(project_root=tmp_path)
+    upload_dir = storage.upload_dir('upload-seed')
+    rgb_dir = upload_dir / 'rgb'
+    mapir_dir = upload_dir / 'mapir'
+    rgb_dir.mkdir(parents=True, exist_ok=True)
+    mapir_dir.mkdir(parents=True, exist_ok=True)
+    (rgb_dir / 'rgb-a.jpg').write_text('rgb', encoding='utf-8')
+    (mapir_dir / 'mapir-a.jpg').write_text('mapir', encoding='utf-8')
+    service = RunService(storage)
+    record = service.create_run_record(_request('upload-seed'))
+
+    service.stage_inputs_for_run(record.run_id)
+
+    workspace = service.workspace_for_record(record)
+    assert (workspace.images_full_rgb / 'rgb-a.jpg').read_text(encoding='utf-8') == 'rgb'
+    assert (workspace.images_full_mapir / 'mapir-a.jpg').read_text(encoding='utf-8') == 'mapir'
+    assert not (tmp_path / 'data' / 'images_full' / 'rgb' / 'rgb-a.jpg').exists()
 
 
 def test_stage_saved_orthophotos_for_run_restores_pipeline_inputs(tmp_path: Path, monkeypatch) -> None:
@@ -693,18 +679,16 @@ def test_stage_saved_orthophotos_for_run_restores_pipeline_inputs(tmp_path: Path
         'field_name': None,
         'run_dir': str(source_dir),
     })
-    monkeypatch.setattr('agrivision.services.run_service.get_project_root', lambda: tmp_path)
-    monkeypatch.setattr('agrivision.services.run_service.load_config', lambda: {
-        'paths': {
-            'odm_project_root_rgb': 'data/odm_project_rgb',
-            'odm_project_root_mapir': 'data/odm_project_mapir',
-        }
-    })
+    target_upload = storage.upload_dir('upload-seed')
+    (target_upload / 'rgb').mkdir(parents=True, exist_ok=True)
+    (target_upload / 'mapir').mkdir(parents=True, exist_ok=True)
+    target = service.create_run_record(_request('upload-seed'))
 
-    service.stage_saved_orthophotos_for_run('ortho-run')
+    service.stage_saved_orthophotos_for_run(target.run_id, 'ortho-run')
 
-    assert (tmp_path / 'data' / 'odm_project_rgb' / 'project' / 'odm_orthophoto' / 'odm_orthophoto.tif').read_text(encoding='utf-8') == 'rgb'
-    assert (tmp_path / 'data' / 'odm_project_mapir' / 'project' / 'odm_orthophoto' / 'odm_orthophoto.tif').read_text(encoding='utf-8') == 'mapir'
+    workspace = service.workspace_for_record(target)
+    assert workspace.ortho_rgb.read_text(encoding='utf-8') == 'rgb'
+    assert workspace.ortho_mapir.read_text(encoding='utf-8') == 'mapir'
 
 
 def test_report_filename_falls_back_to_system_timestamp(tmp_path: Path, monkeypatch) -> None:
@@ -733,22 +717,11 @@ def test_report_filename_falls_back_to_system_timestamp(tmp_path: Path, monkeypa
         'field_name': None,
         'run_dir': str(run_dir),
     })
-    report_latest = tmp_path / 'output' / 'report_latest.html'
+    report_latest = run_dir / 'workspace' / 'output' / 'report_latest.html'
     report_latest.parent.mkdir(parents=True, exist_ok=True)
     report_latest.write_text('<html></html>', encoding='utf-8')
 
     monkeypatch.setattr('agrivision.services.run_service._timestamp_report_name', lambda: '2026-03-29_12-34-56')
-    monkeypatch.setattr('agrivision.services.run_service.load_config', lambda: {
-        'paths': {
-            'output_root': 'output',
-            'runs_output': 'output/runs',
-            'ndvi_output': 'output/ndvi',
-            'odm_project_root_rgb': 'odm_rgb',
-            'odm_project_root_mapir': 'odm_mapir',
-            'images_full': 'images/full',
-            'images_full_mapir': 'images/full_mapir',
-        }
-    })
 
     outputs = service._discover_outputs(run_dir)
     assert Path(outputs['report_html']).name == '2026-03-29-12-34-56.html'

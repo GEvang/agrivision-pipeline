@@ -5,7 +5,6 @@ import zipfile
 from datetime import datetime, timezone
 from pathlib import Path
 
-from agrivision.config import load_config
 from agrivision.services.run_service import RunService
 from agrivision.services.storage_service import StorageService
 
@@ -121,6 +120,7 @@ class RunExportService:
 
     def _artifact_candidates(self, run_id: str) -> list[tuple[Path, str]]:
         run = self.run_service.load_run(run_id)
+        workspace = self.run_service.workspace_for_run(run_id)
         run_dir = self.storage.layout.runs_root / run_id
         candidates: list[tuple[Path, str]] = [
             (run_dir / 'status.json', 'run/status.json'),
@@ -141,16 +141,14 @@ class RunExportService:
             if value:
                 candidates.append((Path(value), arcname))
 
-        config = load_config()
-        ndvi_dir = self.storage.layout.project_root / config['paths'].get('ndvi_output', 'output/ndvi')
         candidates.extend(
             [
-                (ndvi_dir / 'ndvi_color.png', 'quality/vegetation_index.png'),
-                (ndvi_dir / 'ndvi_grid_overlay.png', 'quality/grid_overlay.png'),
-                (ndvi_dir / 'ndvi_grid_cells.csv', 'quality/grid_cells.csv'),
-                (ndvi_dir / 'ndvi_grid_categories.csv', 'quality/grid_categories.csv'),
-                (ndvi_dir / 'metadata.json', 'quality/metadata.json'),
-                (ndvi_dir / 'grid_metadata.json', 'quality/grid_metadata.json'),
+                (workspace.ndvi_output / 'ndvi_color.png', 'quality/vegetation_index.png'),
+                (workspace.ndvi_output / 'ndvi_grid_overlay.png', 'quality/grid_overlay.png'),
+                (workspace.ndvi_output / 'ndvi_grid_cells.csv', 'quality/grid_cells.csv'),
+                (workspace.ndvi_output / 'ndvi_grid_categories.csv', 'quality/grid_categories.csv'),
+                (workspace.ndvi_output / 'metadata.json', 'quality/metadata.json'),
+                (workspace.ndvi_output / 'grid_metadata.json', 'quality/grid_metadata.json'),
             ]
         )
 

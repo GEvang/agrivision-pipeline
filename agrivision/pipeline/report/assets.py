@@ -6,19 +6,19 @@ import csv
 import json
 from json import JSONDecodeError
 from pathlib import Path
-from typing import Dict, List
+from typing import Any, Dict, List
 
-from agrivision.config.settings import get_project_root, load_config
+from agrivision.pipeline.io.paths import resolve_pipeline_paths
 
 
-def get_report_settings() -> dict[str, Path]:
-    config = load_config()
-    project_root = get_project_root()
-
-    output_dir = project_root / config["paths"]["output_root"]
-    report_path = output_dir / "report_latest.html"
-
-    ndvi_dir = project_root / config["paths"]["ndvi_output"]
+def get_report_settings(
+    workspace_root: Path | None = None,
+    config: dict[str, Any] | None = None,
+) -> dict[str, Path]:
+    resolved = resolve_pipeline_paths(workspace_root=workspace_root, config=config)
+    output_dir = resolved["output_root"]
+    report_path = resolved["report_path"]
+    ndvi_dir = resolved["ndvi_output"]
     weather_dir = output_dir / "weather"
     return {
         "output_dir": output_dir,

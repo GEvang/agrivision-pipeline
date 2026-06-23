@@ -32,10 +32,12 @@ def run_report(
     irrigation_summary: Optional[Dict[str, Any]] = None,
     weather_summary: Optional[Dict[str, Any]] = None,
     pdm_summary: Optional[Dict[str, Any]] = None,
+    workspace_root: Path | None = None,
+    config: dict[str, Any] | None = None,
 ) -> None:
     print("\n[AgriVision] Generating HTML report...")
 
-    resolved = get_report_settings()
+    resolved = get_report_settings(workspace_root=workspace_root, config=config)
     output_dir = cast(Path, resolved["output_dir"])
     report_path = cast(Path, resolved["report_path"])
     ndvi_meta_path = cast(Path, resolved["ndvi_meta_path"])

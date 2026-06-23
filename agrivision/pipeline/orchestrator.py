@@ -38,6 +38,8 @@ def run_full_pipeline(
     pdm_crop: str | None = None,
     pdm_model_key: str | None = None,
     progress_callback: Callable[[str, str, str], None] | None = None,
+    workspace_root: Path | None = None,
+    config: dict | None = None,
 ) -> None:
     print("\n================== AgriVision Pipeline Start ==================\n")
     print("Configuration:")
@@ -53,7 +55,7 @@ def run_full_pipeline(
     print(f"  skip_report     = {skip_report}")
     print()
 
-    resolved = resolve_pipeline_paths()
+    resolved = resolve_pipeline_paths(workspace_root=workspace_root, config=config)
     config = resolved['config']
     ortho_rgb = resolved['ortho_rgb']
     ortho_mapir = resolved['ortho_mapir']
@@ -66,7 +68,7 @@ def run_full_pipeline(
         if progress_callback:
             progress_callback('resize_images', 'Resizing images', 'running')
         print('Step 1/5: Resizing images...')
-        run_resize()
+        run_resize(workspace_root=workspace_root, config=config)
         if progress_callback:
             progress_callback('resize_images', 'Images resized', 'completed')
     else:
@@ -88,7 +90,7 @@ def run_full_pipeline(
         if progress_callback:
             progress_callback('run_odm_rgb', 'Running ODM for RGB images', 'running')
         print('\n[ODM-RGB] Running RGB ODM...')
-        run_odm_rgb(ortho_resolution_cm=orthophoto_resolution_cm)
+        run_odm_rgb(ortho_resolution_cm=orthophoto_resolution_cm, workspace_root=workspace_root, config=config)
         if progress_callback:
             progress_callback('run_odm_rgb', 'RGB orthophoto complete', 'completed')
 
@@ -99,7 +101,7 @@ def run_full_pipeline(
             if progress_callback:
                 progress_callback('run_odm_mapir', 'Running ODM for MAPIR images', 'running')
             print('\n[ODM-MAPIR] MAPIR images detected – running MAPIR ODM...')
-            run_odm_mapir(ortho_resolution_cm=orthophoto_resolution_cm)
+            run_odm_mapir(ortho_resolution_cm=orthophoto_resolution_cm, workspace_root=workspace_root, config=config)
             if progress_callback:
                 progress_callback('run_odm_mapir', 'MAPIR orthophoto complete', 'completed')
         else:
@@ -119,7 +121,7 @@ def run_full_pipeline(
         print('\nStep 3/5: Computing NDVI...')
         if not _orthophoto_exists(ortho_rgb) and not _orthophoto_exists(ortho_mapir):
             raise RuntimeError('\n[ERROR] No orthophoto available for NDVI.\n')
-        run_ndvi()
+        run_ndvi(workspace_root=workspace_root, config=config)
         if progress_callback:
             progress_callback('compute_ndvi', 'NDVI complete', 'completed')
 
@@ -129,7 +131,7 @@ def run_full_pipeline(
         if progress_callback:
             progress_callback('generate_grid', 'Generating NDVI grid', 'running')
         print('\nStep 4/5: Generating NDVI grid...')
-        run_grid_report()
+        run_grid_report(workspace_root=workspace_root, config=config)
         if progress_callback:
             progress_callback('generate_grid', 'NDVI grid complete', 'completed')
 
@@ -200,7 +202,13 @@ def run_full_pipeline(
         if progress_callback:
             progress_callback('generate_report', 'Generating report', 'running')
         print('\nStep 5/5: Creating report...')
-        run_report(irrigation_summary=irrigation_summary, weather_summary=weather_summary, pdm_summary=pdm_summary)
+        run_report(
+            irrigation_summary=irrigation_summary,
+            weather_summary=weather_summary,
+            pdm_summary=pdm_summary,
+            workspace_root=workspace_root,
+            config=config,
+        )
         if progress_callback:
             progress_callback('generate_report', 'Report generated', 'completed')
     print('\n================== Pipeline Complete ==================\n')

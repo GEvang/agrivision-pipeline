@@ -6,27 +6,25 @@ import csv
 import json
 from datetime import datetime
 from pathlib import Path
-from typing import Dict, List, Tuple
+from typing import Any, Dict, List, Tuple
 
-from agrivision.config.settings import get_project_root, load_config
+from agrivision.pipeline.io.paths import resolve_pipeline_paths
 
 
-def get_grid_settings() -> dict[str, object]:
-    config = load_config()
-    project_root = get_project_root()
-
-    ndvi_dir = project_root / config["paths"]["ndvi_output"]
+def get_grid_settings(
+    workspace_root: Path | None = None,
+    config: dict[str, Any] | None = None,
+) -> dict[str, object]:
+    resolved = resolve_pipeline_paths(workspace_root=workspace_root, config=config)
+    config = resolved["config"]
+    ndvi_dir = resolved["ndvi_output"]
     ndvi_tif = ndvi_dir / "ndvi.tif"
     ndvi_meta_json = ndvi_dir / "metadata.json"
     grid_png = ndvi_dir / "ndvi_grid_overlay.png"
     grid_table_csv = ndvi_dir / "ndvi_grid_cells.csv"
     grid_categories_csv = ndvi_dir / "ndvi_grid_categories.csv"
     grid_meta_json = ndvi_dir / "grid_metadata.json"
-    ortho_rgb = (
-        project_root
-        / config["paths"]["odm_project_root_rgb"]
-        / "project/odm_orthophoto/odm_orthophoto.tif"
-    )
+    ortho_rgb = resolved["ortho_rgb"]
 
     return {
         "ndvi_dir": ndvi_dir,

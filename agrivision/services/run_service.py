@@ -14,6 +14,7 @@ from agrivision.config import get_project_root, load_config
 from agrivision.pipeline.orchestrator import run_full_pipeline
 from agrivision.services.failure_diagnostics import summarize_failure
 from agrivision.services.storage_service import StorageService
+from agrivision.services.run_workspace import RunWorkspace
 
 
 def _slugify_report_name(value: str) -> str:
@@ -132,8 +133,16 @@ class RunService:
         self.storage.write_json(run_dir / 'outputs.json', record.outputs)
         Path(record.logs_path).touch(exist_ok=True)
 
+    def workspace_for_run(self, run_id: str) -> RunWorkspace:
+        return self.workspace_for_record(self.load_run(run_id))
+
+    def workspace_for_record(self, record: RunRecord) -> RunWorkspace:
+        return RunWorkspace.from_run_record(record, self.storage)
+
     def load_run(self, run_id: str) -> RunRecord:
-        path = self.storage.run_dir(run_id) / 'status.json'
+        path = self.storage.layout.runs_root / run_id / 'status.json'
+        if not path.exists():
+            raise FileNotFoundError(f'Run not found: {run_id}')
         return self._load_run_record(path)
 
     def list_runs(self) -> list[RunRecord]:
@@ -438,11 +447,10 @@ class RunService:
 
     def stage_inputs_for_run(self, run_id: str) -> None:
         record = self.load_run(run_id)
-        config = load_config()
-        project_root = get_project_root()
         upload_dir = Path(record.input_path)
-        target_rgb = project_root / config['paths']['images_full']
-        target_mapir = project_root / config['paths']['images_full_mapir']
+        workspace = self.workspace_for_record(record)
+        target_rgb = workspace.images_full_rgb
+        target_mapir = workspace.images_full_mapir
 
         def _reset_target(target_dir: Path) -> None:
             target_dir.mkdir(parents=True, exist_ok=True)
@@ -462,13 +470,12 @@ class RunService:
         _copy_inputs(upload_dir / 'rgb', target_rgb)
         _copy_inputs(upload_dir / 'mapir', target_mapir)
 
-    def stage_saved_orthophotos_for_run(self, source_run_id: str) -> None:
+    def stage_saved_orthophotos_for_run(self, run_id: str, source_run_id: str) -> None:
         source = self.load_run(source_run_id)
-        config = load_config()
-        project_root = get_project_root()
+        workspace = self.workspace_for_run(run_id)
         targets = {
-            'orthophoto_rgb': project_root / config['paths']['odm_project_root_rgb'] / 'project' / 'odm_orthophoto' / 'odm_orthophoto.tif',
-            'orthophoto_mapir': project_root / config['paths']['odm_project_root_mapir'] / 'project' / 'odm_orthophoto' / 'odm_orthophoto.tif',
+            'orthophoto_rgb': workspace.ortho_rgb,
+            'orthophoto_mapir': workspace.ortho_mapir,
         }
         for key, target in targets.items():
             source_path = source.outputs.get(key)
@@ -481,27 +488,29 @@ class RunService:
             shutil.copy2(source_file, target)
 
     def _clear_discoverable_outputs_for_run(self, record: RunRecord) -> None:
-        config = load_config()
-        project_root = self.storage.layout.project_root
+        workspace = self.workspace_for_record(record)
         candidate_paths: list[Path] = []
 
         if not self._is_orthophoto_creation_run(record):
-            ndvi_root = project_root / config['paths']['ndvi_output']
+            ndvi_root = workspace.ndvi_output
             candidate_paths.extend([
                 ndvi_root / 'ndvi.tif',
+                ndvi_root / 'ndvi_color.png',
                 ndvi_root / 'metadata.json',
+                ndvi_root / 'ndvi_grid_overlay.png',
+                ndvi_root / 'ndvi_grid_cells.csv',
+                ndvi_root / 'ndvi_grid_categories.csv',
                 ndvi_root / 'grid_metadata.json',
             ])
         if record.selected_steps.run_odm:
             candidate_paths.extend([
-                project_root / config['paths']['odm_project_root_rgb'] / 'project' / 'odm_orthophoto' / 'odm_orthophoto.tif',
-                project_root / config['paths']['odm_project_root_mapir'] / 'project' / 'odm_orthophoto' / 'odm_orthophoto.tif',
+                workspace.ortho_rgb,
+                workspace.ortho_mapir,
             ])
         if record.selected_steps.generate_report:
-            report_root = project_root / config['paths']['output_root']
             candidate_paths.extend([
-                report_root / 'report_latest.html',
-                report_root / 'report' / 'index.html',
+                workspace.report_path,
+                workspace.output_root / 'report' / 'index.html',
             ])
 
         for path in candidate_paths:
@@ -605,7 +614,7 @@ class RunService:
             self.stage_inputs_for_run(run_id)
             source_orthophoto_run_id = record.parameters.get('source_orthophoto_run_id')
             if source_orthophoto_run_id and not record.selected_steps.run_odm:
-                self.stage_saved_orthophotos_for_run(str(source_orthophoto_run_id))
+                self.stage_saved_orthophotos_for_run(run_id, str(source_orthophoto_run_id))
             self.update_stage(run_id, 'stage_inputs', 'completed', 'Inputs staged')
             self._raise_if_cancelled(run_id)
 
@@ -630,6 +639,8 @@ class RunService:
                         pdm_crop=record.parameters.get('pdm_crop'),
                         pdm_model_key=record.parameters.get('pdm_model_key'),
                         progress_callback=callback,
+                        workspace_root=self.workspace_for_record(record).root,
+                        config=self.workspace_for_record(record).config,
                     )
             self._raise_if_cancelled(run_id)
             outputs = self._discover_outputs(Path(record.run_dir))
@@ -711,28 +722,31 @@ class RunService:
         return destination
 
     def _discover_outputs(self, run_dir: Path) -> dict[str, str]:
-        config = load_config()
-        project_root = self.storage.layout.project_root
         record = RunRecord.model_validate(self.storage.read_json(run_dir / 'status.json'))
+        workspace = self.workspace_for_record(record)
         selected = record.selected_steps
         report_candidates = [
-            project_root / config['paths']['output_root'] / 'report_latest.html',
-            project_root / config['paths']['output_root'] / 'report' / 'index.html',
+            workspace.report_path,
+            workspace.output_root / 'report' / 'index.html',
         ]
         candidates = {
             **(
                 {
-                    'ndvi_tif': project_root / config['paths']['ndvi_output'] / 'ndvi.tif',
-                    'ndvi_metadata': project_root / config['paths']['ndvi_output'] / 'metadata.json',
-                    'grid_metadata': project_root / config['paths']['ndvi_output'] / 'grid_metadata.json',
+                    'ndvi_tif': workspace.ndvi_output / 'ndvi.tif',
+                    'ndvi_metadata': workspace.ndvi_output / 'metadata.json',
+                    'grid_metadata': workspace.ndvi_output / 'grid_metadata.json',
+                    'ndvi_color_png': workspace.ndvi_output / 'ndvi_color.png',
+                    'grid_overlay_png': workspace.ndvi_output / 'ndvi_grid_overlay.png',
+                    'grid_cells_csv': workspace.ndvi_output / 'ndvi_grid_cells.csv',
+                    'grid_categories_csv': workspace.ndvi_output / 'ndvi_grid_categories.csv',
                 }
                 if not self._is_orthophoto_creation_run(record)
                 else {}
             ),
             **(
                 {
-                    'orthophoto_rgb': project_root / config['paths']['odm_project_root_rgb'] / 'project' / 'odm_orthophoto' / 'odm_orthophoto.tif',
-                    'orthophoto_mapir': project_root / config['paths']['odm_project_root_mapir'] / 'project' / 'odm_orthophoto' / 'odm_orthophoto.tif',
+                    'orthophoto_rgb': workspace.ortho_rgb,
+                    'orthophoto_mapir': workspace.ortho_mapir,
                 }
                 if selected.run_odm
                 else {}

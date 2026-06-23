@@ -27,21 +27,22 @@ import matplotlib.pyplot as plt
 import numpy as np
 import rasterio
 
-from agrivision.config.settings import get_project_root, load_config
+from agrivision.pipeline.io.paths import resolve_pipeline_paths
 
 
-def _get_ndvi_settings() -> dict[str, Any]:
-    config = load_config()
-    project_root = get_project_root()
-    paths = config["paths"]
+def _get_ndvi_settings(
+    workspace_root: Path | None = None,
+    config: dict[str, Any] | None = None,
+) -> dict[str, Any]:
+    resolved = resolve_pipeline_paths(workspace_root=workspace_root, config=config)
+    config = resolved["config"]
     ndvi_config = config["ndvi"]
-
-    out_dir = project_root / paths["ndvi_output"]
+    out_dir = resolved["ndvi_output"]
 
     return {
-        "project_root": project_root,
-        "ortho_rgb": project_root / paths["odm_project_root_rgb"] / "project/odm_orthophoto/odm_orthophoto.tif",
-        "ortho_mapir": project_root / paths["odm_project_root_mapir"] / "project/odm_orthophoto/odm_orthophoto.tif",
+        "project_root": resolved["project_root"],
+        "ortho_rgb": resolved["ortho_rgb"],
+        "ortho_mapir": resolved["ortho_mapir"],
         "out_dir": out_dir,
         "out_tif": out_dir / "ndvi.tif",
         "out_png": out_dir / "ndvi_color.png",
@@ -318,12 +319,15 @@ def summarize_index_quality(idx: np.ndarray) -> dict[str, Any]:
 # ---------------------------------------------------------------------
 # Public entry point
 # ---------------------------------------------------------------------
-def run_ndvi() -> None:
+def run_ndvi(
+    workspace_root: Path | None = None,
+    config: dict[str, Any] | None = None,
+) -> None:
     """
     Compute vegetation index from MAPIR or RGB orthophoto (auto-selected),
     write outputs, and emit metadata.json for traceability.
     """
-    settings = _get_ndvi_settings()
+    settings = _get_ndvi_settings(workspace_root=workspace_root, config=config)
     ortho_rgb = settings["ortho_rgb"]
     ortho_mapir = settings["ortho_mapir"]
     out_dir = settings["out_dir"]

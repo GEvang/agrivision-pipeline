@@ -47,8 +47,9 @@ import shutil
 import subprocess
 import sys
 from pathlib import Path
+from typing import Any
 
-from agrivision.config.settings import get_project_root, load_config
+from agrivision.pipeline.io.paths import resolve_pipeline_paths
 
 # We use the same project name ("project") inside each odm_project_* root
 PROJECT_NAME = "project"
@@ -135,21 +136,23 @@ def _odm_dataset_mount_args(project_root: Path) -> tuple[list[str], str]:
     return ["-v", f"{bind_source}:/datasets"], "/datasets"
 
 
-def _get_odm_settings() -> dict[str, object]:
+def _get_odm_settings(
+    workspace_root: Path | None = None,
+    config: dict[str, Any] | None = None,
+) -> dict[str, object]:
     """Resolve ODM config and path settings at runtime."""
-    config = load_config()
-    project_root = get_project_root()
-    paths = config["paths"]
+    resolved = resolve_pipeline_paths(workspace_root=workspace_root, config=config)
+    config = resolved["config"]
     orthophoto = config["orthophoto"]
 
     return {
-        "project_root": project_root,
-        "images_full_rgb": project_root / paths["images_full"],
-        "images_resized_rgb": project_root / paths["images_resized"],
-        "odm_project_root_rgb": project_root / paths["odm_project_root_rgb"],
-        "images_full_mapir": project_root / paths["images_full_mapir"],
-        "images_resized_mapir": project_root / paths["images_resized_mapir"],
-        "odm_project_root_mapir": project_root / paths["odm_project_root_mapir"],
+        "project_root": resolved["project_root"],
+        "images_full_rgb": resolved["images_full_rgb"],
+        "images_resized_rgb": resolved["images_resized_rgb"],
+        "odm_project_root_rgb": resolved["odm_project_root_rgb"],
+        "images_full_mapir": resolved["images_full_mapir"],
+        "images_resized_mapir": resolved["images_resized_mapir"],
+        "odm_project_root_mapir": resolved["odm_project_root_mapir"],
         "odm_docker_image": orthophoto["odm_docker_image"],
         "ortho_resolution_cm": orthophoto["orthophoto_resolution_cm"],
     }
@@ -283,7 +286,11 @@ def _run_odm_docker(
 # ---------------------------------------------------------------------
 # Public functions
 # ---------------------------------------------------------------------
-def run_odm_rgb(ortho_resolution_cm: int | None = None) -> None:
+def run_odm_rgb(
+    ortho_resolution_cm: int | None = None,
+    workspace_root: Path | None = None,
+    config: dict[str, Any] | None = None,
+) -> None:
     """
     Run ODM for the RGB dataset.
 
@@ -295,7 +302,7 @@ def run_odm_rgb(ortho_resolution_cm: int | None = None) -> None:
       - data/odm_project_rgb/project
     """
     print("\n[ODM-RGB] Starting ODM photogrammetry for RGB dataset...")
-    settings = _get_odm_settings()
+    settings = _get_odm_settings(workspace_root=workspace_root, config=config)
 
     images_full_rgb = settings["images_full_rgb"]
     images_resized_rgb = settings["images_resized_rgb"]
@@ -323,7 +330,11 @@ def run_odm_rgb(ortho_resolution_cm: int | None = None) -> None:
     )
 
 
-def run_odm_mapir(ortho_resolution_cm: int | None = None) -> None:
+def run_odm_mapir(
+    ortho_resolution_cm: int | None = None,
+    workspace_root: Path | None = None,
+    config: dict[str, Any] | None = None,
+) -> None:
     """
     Run ODM for the MAPIR dataset.
 
@@ -341,7 +352,7 @@ def run_odm_mapir(ortho_resolution_cm: int | None = None) -> None:
       are produced alongside RGB orthophotos.
     """
     print("\n[ODM-MAPIR] Starting ODM photogrammetry for MAPIR dataset...")
-    settings = _get_odm_settings()
+    settings = _get_odm_settings(workspace_root=workspace_root, config=config)
 
     images_full_mapir = settings["images_full_mapir"]
     images_resized_mapir = settings["images_resized_mapir"]
