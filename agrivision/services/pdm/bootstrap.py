@@ -18,15 +18,18 @@ from agrivision.integrations.pdm.client import (
 from agrivision.services.pdm.catalog import get_pdm_model
 
 
-def _output_dir() -> Path:
+def _output_dir(artifact_dir: Path | None = None) -> Path:
+    if artifact_dir is not None:
+        artifact_dir.mkdir(parents=True, exist_ok=True)
+        return artifact_dir
     settings = get_settings()
     root = get_project_root() / (settings.paths.output_root or 'output') / 'pdm'
     root.mkdir(parents=True, exist_ok=True)
     return root
 
 
-def _write_json(name: str, payload: dict[str, Any]) -> str:
-    path = _output_dir() / name
+def _write_json(name: str, payload: dict[str, Any], *, artifact_dir: Path | None = None) -> str:
+    path = _output_dir(artifact_dir=artifact_dir) / name
     path.write_text(json.dumps(payload, indent=2), encoding='utf-8')
     return str(path)
 
@@ -35,6 +38,8 @@ def bootstrap_pdm_context(
     selected_model_key: str | None,
     crop: str | None,
     weather_summary: dict[str, Any] | None = None,
+    *,
+    artifact_dir: Path | None = None,
 ) -> dict[str, Any]:
     settings = get_settings()
     model = get_pdm_model(selected_model_key)
@@ -51,7 +56,7 @@ def bootstrap_pdm_context(
     dataset_csv_artifact = ''
     if weather_summary and weather_summary.get('enabled'):
         csv_payload = build_weather_dataset_csv(weather_summary, parcel_reference=parcel_wkt)
-        csv_path = _output_dir() / 'weather_dataset.csv'
+        csv_path = _output_dir(artifact_dir=artifact_dir) / 'weather_dataset.csv'
         csv_path.write_text(csv_payload, encoding='utf-8')
         dataset_csv_artifact = str(csv_path)
         try:
@@ -85,8 +90,8 @@ def bootstrap_pdm_context(
         'dataset_upload_succeeded': bool(isinstance(dataset_upload, dict) and not dataset_upload.get('error')) if dataset_upload is not None else False,
         'dataset_csv_artifact': dataset_csv_artifact,
     }
-    payload['artifact_path'] = _write_json('bootstrap.json', payload)
-    payload['bootstrap_artifact'] = write_pdm_artifact('bootstrap', payload)
+    payload['artifact_path'] = _write_json('bootstrap.json', payload, artifact_dir=artifact_dir)
+    payload['bootstrap_artifact'] = write_pdm_artifact('bootstrap', payload, artifact_dir=artifact_dir)
     return payload
 
 def _extract_dataset_upload_id(payload: dict[str, Any] | None) -> str:

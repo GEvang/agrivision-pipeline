@@ -41,19 +41,20 @@ from agrivision.services.irrigation.runtime import ensure_service_available
 from agrivision.services.weather.client import fetch_history_daily
 
 
-def _get_bootstrap_paths() -> dict[str, Path]:
+def _get_bootstrap_paths(output_dir: Path | None = None) -> dict[str, Path]:
     settings = get_settings()
     project_root = get_project_root()
-    output_root = str(getattr(settings.paths, "output_root", "output") or "output")
-
-    output_dir = project_root / output_root / "irrigation"
-    token_path = output_dir / "auth_token.json"
-    parcel_path = output_dir / "parcel.json"
-    eto_path = output_dir / "eto.json"
-    weather_debug_path = output_dir / "weather_debug.json"
+    resolved_output_dir = output_dir
+    if resolved_output_dir is None:
+        output_root = str(getattr(settings.paths, "output_root", "output") or "output")
+        resolved_output_dir = project_root / output_root / "irrigation"
+    token_path = resolved_output_dir / "auth_token.json"
+    parcel_path = resolved_output_dir / "parcel.json"
+    eto_path = resolved_output_dir / "eto.json"
+    weather_debug_path = resolved_output_dir / "weather_debug.json"
     return {
         "project_root": project_root,
-        "output_dir": output_dir,
+        "output_dir": resolved_output_dir,
         "token_path": token_path,
         "parcel_path": parcel_path,
         "eto_path": eto_path,
@@ -61,8 +62,8 @@ def _get_bootstrap_paths() -> dict[str, Path]:
     }
 
 
-def _ensure_output_dir() -> None:
-    paths = _get_bootstrap_paths()
+def _ensure_output_dir(output_dir: Path | None = None) -> None:
+    paths = _get_bootstrap_paths(output_dir=output_dir)
     paths["output_dir"].mkdir(parents=True, exist_ok=True)
 
 
@@ -71,8 +72,8 @@ def _write_json(path: Path, payload: Dict[str, Any]) -> None:
     path.write_text(json.dumps(payload, indent=2), encoding="utf-8")
 
 
-def _write_token_artifact(base_url: str, token_type: str, access_token: str, email: str) -> None:
-    paths = _get_bootstrap_paths()
+def _write_token_artifact(base_url: str, token_type: str, access_token: str, email: str, *, output_dir: Path | None = None) -> None:
+    paths = _get_bootstrap_paths(output_dir=output_dir)
     _write_json(
         paths["token_path"],
         {
@@ -84,18 +85,18 @@ def _write_token_artifact(base_url: str, token_type: str, access_token: str, ema
     )
 
 
-def _write_parcel_artifact(payload: Dict[str, Any]) -> None:
-    paths = _get_bootstrap_paths()
+def _write_parcel_artifact(payload: Dict[str, Any], *, output_dir: Path | None = None) -> None:
+    paths = _get_bootstrap_paths(output_dir=output_dir)
     _write_json(paths["parcel_path"], payload)
 
 
-def _write_eto_artifact(payload: Dict[str, Any]) -> None:
-    paths = _get_bootstrap_paths()
+def _write_eto_artifact(payload: Dict[str, Any], *, output_dir: Path | None = None) -> None:
+    paths = _get_bootstrap_paths(output_dir=output_dir)
     _write_json(paths["eto_path"], payload)
 
 
-def _write_weather_debug_artifact(payload: Dict[str, Any]) -> None:
-    paths = _get_bootstrap_paths()
+def _write_weather_debug_artifact(payload: Dict[str, Any], *, output_dir: Path | None = None) -> None:
+    paths = _get_bootstrap_paths(output_dir=output_dir)
     _write_json(paths["weather_debug_path"], payload)
 
 
@@ -252,6 +253,7 @@ def _ensure_parcel_state(
     email: str,
     wkt: str,
     write_artifacts: bool = True,
+    output_dir: Path | None = None,
 ) -> Dict[str, Any]:
     """
     Ensure parcel state exists and return parcel summary for the caller.
@@ -268,7 +270,7 @@ def _ensure_parcel_state(
     notes: List[str] = []
     locations_list: List[dict] = []
     created_default = False
-    paths = _get_bootstrap_paths()
+    paths = _get_bootstrap_paths(output_dir=output_dir)
 
     status, locations_resp = _list_locations(base_url, token)
     if not (200 <= status < 300):
@@ -317,7 +319,7 @@ def _ensure_parcel_state(
             }
         created_default = True
         if write_artifacts:
-            _write_parcel_artifact(parcel_resp)
+            _write_parcel_artifact(parcel_resp, output_dir=output_dir)
 
         status, locations_resp = _list_locations(base_url, token)
         if isinstance(locations_resp, dict) and isinstance(locations_resp.get("locations"), list):
@@ -325,7 +327,7 @@ def _ensure_parcel_state(
             parcel_count = len(locations_list)
 
     if write_artifacts and not paths["parcel_path"].exists():
-        _write_parcel_artifact({"message": "Parcel already existed; no creation performed."})
+        _write_parcel_artifact({"message": "Parcel already existed; no creation performed."}, output_dir=output_dir)
 
     return {
         "ok": True,
@@ -390,11 +392,12 @@ def _run_weather_debug_probe(
     from_date_str: str,
     to_date_str: str,
     write_artifacts: bool = True,
+    output_dir: Path | None = None,
 ) -> Dict[str, Any]:
     """
     Probe the Weather service history endpoint so ETo failures can be separated from weather-data availability.
     """
-    paths = _get_bootstrap_paths()
+    paths = _get_bootstrap_paths(output_dir=output_dir)
     try:
         history_payload = fetch_history_daily(from_date_str, to_date_str)
         ok = True
@@ -410,7 +413,8 @@ def _run_weather_debug_probe(
                 "requested": {"from_date": from_date_str, "to_date": to_date_str},
                 "ok": ok,
                 "response": history_payload,
-            }
+            },
+            output_dir=output_dir,
         )
 
     preview = json.dumps(history_payload, indent=2)[:900] if isinstance(history_payload, (dict, list)) else str(history_payload)[:900]
@@ -432,6 +436,7 @@ def _authenticate_irrigation(
     password: str,
     write_artifacts: bool = True,
     verbose: bool = True,
+    output_dir: Path | None = None,
 ) -> Dict[str, Any]:
     """
     Acquire and validate irrigation token.
@@ -449,7 +454,7 @@ def _authenticate_irrigation(
     notes: List[str] = []
     locations_list: List[dict] = []
     token: Optional[str] = None
-    paths = _get_bootstrap_paths()
+    paths = _get_bootstrap_paths(output_dir=output_dir)
 
     # Try to use existing token file
     if paths["token_path"].exists():
@@ -525,7 +530,7 @@ def _authenticate_irrigation(
     token_type = (login_resp or {}).get("token_type", "bearer")
 
     if write_artifacts:
-        _write_token_artifact(base_url, token_type, token, email)
+        _write_token_artifact(base_url, token_type, token, email, output_dir=output_dir)
 
     if verbose:
         print("[Irrigation] ✅ Logged in and token stored")
@@ -623,12 +628,13 @@ def _fetch_eto_state(
     effective_days_back: int,
     write_artifacts: bool = True,
     verbose: bool = True,
+    output_dir: Path | None = None,
 ) -> Dict[str, Any]:
     """
     Fetch ETo via get-calculations and return summary components for orchestration.
     """
     notes: List[str] = []
-    paths = _get_bootstrap_paths()
+    paths = _get_bootstrap_paths(output_dir=output_dir)
 
     to_d = date.today()
     from_d = to_d - timedelta(days=max(1, int(effective_days_back)))
@@ -676,7 +682,8 @@ def _fetch_eto_state(
                 },
                 "http_status": eto_status,
                 "response": eto_resp,
-            }
+            },
+            output_dir=output_dir,
         )
 
     if not eto_ok:
@@ -688,6 +695,7 @@ def _fetch_eto_state(
             from_date_str=from_date_str,
             to_date_str=to_date_str,
             write_artifacts=write_artifacts,
+            output_dir=output_dir,
         )
         if weather_debug["ok"]:
             notes.append(
@@ -776,6 +784,7 @@ def ensure_irrigation_auth_parcel_and_eto(
     eto_days_back: Optional[int] = None,
     write_artifacts: bool = True,
     verbose: bool = True,
+    output_dir: Path | None = None,
 ) -> Dict[str, Any]:
     """
     Config-driven by default.
@@ -792,7 +801,7 @@ def ensure_irrigation_auth_parcel_and_eto(
     effective_location_id = bootstrap_cfg["effective_location_id"]
     effective_days_back = bootstrap_cfg["effective_days_back"]
 
-    _ensure_output_dir()
+    _ensure_output_dir(output_dir=output_dir)
 
     notes: List[str] = []
 
@@ -811,7 +820,14 @@ def ensure_irrigation_auth_parcel_and_eto(
             notes=[f"Irrigation service unavailable: {e}"],
         )
 
-    auth_result = _authenticate_irrigation(base_url, email, password, write_artifacts=write_artifacts, verbose=verbose)
+    auth_result = _authenticate_irrigation(
+        base_url,
+        email,
+        password,
+        write_artifacts=write_artifacts,
+        verbose=verbose,
+        output_dir=output_dir,
+    )
     if not auth_result["ok"]:
         return auth_result["error_summary"]
 
@@ -825,6 +841,7 @@ def ensure_irrigation_auth_parcel_and_eto(
         email=me.get("email", email),
         wkt=wkt,
         write_artifacts=write_artifacts,
+        output_dir=output_dir,
     )
     if not parcel_result["ok"]:
         return parcel_result["error_summary"]
@@ -845,6 +862,7 @@ def ensure_irrigation_auth_parcel_and_eto(
         effective_days_back=effective_days_back,
         write_artifacts=write_artifacts,
         verbose=verbose,
+        output_dir=output_dir,
     )
     notes.extend(eto_result["notes"])
 

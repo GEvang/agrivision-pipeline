@@ -296,14 +296,14 @@ def _safe_filename(prefix: str) -> str:
     return f'{prefix}-{now}.json'
 
 
-def _artifact_dir() -> Path:
-    path = get_project_root() / 'output' / 'pdm'
+def _artifact_dir(artifact_dir: Path | None = None) -> Path:
+    path = artifact_dir or (get_project_root() / 'output' / 'pdm')
     path.mkdir(parents=True, exist_ok=True)
     return path
 
 
-def write_pdm_artifact(prefix: str, payload: dict[str, Any]) -> str:
-    path = _artifact_dir() / _safe_filename(prefix)
+def write_pdm_artifact(prefix: str, payload: dict[str, Any], *, artifact_dir: Path | None = None) -> str:
+    path = _artifact_dir(artifact_dir=artifact_dir) / _safe_filename(prefix)
     path.write_text(json.dumps(payload, indent=2), encoding='utf-8')
     return str(path)
 

@@ -161,7 +161,8 @@ def run_full_pipeline(
             progress_callback('irrigation_enrichment', 'Running irrigation enrichment', 'running')
         print('\n[AgriVision] Running Irrigation integration (config-driven ETo) ...')
         irrigation_summary = run_irrigation_enrichment(
-            config.get('irrigation', {}).get('base_url', '')
+            config.get('irrigation', {}).get('base_url', ''),
+            output_dir=output_root / 'irrigation',
         )
         if irrigation_summary.get('authenticated') or irrigation_summary.get('enabled'):
             print('[AgriVision] Irrigation integration completed')
@@ -187,6 +188,7 @@ def run_full_pipeline(
             enabled=True,
             crop=resolved_pdm_crop,
             model_key=resolved_pdm_model_key,
+            artifact_dir=output_root / 'pdm',
         )
         if pdm_summary.get('status') == 'success':
             print('[AgriVision] ✅ Pest & Disease integration completed')

@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from pathlib import Path
 from typing import Any
 
 from agrivision.integrations.pdm.adapter import collect_pdm_snapshot
@@ -38,10 +39,17 @@ def run_pdm_enrichment(
     enabled: bool,
     crop: str,
     model_key: str,
+    artifact_dir: Path | None = None,
 ) -> dict[str, Any]:
     pdm_summary = default_pdm_summary(base_url, crop, model_key, enabled)
     try:
-        return collect_pdm_snapshot(weather_summary, enabled=enabled, crop=crop, model_key=model_key)
+        return collect_pdm_snapshot(
+            weather_summary,
+            enabled=enabled,
+            crop=crop,
+            model_key=model_key,
+            artifact_dir=artifact_dir,
+        )
     except Exception as exc:  # noqa: BLE001
         pdm_summary['status'] = 'failed'
         pdm_summary['error_message'] = str(exc)
