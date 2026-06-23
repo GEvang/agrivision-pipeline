@@ -16,6 +16,7 @@ class RunExportService:
 
     def build_package(self, run_id: str) -> Path:
         run = self.run_service.load_run(run_id)
+        workspace = self.run_service.workspace_for_run(run_id)
         package_dir = self.storage.layout.runtime_root / 'exports'
         package_dir.mkdir(parents=True, exist_ok=True)
         package_path = package_dir / f'{run_id}-package.zip'
@@ -33,7 +34,18 @@ class RunExportService:
         }
 
         with zipfile.ZipFile(package_path, 'w', compression=zipfile.ZIP_DEFLATED) as archive:
+            report_html = run.outputs.get('report_html')
+            if report_html:
+                report_path = Path(report_html)
+                if report_path.exists() and report_path.is_file():
+                    archive.writestr('report/report.html', self._packaged_report_html(report_path))
+                    manifest['files'].append('report/report.html')  # type: ignore[union-attr]
             for path, arcname in self._artifact_candidates(run_id):
+                if not path.exists() or not path.is_file():
+                    continue
+                archive.write(path, arcname)
+                manifest['files'].append(arcname)  # type: ignore[union-attr]
+            for path, arcname in self._report_asset_candidates(workspace.output_root):
                 if not path.exists() or not path.is_file():
                     continue
                 archive.write(path, arcname)
@@ -118,6 +130,24 @@ class RunExportService:
             '.tiff': 'image/tiff',
         }.get(suffix, 'application/octet-stream')
 
+    def _packaged_report_html(self, report_path: Path) -> str:
+        html = report_path.read_text(encoding='utf-8')
+        base_tag = '<base href="../report-assets/">'
+        if '</head>' in html:
+            return html.replace('</head>', f'  {base_tag}\n</head>', 1)
+        return base_tag + html
+
+    def _report_asset_candidates(self, output_root: Path) -> list[tuple[Path, str]]:
+        if not output_root.exists():
+            return []
+        candidates: list[tuple[Path, str]] = []
+        for path in sorted(output_root.rglob('*')):
+            if not path.is_file():
+                continue
+            relative = path.relative_to(output_root).as_posix()
+            candidates.append((path, f'report-assets/{relative}'))
+        return candidates
+
     def _artifact_candidates(self, run_id: str) -> list[tuple[Path, str]]:
         run = self.run_service.load_run(run_id)
         workspace = self.run_service.workspace_for_run(run_id)
@@ -130,7 +160,6 @@ class RunExportService:
         ]
 
         for key, arcname in (
-            ('report_html', 'report/report.html'),
             ('ndvi_metadata', 'quality/metadata.json'),
             ('grid_metadata', 'quality/grid_metadata.json'),
             ('ndvi_tif', 'rasters/vegetation_index.tif'),
