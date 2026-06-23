@@ -8,6 +8,7 @@ from pydantic import BaseModel, Field, field_validator
 
 RunStatusValue = Literal['queued', 'running', 'completed', 'failed', 'cancelled']
 StageStateValue = Literal['pending', 'running', 'completed', 'failed', 'skipped', 'cancelled']
+ArtifactOriginValue = Literal['generated_in_run_workspace', 'copied_from_workspace', 'restored_from_previous_run']
 
 
 class StepSelection(BaseModel):
@@ -35,6 +36,15 @@ class StageStatus(BaseModel):
     label: str
     state: StageStateValue = 'pending'
     message: str | None = None
+
+
+class ArtifactRecord(BaseModel):
+    stored_path: str
+    source_path: str
+    stage: str
+    origin: ArtifactOriginValue
+    discovered_at: datetime
+    source_run_id: str | None = None
 
 
 class RunCreateRequest(BaseModel):
@@ -71,6 +81,7 @@ class RunStatus(BaseModel):
     selected_steps: StepSelection
     parameters: dict[str, Any] = Field(default_factory=dict)
     outputs: dict[str, str] = Field(default_factory=dict)
+    artifacts: dict[str, ArtifactRecord] = Field(default_factory=dict)
     errors: list[str] = Field(default_factory=list)
     stages: list[StageStatus] = Field(default_factory=list)
     logs_path: str

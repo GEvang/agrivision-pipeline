@@ -9,8 +9,8 @@ import threading
 from datetime import datetime, timezone
 from pathlib import Path
 
-from agrivision.app.schemas.runs import RunCreateRequest, RunRecord, StageStatus, StepSelection
-from agrivision.config import get_project_root, load_config
+from agrivision.app.schemas.runs import ArtifactRecord, RunCreateRequest, RunRecord, StageStatus, StepSelection
+from agrivision.config import load_config
 from agrivision.pipeline.orchestrator import run_full_pipeline
 from agrivision.services.failure_diagnostics import summarize_failure
 from agrivision.services.storage_service import StorageService
@@ -131,6 +131,7 @@ class RunService:
         })
         self.storage.write_json(run_dir / 'status.json', record.model_dump(mode='json'))
         self.storage.write_json(run_dir / 'outputs.json', record.outputs)
+        self.storage.write_json(run_dir / 'artifacts.json', record.artifacts)
         Path(record.logs_path).touch(exist_ok=True)
 
     def workspace_for_run(self, run_id: str) -> RunWorkspace:
@@ -299,6 +300,7 @@ class RunService:
         *,
         status: str | None = None,
         outputs: dict[str, str] | None = None,
+        artifacts: dict[str, ArtifactRecord] | None = None,
         errors: list[str] | None = None,
         progress_percent: int | None = None,
         current_stage: str | None = None,
@@ -316,6 +318,9 @@ class RunService:
             if outputs is not None:
                 record.outputs = outputs
                 self.storage.write_json(run_dir / 'outputs.json', outputs)
+            if artifacts is not None:
+                record.artifacts = artifacts
+                self.storage.write_json(run_dir / 'artifacts.json', {key: value.model_dump(mode='json') for key, value in artifacts.items()})
             if errors is not None:
                 record.errors = errors
             if progress_percent is not None:
@@ -727,7 +732,58 @@ class RunService:
         shutil.copy2(source_path, destination)
         return destination
 
-    def _discover_outputs(self, run_dir: Path) -> dict[str, str]:
+    def _artifact_stage(self, record: RunRecord, key: str) -> str:
+        if key == 'report_html':
+            return 'generate_report'
+        if key.startswith('orthophoto_'):
+            if record.parameters.get('source_orthophoto_run_id') and not record.selected_steps.run_odm:
+                return 'stage_inputs'
+            return 'run_odm_mapir' if key == 'orthophoto_mapir' else 'run_odm_rgb'
+        if key.startswith('grid_'):
+            return 'generate_grid'
+        return 'compute_ndvi'
+
+    def _artifact_source_path(self, record: RunRecord, key: str, discovered_path: Path) -> Path:
+        source_run_id = record.parameters.get('source_orthophoto_run_id')
+        if key.startswith('orthophoto_') and source_run_id and not record.selected_steps.run_odm:
+            source = self.load_run(str(source_run_id))
+            source_path = source.outputs.get(key)
+            if source_path:
+                return Path(source_path)
+        return discovered_path
+
+    def _artifact_origin(self, record: RunRecord, key: str, stored_path: Path, source_path: Path) -> str:
+        if key.startswith('orthophoto_') and record.parameters.get('source_orthophoto_run_id') and not record.selected_steps.run_odm:
+            return 'restored_from_previous_run'
+        if stored_path != source_path:
+            return 'copied_from_workspace'
+        return 'generated_in_run_workspace'
+
+    def _artifact_record(
+        self,
+        record: RunRecord,
+        key: str,
+        *,
+        stored_path: Path,
+        discovered_path: Path,
+        discovered_at: datetime,
+    ) -> ArtifactRecord:
+        source_path = self._artifact_source_path(record, key, discovered_path)
+        source_run_id = record.parameters.get('source_orthophoto_run_id')
+        return ArtifactRecord(
+            stored_path=str(stored_path),
+            source_path=str(source_path),
+            stage=self._artifact_stage(record, key),
+            origin=self._artifact_origin(record, key, stored_path, source_path),
+            discovered_at=discovered_at,
+            source_run_id=(
+                str(source_run_id)
+                if key.startswith('orthophoto_') and source_run_id and not record.selected_steps.run_odm
+                else None
+            ),
+        )
+
+    def _discover_outputs_with_artifacts(self, run_dir: Path) -> tuple[dict[str, str], dict[str, ArtifactRecord]]:
         record = RunRecord.model_validate(self.storage.read_json(run_dir / 'status.json'))
         workspace = self.workspace_for_record(record)
         selected = record.selected_steps
@@ -735,6 +791,7 @@ class RunService:
             workspace.report_path,
             workspace.output_root / 'report' / 'index.html',
         ]
+        include_orthophotos = selected.run_odm or bool(record.parameters.get('source_orthophoto_run_id'))
         candidates = {
             **(
                 {
@@ -754,24 +811,49 @@ class RunService:
                     'orthophoto_rgb': workspace.ortho_rgb,
                     'orthophoto_mapir': workspace.ortho_mapir,
                 }
-                if selected.run_odm
+                if include_orthophotos
                 else {}
             ),
         }
-        outputs = {}
+
+        discovered_at = datetime.now(timezone.utc)
+        outputs: dict[str, str] = {}
+        artifacts: dict[str, ArtifactRecord] = {}
         for name, path in candidates.items():
             if not path.exists():
                 continue
+            stored_path = path
             if name == 'orthophoto_rgb':
-                outputs[name] = str(self._persist_output_for_run(record, path, 'orthophoto_rgb.tif'))
+                stored_path = self._persist_output_for_run(record, path, 'orthophoto_rgb.tif')
             elif name == 'orthophoto_mapir':
-                outputs[name] = str(self._persist_output_for_run(record, path, 'orthophoto_mapir.tif'))
-            else:
-                outputs[name] = str(path)
+                stored_path = self._persist_output_for_run(record, path, 'orthophoto_mapir.tif')
+            outputs[name] = str(stored_path)
+            artifacts[name] = self._artifact_record(
+                record,
+                name,
+                stored_path=stored_path,
+                discovered_path=path,
+                discovered_at=discovered_at,
+            )
+
         report_path = next((path for path in report_candidates if path.exists()), None)
         if selected.generate_report and report_path is not None:
-            outputs['report_html'] = str(self._persist_report_for_run(record, report_path))
+            stored_report = self._persist_report_for_run(record, report_path)
+            outputs['report_html'] = str(stored_report)
+            artifacts['report_html'] = self._artifact_record(
+                record,
+                'report_html',
+                stored_path=stored_report,
+                discovered_path=report_path,
+                discovered_at=discovered_at,
+            )
+        return outputs, artifacts
+
+    def _discover_outputs(self, run_dir: Path) -> dict[str, str]:
+        outputs, artifacts = self._discover_outputs_with_artifacts(run_dir)
         self.storage.write_json(run_dir / 'outputs.json', outputs)
+        self.storage.write_json(run_dir / 'artifacts.json', {key: value.model_dump(mode='json') for key, value in artifacts.items()})
+        self.update_status(run_id=Path(run_dir).name, outputs=outputs, artifacts=artifacts)
         return outputs
 
     def log_text(self, run_id: str) -> str:

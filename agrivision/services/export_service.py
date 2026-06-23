@@ -156,6 +156,7 @@ class RunExportService:
             (run_dir / 'status.json', 'run/status.json'),
             (run_dir / 'params.json', 'run/params.json'),
             (run_dir / 'outputs.json', 'run/outputs.json'),
+            (run_dir / 'artifacts.json', 'run/artifacts.json'),
             (Path(run.logs_path), 'run/run.log'),
         ]
 

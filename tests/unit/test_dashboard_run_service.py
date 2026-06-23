@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from pathlib import Path
+import json
 
 from agrivision.app.schemas.runs import RunCreateRequest
 from agrivision.services.run_service import RunService, RunStartBlocked
@@ -771,3 +772,72 @@ def test_report_filename_falls_back_to_system_timestamp(tmp_path: Path, monkeypa
 
     outputs = service._discover_outputs(run_dir)
     assert Path(outputs['report_html']).name == '2026-03-29-12-34-56.html'
+
+
+def test_back_to_back_runs_keep_outputs_isolated_and_track_reused_orthophotos(tmp_path: Path, monkeypatch) -> None:
+    storage = StorageService(project_root=tmp_path)
+    upload_dir = storage.upload_dir('upload-seed')
+    (upload_dir / 'rgb').mkdir(parents=True, exist_ok=True)
+    (upload_dir / 'mapir').mkdir(parents=True, exist_ok=True)
+    (upload_dir / 'rgb' / 'a.jpg').write_text('rgb-a', encoding='utf-8')
+    (upload_dir / 'rgb' / 'b.jpg').write_text('rgb-b', encoding='utf-8')
+    (upload_dir / 'mapir' / 'a.jpg').write_text('mapir-a', encoding='utf-8')
+    (upload_dir / 'mapir' / 'b.jpg').write_text('mapir-b', encoding='utf-8')
+    service = RunService(storage)
+
+    def fake_pipeline(*, skip_odm, skip_report, workspace_root=None, **kwargs):
+        workspace = Path(workspace_root)
+        if not skip_odm:
+            rgb = workspace / 'data' / 'odm_project_rgb' / 'project' / 'odm_orthophoto' / 'odm_orthophoto.tif'
+            mapir = workspace / 'data' / 'odm_project_mapir' / 'project' / 'odm_orthophoto' / 'odm_orthophoto.tif'
+            rgb.parent.mkdir(parents=True, exist_ok=True)
+            mapir.parent.mkdir(parents=True, exist_ok=True)
+            rgb.write_text('rgb-ortho', encoding='utf-8')
+            mapir.write_text('mapir-ortho', encoding='utf-8')
+            ndvi_dir = workspace / 'output' / 'ndvi'
+            ndvi_dir.mkdir(parents=True, exist_ok=True)
+            (ndvi_dir / 'ndvi.tif').write_text('ndvi', encoding='utf-8')
+            (ndvi_dir / 'metadata.json').write_text('{}', encoding='utf-8')
+            (ndvi_dir / 'grid_metadata.json').write_text('{}', encoding='utf-8')
+        if not skip_report:
+            report = workspace / 'output' / 'report_latest.html'
+            report.parent.mkdir(parents=True, exist_ok=True)
+            report.write_text('<html>report</html>', encoding='utf-8')
+
+    monkeypatch.setattr('agrivision.services.run_service.run_full_pipeline', fake_pipeline)
+
+    first = service.create_run_record(_request('upload-seed'))
+    service.launch_run(first.run_id)
+    first_loaded = service.load_run(first.run_id)
+
+    reuse_request = RunCreateRequest.model_validate(
+        {
+            'run_name': 'Reuse orthophotos',
+            'dataset_name': 'Dataset 1',
+            'upload_run_id': 'upload-seed',
+            'selected_steps': {
+                'resize_images': False,
+                'run_odm': False,
+                'fetch_weather': False,
+                'run_irrigation': False,
+                'run_pdm': False,
+                'generate_report': False,
+            },
+            'parameters': {'source_orthophoto_run_id': first.run_id},
+        }
+    )
+    second = service.create_run_record(reuse_request)
+    service.launch_run(second.run_id)
+    second_loaded = service.load_run(second.run_id)
+
+    assert 'report_html' in first_loaded.outputs
+    assert sorted(second_loaded.outputs) == ['orthophoto_mapir', 'orthophoto_rgb']
+    assert 'report_html' not in second_loaded.outputs
+    assert 'ndvi_metadata' not in second_loaded.outputs
+    assert second_loaded.artifacts['orthophoto_rgb'].origin == 'restored_from_previous_run'
+    assert second_loaded.artifacts['orthophoto_rgb'].source_run_id == first.run_id
+    assert second_loaded.artifacts['orthophoto_rgb'].source_path == first_loaded.outputs['orthophoto_rgb']
+
+    artifacts_payload = json.loads((Path(second_loaded.run_dir) / 'artifacts.json').read_text(encoding='utf-8'))
+    assert artifacts_payload['orthophoto_rgb']['origin'] == 'restored_from_previous_run'
+    assert artifacts_payload['orthophoto_rgb']['source_run_id'] == first.run_id

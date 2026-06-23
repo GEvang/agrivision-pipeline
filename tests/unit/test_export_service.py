@@ -52,6 +52,7 @@ def test_build_package_includes_run_and_quality_artifacts(tmp_path: Path) -> Non
         assert 'metadata/run_metadata.jsonld' in names
         assert 'run/status.json' in names
         assert 'run/params.json' in names
+        assert 'run/artifacts.json' in names
         assert 'report/report.html' in names
         assert 'report-assets/report_latest.html' in names
         assert 'report-assets/ndvi/ndvi_color.png' in names
