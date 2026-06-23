@@ -6,16 +6,14 @@ from fastapi import APIRouter, HTTPException
 from fastapi.responses import FileResponse, HTMLResponse
 
 from agrivision.app import dependencies as deps
-from agrivision.config import get_project_root, load_config
 
 router = APIRouter()
 
 
 @router.get('/artifacts/{run_id}/report-assets/{asset_path:path}')
 def report_asset(run_id: str, asset_path: str) -> FileResponse:
-    deps.run_service.load_run(run_id)
-    config = load_config()
-    output_root = (get_project_root() / config['paths']['output_root']).resolve()
+    workspace = deps.run_service.workspace_for_run(run_id)
+    output_root = workspace.output_root.resolve()
     candidate = (output_root / asset_path).resolve()
     try:
         candidate.relative_to(output_root)

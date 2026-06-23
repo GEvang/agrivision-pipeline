@@ -95,6 +95,66 @@ def test_api_create_run_upload_reports_and_settings(tmp_path: Path, monkeypatch)
     assert credentials.json()['credentials']['weather_password'] != 'demo-pass'
 
 
+def test_report_artifacts_are_served_from_run_workspace(tmp_path: Path, monkeypatch) -> None:
+    storage = StorageService(project_root=tmp_path)
+    run_service = RunService(storage)
+    report_service = ReportService(run_service=run_service)
+    config_path = tmp_path / 'config.yaml'
+    config_path.write_text('weather:\n  base_url: http://example\n', encoding='utf-8')
+    settings_service = SettingsService(config_path=config_path, env_path=tmp_path / '.env')
+
+    monkeypatch.setattr(deps, 'storage_service', storage)
+    monkeypatch.setattr(deps, 'run_service', run_service)
+    monkeypatch.setattr(deps, 'report_service', report_service)
+    monkeypatch.setattr(deps, 'settings_service', settings_service)
+
+    upload_dir = storage.upload_dir('upload-seed')
+    (upload_dir / 'rgb').mkdir(parents=True, exist_ok=True)
+    (upload_dir / 'mapir').mkdir(parents=True, exist_ok=True)
+    record = run_service.create_run_record(
+        RunCreateRequest.model_validate(
+            {
+                'run_name': 'Workspace Assets',
+                'dataset_name': 'Dataset API',
+                'upload_run_id': 'upload-seed',
+                'selected_steps': {
+                    'resize_images': False,
+                    'run_odm': True,
+                    'fetch_weather': False,
+                    'generate_report': True,
+                },
+                'parameters': {'preset': 'default'},
+            }
+        )
+    )
+
+    workspace = run_service.workspace_for_record(record)
+    report_path = workspace.output_root / 'report' / 'index.html'
+    report_path.parent.mkdir(parents=True, exist_ok=True)
+    asset_path = workspace.output_root / 'report' / 'styles.css'
+    asset_path.write_text('body { color: green; }', encoding='utf-8')
+    report_path.write_text('<html><head></head><body><link rel="stylesheet" href="report/styles.css"></body></html>', encoding='utf-8')
+
+    ortho = tmp_path / 'ortho.tif'
+    Image.new('RGB', (30, 30)).save(ortho)
+    run_service.update_status(
+        record.run_id,
+        status='completed',
+        outputs={'report_html': str(report_path), 'orthophoto_rgb': str(ortho)},
+    )
+
+    client = TestClient(api.app)
+    report_response = client.get(f'/artifacts/{record.run_id}/report')
+    asset_response = client.get(f'/artifacts/{record.run_id}/report-assets/report/styles.css')
+    traversal_response = client.get(f'/artifacts/{record.run_id}/report-assets/../status.json')
+
+    assert report_response.status_code == 200
+    assert '<base href="/artifacts/' in report_response.text
+    assert asset_response.status_code == 200
+    assert 'color: green' in asset_response.text
+    assert traversal_response.status_code == 404
+
+
 def test_api_create_run_returns_conflict_when_another_run_is_active(tmp_path: Path, monkeypatch) -> None:
     storage = StorageService(project_root=tmp_path)
     run_service = RunService(storage)
