@@ -21,6 +21,7 @@ from agrivision.app.routes import (
 
 @asynccontextmanager
 async def lifespan(_: FastAPI):
+    deps.settings_service.ensure_runtime_settings_file()
     deps.run_service.reconcile_orphaned_runs()
     yield
 

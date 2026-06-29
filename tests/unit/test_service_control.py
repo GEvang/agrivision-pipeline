@@ -25,9 +25,15 @@ def test_service_status_reports_missing_repos(tmp_path: Path, monkeypatch) -> No
     monkeypatch.setattr(service_control, 'get_settings', lambda: Settings())
     monkeypatch.setattr(service_control, 'project_service_dir', lambda name: tmp_path / name)
     monkeypatch.setattr(service_control, 'check_first_reachable_url', lambda urls: False)
+    monkeypatch.setattr(service_control.shutil, 'which', lambda name: None)
 
     statuses = service_control.service_statuses()
 
-    assert {item['key'] for item in statuses} == {'weather', 'irrigation', 'pdm'}
-    assert all(item['state'] == 'missing' for item in statuses)
-    assert all(item['repo_exists'] is False for item in statuses)
+    keyed = {item['key']: item for item in statuses}
+    assert set(keyed) == {'weather', 'irrigation', 'pdm', 'odm'}
+    assert keyed['weather']['state'] == 'missing'
+    assert keyed['weather']['installed_label'] == 'Not installed'
+    assert keyed['weather']['connection_label'] == 'Not connected'
+    assert keyed['pdm']['state'] == 'missing'
+    assert keyed['odm']['installed_label'] == 'Not available'
+    assert keyed['odm']['connection_label'] == 'Not tested'

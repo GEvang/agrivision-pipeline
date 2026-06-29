@@ -1,29 +1,31 @@
 # Run AgriVision Pipeline
 
-## Canonical operator commands
-
-Diagnostics:
+## Recommended startup
 
 ```bash
-python run.py --doctor
+docker compose up --build -d
 ```
 
-CLI pipeline run:
+Then open:
 
-```bash
-python run.py
-```
+- `http://127.0.0.1:8008`
 
-Dashboard:
+## Launcher shortcuts
 
-```bash
-python run.py --serve-dashboard --host 127.0.0.1 --port 8008
-```
+- Windows: `Start AgriVision Windows.bat`
+- Linux: `Start AgriVision Linux.sh`
+- macOS: `Start AgriVision macOS.command`
 
-Then open `http://127.0.0.1:8008`.
+## First launch behavior
+
+- the dashboard creates `runtime/settings.json` if it does not exist
+- missing optional services appear in Settings as `Not installed` or `Not connected`
+- missing `.env` does not block startup
 
 ## Where outputs live
 
-- reports and generated artifacts under `output/`
-- run metadata and logs under `runtime/runs/`
-- previews under `runtime/runs/<run_id>/previews/`
+- reports and generated artifacts: `output/`
+- saved per-run outputs: `output/runs/<run_id>/`
+- run metadata and logs: `runtime/runs/<run_id>/`
+- previews: `runtime/runs/<run_id>/previews/`
+- exports: `runtime/exports/`

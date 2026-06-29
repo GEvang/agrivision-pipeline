@@ -1,26 +1,51 @@
 # Install AgriVision Pipeline
 
-Use the repository root installer as the canonical operator path.
+The recommended operator install path is now dashboard-first with Docker.
+
+## Windows
+
+1. Install Docker Desktop.
+2. Clone or download AgriVision.
+3. Double-click `Start AgriVision Windows.bat`.
+4. Open `http://127.0.0.1:8008`.
+
+## Linux
+
+1. Install Docker.
+2. Clone AgriVision.
+3. Run:
+
+```bash
+chmod +x "Start AgriVision Linux.sh"
+./"Start AgriVision Linux.sh"
+```
+
+4. Open `http://127.0.0.1:8008`.
+
+## macOS
+
+1. Install Docker Desktop.
+2. Clone or download AgriVision.
+3. Run once:
+
+```bash
+chmod +x "Start AgriVision macOS.command"
+```
+
+4. Double-click `Start AgriVision macOS.command`.
+5. Open `http://127.0.0.1:8008`.
+
+## Universal command
 
 ```bash
 git clone https://github.com/GEvang/agrivision-pipeline.git
 cd agrivision-pipeline
-./install_agrivision.sh
-source .venv/bin/activate
-python run.py --doctor
+docker compose up --build -d
 ```
 
-## What the installer does
+## Notes
 
-- creates `.venv`
-- installs Python dependencies
-- creates the expected data, output, and runtime directories
-- creates `.env` from `.env.example` when missing
-- standardizes the local virtual environment at `.venv`
-
-## Configuration
-
-- keep non-secret settings in `config.yaml`
-- create local secrets with `cp .env.example .env` and then fill the required values
-- keep secrets in `.env` or exported environment variables
-- never commit real credentials into `config.yaml` or `.env`
+- `.env` is optional for dashboard startup.
+- `runtime/settings.json` is created automatically on first launch.
+- Optional OpenAgri services can be configured later from the Settings page.
+- Python virtualenv setup remains available for development and advanced local runs, but it is not required for dashboard-only use.

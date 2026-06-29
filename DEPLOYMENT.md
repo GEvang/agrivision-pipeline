@@ -2,18 +2,22 @@
 
 The root-level operational assets are the only supported deployment surface:
 
-- `install_agrivision.sh`
 - `Dockerfile`
 - `docker-compose.yml`
 - `docker-entrypoint.sh`
+- `Start AgriVision Windows.bat`
+- `Start AgriVision Linux.sh`
+- `Start AgriVision macOS.command`
 - `.env.example`
 
 ## Root Docker flow
 
 ```bash
-docker compose config
-docker compose build
-docker compose up
+docker compose up --build -d
 ```
 
-For local operator use, prefer the installer and `python run.py` commands documented in the README. Activate the project with `source .venv/bin/activate`.
+Then open `http://127.0.0.1:8008`.
+
+Base dashboard startup does not require `.env` and does not require optional OpenAgri services to be installed in advance.
+
+Python virtualenv setup remains available for development and advanced local runs, but it is no longer the primary operator deployment path.

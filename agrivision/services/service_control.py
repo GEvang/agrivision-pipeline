@@ -1,5 +1,8 @@
 from __future__ import annotations
 
+import os
+import shutil
+import subprocess
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Callable
@@ -90,7 +93,7 @@ def service_statuses(*, include_logs: bool = False) -> list[dict[str, object]]:
                 compose_error = str(exc)
         reachable = check_first_reachable_url(descriptor.readiness_urls)
         state = "ok" if reachable else ("warn" if repo_exists else "missing")
-        detail = "Reachable" if reachable else ("Repo exists, service not reachable" if repo_exists else "Repository not cloned")
+        detail = "Connected" if reachable else ("Installed but not connected" if repo_exists else "Not installed")
         if compose_error:
             state = "warn"
             detail = compose_error
@@ -102,6 +105,8 @@ def service_statuses(*, include_logs: bool = False) -> list[dict[str, object]]:
                 "docs_url": descriptor.docs_url,
                 "repo_dir": str(descriptor.repo_dir),
                 "repo_exists": repo_exists,
+                "installed_label": "Installed" if repo_exists else "Not installed",
+                "connection_label": "Connected" if reachable else "Not connected",
                 "compose_file": str(compose_file) if compose_file else "",
                 "state": state,
                 "detail": detail,
@@ -109,7 +114,84 @@ def service_statuses(*, include_logs: bool = False) -> list[dict[str, object]]:
                 "logs": logs,
             }
         )
+    items.append(_odm_status())
     return items
+
+
+def _odm_status() -> dict[str, object]:
+    docker_cli = shutil.which("docker")
+    socket_path = Path("/var/run/docker.sock")
+    if docker_cli is None:
+        return {
+            "key": "odm",
+            "name": "OpenDroneMap",
+            "base_url": "",
+            "docs_url": "",
+            "repo_dir": "",
+            "repo_exists": False,
+            "installed_label": "Not available",
+            "connection_label": "Not tested",
+            "compose_file": "",
+            "state": "missing",
+            "detail": "Docker CLI is not available in this dashboard environment.",
+            "readiness_urls": [],
+            "logs": "",
+        }
+    if not socket_path.exists() and not os.getenv("APP_CONTAINER_PROJECT_ROOT"):
+        try:
+            subprocess.run(
+                [docker_cli, "version", "--format", "{{.Server.Version}}"],
+                capture_output=True,
+                text=True,
+                timeout=2,
+                check=True,
+            )
+            return {
+                "key": "odm",
+                "name": "OpenDroneMap",
+                "base_url": "",
+                "docs_url": "",
+                "repo_dir": "",
+                "repo_exists": False,
+                "installed_label": "Available",
+                "connection_label": "Available",
+                "compose_file": "",
+                "state": "ok",
+                "detail": "Docker is available for local ODM runs.",
+                "readiness_urls": [],
+                "logs": "",
+            }
+        except Exception:
+            return {
+                "key": "odm",
+                "name": "OpenDroneMap",
+                "base_url": "",
+                "docs_url": "",
+                "repo_dir": "",
+                "repo_exists": False,
+                "installed_label": "Not available",
+                "connection_label": "Not tested",
+                "compose_file": "",
+                "state": "warn",
+                "detail": "Docker is installed but not responding.",
+                "readiness_urls": [],
+                "logs": "",
+            }
+    return {
+        "key": "odm",
+        "name": "OpenDroneMap",
+        "base_url": "",
+        "docs_url": "",
+        "repo_dir": "",
+        "repo_exists": False,
+        "installed_label": "Not tested",
+        "connection_label": "Not tested",
+        "compose_file": "",
+        "state": "warn",
+        "detail": "Dashboard is running without Docker socket access. ODM can be enabled later for advanced processing.",
+        "readiness_urls": [],
+        "logs": "",
+    }
 
 
 def ensure_service(key: str, *, timeout_seconds: int = 90) -> None:

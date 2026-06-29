@@ -5,26 +5,18 @@ services:
       dockerfile: Dockerfile
     image: agrivision-pipeline:phase5
     container_name: agrivision-pipeline
-    working_dir: /workspace
+    working_dir: /app
     ports:
       - "8008:8008"
     extra_hosts:
       - "host.docker.internal:host-gateway"
     environment:
-      AGRIVISION_CONFIG_PATH: /workspace/config.yaml
-      APP_CONTAINER_PROJECT_ROOT: /workspace
+      AGRIVISION_CONFIG_PATH: /app/config.yaml
+      AGRIVISION_RUNTIME_SETTINGS_PATH: /app/runtime/settings.json
+      APP_CONTAINER_PROJECT_ROOT: /app
       AGRIVISION_APP_CONTAINER_NAME: agrivision-pipeline
-      HOST_PROJECT_ROOT: ${PWD}
-      WEATHER_USERNAME: ${WEATHER_USERNAME:-}
-      WEATHER_PASSWORD: ${WEATHER_PASSWORD:-}
-      OPENWEATHER_API_KEY: ${OPENWEATHER_API_KEY:-}
-      IRRIGATION_EMAIL: ${IRRIGATION_EMAIL:-}
-      IRRIGATION_PASSWORD: ${IRRIGATION_PASSWORD:-}
-      IRRIGATION_TOKEN: ${IRRIGATION_TOKEN:-}
-      PDM_USERNAME: ${PDM_USERNAME:-}
-      PDM_PASSWORD: ${PDM_PASSWORD:-}
-      PDM_TOKEN: ${PDM_TOKEN:-}
     volumes:
-      - .:/workspace
-      - /var/run/docker.sock:/var/run/docker.sock
+      - ./data:/app/data
+      - ./output:/app/output
+      - ./runtime:/app/runtime
     command: ["python", "run.py", "--serve-dashboard", "--host", "0.0.0.0", "--port", "8008"]

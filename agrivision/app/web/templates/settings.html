@@ -3,7 +3,7 @@
 <section class="dashboard-hero">
   <div>
     <h2>Settings</h2>
-    <p class="muted">Pipeline configuration, credentials, and OpenAgri service controls.</p>
+    <p class="muted">Dashboard defaults, credentials, and optional service connections.</p>
   </div>
 </section>
 
@@ -11,7 +11,7 @@
   <form class="panel settings-card settings-main" method="post" action="/ui/settings">
     <div class="settings-section-head">
       <h2>Pipeline</h2>
-      <p class="muted">Core defaults used by new runs.</p>
+      <p class="muted">Core defaults used by new runs. Saved in {{ non_secret.settings_file }}.</p>
     </div>
 
     <div class="settings-group">
@@ -26,6 +26,7 @@
 
     <div class="settings-group">
       <h3>Service endpoints</h3>
+      <p class="muted">These are optional. The dashboard still works if the services are not installed yet.</p>
       <label>Weather base URL<input type="text" name="weather_base_url" value="{{ non_secret.weather_base_url }}" /></label>
       <label>Irrigation base URL<input type="text" name="irrigation_base_url" value="{{ non_secret.irrigation_base_url }}" /></label>
       <label>Pest &amp; Disease base URL<input type="text" name="pdm_base_url" value="{{ non_secret.pdm_base_url }}" /></label>
@@ -58,10 +59,10 @@
 
   <aside class="settings-side">
     <form class="panel settings-card" method="post" action="/ui/settings/credentials">
-      <div class="settings-section-head">
-        <h2>Credentials</h2>
-        <p class="muted">Existing values stay masked unless replaced.</p>
-      </div>
+    <div class="settings-section-head">
+      <h2>Credentials</h2>
+      <p class="muted">Optional service credentials. Existing values stay masked unless replaced.</p>
+    </div>
       <div class="credential-list">
         <span>Shared username</span><strong>{{ credentials.shared_username }}</strong>
         <span>Shared password</span><strong>{{ credentials.shared_password }}</strong>
@@ -79,7 +80,7 @@
   <div class="panel-header">
     <div>
       <h2>Services</h2>
-      <p class="muted">OpenAgri dependency status and controls.</p>
+      <p class="muted">Optional services can be added later. Missing services do not block the dashboard.</p>
     </div>
   </div>
   <div class="service-diagnostics compact-services">
@@ -88,15 +89,22 @@
       <div class="panel-header">
         <div>
           <h3>{{ service.name }}</h3>
-          <p class="muted">{{ service.base_url }}</p>
+          <p class="muted">{{ service.base_url or 'Local capability check' }}</p>
         </div>
         <span class="status-badge status-{{ 'completed' if service.state == 'ok' else 'failed' if service.state in ['warn', 'missing'] else service.state }}">{{ service.state }}</span>
       </div>
       <dl class="service-details">
+        <dt>Installed</dt><dd>{{ service.installed_label }}</dd>
+        <dt>Connection</dt><dd>{{ service.connection_label }}</dd>
         <dt>Detail</dt><dd>{{ service.detail }}</dd>
+        {% if service.repo_dir %}
         <dt>Repository</dt><dd>{{ service.repo_dir }}</dd>
-        <dt>Compose</dt><dd>{{ service.compose_file or '-' }}</dd>
+        {% endif %}
+        {% if service.compose_file %}
+        <dt>Compose</dt><dd>{{ service.compose_file }}</dd>
+        {% endif %}
       </dl>
+      {% if service.key != 'odm' %}
       <div class="button-row">
         <a class="button-link secondary compact" href="{{ service.docs_url }}" target="_blank" rel="noreferrer">Open docs</a>
         <form method="post" action="/ui/services/{{ service.key }}/start">
@@ -106,6 +114,8 @@
           <button class="danger-button compact" type="submit">Restart</button>
         </form>
       </div>
+      {% endif %}
+      {% if service.readiness_urls %}
       <details>
         <summary>Readiness URLs</summary>
         <ul>
@@ -114,10 +124,13 @@
           {% endfor %}
         </ul>
       </details>
+      {% endif %}
+      {% if service.logs %}
       <details>
         <summary>Log tail</summary>
-        <pre class="log-box">{{ service.logs or 'No compose logs available.' }}</pre>
+        <pre class="log-box">{{ service.logs }}</pre>
       </details>
+      {% endif %}
     </article>
     {% endfor %}
   </div>

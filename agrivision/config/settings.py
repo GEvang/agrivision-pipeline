@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import json
 import os
 import warnings
 from dataclasses import dataclass
@@ -11,6 +12,9 @@ import yaml
 
 _PROJECT_ROOT = Path(__file__).resolve().parents[2]
 _CONFIG_PATH = Path(os.getenv("AGRIVISION_CONFIG_PATH", str(_PROJECT_ROOT / "config.yaml")))
+_RUNTIME_SETTINGS_PATH = Path(
+    os.getenv("AGRIVISION_RUNTIME_SETTINGS_PATH", str(_PROJECT_ROOT / "runtime" / "settings.json"))
+)
 
 
 def load_local_env(env_path: Path | None = None) -> None:
@@ -271,6 +275,11 @@ def get_config_path() -> Path:
     return _CONFIG_PATH
 
 
+def get_runtime_settings_path() -> Path:
+    """Return the dashboard-managed runtime settings file path."""
+    return _RUNTIME_SETTINGS_PATH
+
+
 def _deep_copy(value: Any) -> Any:
     if isinstance(value, dict):
         return {k: _deep_copy(v) for k, v in value.items()}
@@ -371,10 +380,25 @@ def load_raw_config(config_path: Path | None = None) -> dict[str, Any]:
     return loaded
 
 
+def load_runtime_settings(runtime_settings_path: Path | None = None) -> dict[str, Any]:
+    """Load dashboard-managed runtime settings as a dict. Missing files return an empty mapping."""
+    resolved = runtime_settings_path or get_runtime_settings_path()
+    if not resolved.exists():
+        return {}
+
+    loaded = json.loads(resolved.read_text(encoding="utf-8") or "{}")
+
+    if not isinstance(loaded, dict):
+        raise ValueError(f"Runtime settings file must contain a top-level mapping: {resolved}")
+
+    return loaded
+
+
 def load_config() -> dict:
-    """Return config dict with explicit precedence: defaults < YAML(non-secret) < .env/environment."""
+    """Return config dict with explicit precedence: defaults < config.yaml < runtime/settings.json < .env/environment."""
     load_local_env()
     config = _deep_merge(DEFAULT_CONFIG, load_raw_config())
+    config = _deep_merge(config, load_runtime_settings())
     config = _remove_yaml_secrets(config)
     config = _apply_env_overrides(config)
     config = _rewrite_loopback_urls_for_container(config)

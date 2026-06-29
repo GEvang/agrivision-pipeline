@@ -51,6 +51,7 @@ Thumbs.db
 /runtime/runs/
 /runtime/exports/
 /runtime/archived_runs/
+/runtime/settings.json
 
 # -----------------------------
 # Cloned external service repos

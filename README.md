@@ -1,89 +1,131 @@
 # AgriVision Pipeline
 
-AgriVision Pipeline is an OpenAgri-aligned drone imagery pipeline with two supported operator interfaces that share the same processing core:
+AgriVision is a dashboard-first drone imagery workflow for orthophotos, vegetation analysis, field reports, and optional OpenAgri service integrations.
 
-- **CLI** for direct pipeline execution
-- **Dashboard** for uploads, run tracking, reports, previews, and settings
-
-The core remains transport-agnostic. `agrivision/domain/`, `agrivision/pipeline/`, `agrivision/services/`, and `agrivision/integrations/` continue to own business logic and integrations. The web layer under `agrivision/app/` stays thin.
-
-## Canonical operator install
+The simplest way to start it is:
 
 ```bash
 git clone https://github.com/GEvang/agrivision-pipeline.git
 cd agrivision-pipeline
-chmod +x install_agrivision.sh
-./install_agrivision.sh
-source .venv/bin/activate
-python run.py --doctor
+docker compose up --build -d
 ```
 
-## Canonical operator run path
+Then open:
 
-CLI:
+- [http://127.0.0.1:8008](http://127.0.0.1:8008)
+
+The dashboard starts even if `.env` is missing and even if optional services are not installed yet.
+
+## Quick Start
+
+### Windows
+
+1. Install Docker Desktop.
+2. Clone or download AgriVision.
+3. Double-click [Start AgriVision Windows.bat](D:\Jobs\Aigaio Skytech\OpenAgri\OpenAgri_Repository\agrivision-pipeline\Start AgriVision Windows.bat).
+4. Your browser opens at [http://127.0.0.1:8008](http://127.0.0.1:8008).
+
+### Linux
+
+1. Install Docker.
+2. Clone AgriVision.
+3. Run:
 
 ```bash
-python run.py
+chmod +x "Start AgriVision Linux.sh"
+./"Start AgriVision Linux.sh"
 ```
 
-Dashboard:
+4. Open [http://127.0.0.1:8008](http://127.0.0.1:8008).
+
+### macOS
+
+1. Install Docker Desktop.
+2. Clone or download AgriVision.
+3. Run once:
 
 ```bash
-python run.py --serve-dashboard --host 127.0.0.1 --port 8008
+chmod +x "Start AgriVision macOS.command"
 ```
 
-Open `http://127.0.0.1:8008` in your browser.
+4. Double-click [Start AgriVision macOS.command](D:\Jobs\Aigaio Skytech\OpenAgri\OpenAgri_Repository\agrivision-pipeline\Start AgriVision macOS.command).
+5. Your browser opens at [http://127.0.0.1:8008](http://127.0.0.1:8008).
 
-API documentation is available from the running dashboard:
-
-- OpenAPI JSON: `http://127.0.0.1:8008/openapi.json`
-- Swagger UI: `http://127.0.0.1:8008/docs`
-- ReDoc: `http://127.0.0.1:8008/redoc`
-
-## Configuration and secrets
-
-- Keep **non-secret settings** in `config.yaml`
-- Keep **secrets** in `.env` or exported environment variables
-- Use `cp .env.example .env` as the starting point for local setup
-- The dashboard masks secrets and does not return full credential values in responses
-
-## Runtime storage
-
-- `data/uploads/<upload_id>/` — uploaded image datasets
-- `runtime/runs/<run_id>/params.json`
-- `runtime/runs/<run_id>/status.json`
-- `runtime/runs/<run_id>/outputs.json`
-- `runtime/runs/<run_id>/run.log`
-- `runtime/runs/<run_id>/previews/`
-
-## Common commands
+## Universal Terminal Command
 
 ```bash
-python run.py --doctor
-python run.py --run-resize
-python run.py --skip-odm
-python run.py --skip-weather
-python run.py --skip-report
-python -m pytest -q
-python -m ruff check .
+git clone https://github.com/GEvang/agrivision-pipeline.git
+cd agrivision-pipeline
+docker compose up --build -d
 ```
 
-## Docker
+Then open:
 
-Root-level Docker assets are the only retained container path:
+- [http://127.0.0.1:8008](http://127.0.0.1:8008)
 
-```bash
-docker compose config
-docker compose build
-docker compose up
-```
+## What Works On First Launch
 
-## Developer notes
+- The dashboard and API
+- Uploads
+- Run tracking
+- Reports and exported run packages
+- Runtime folder creation
+- Default dashboard-managed settings in `runtime/settings.json`
 
-Developer-oriented alternatives such as raw `uvicorn`, editable installs, and dev tooling are documented under `docs/developer/`.
+These do **not** need to exist before the dashboard opens:
 
-## OpenAgri alignment
+- `.env`
+- OpenAgri Weather Service
+- OpenAgri Irrigation Management
+- OpenAgri Pest & Disease Management
+- API keys
+- Drone images
+- Docker socket access inside the dashboard container
 
-AgriVision is designed as an OpenAgri-aligned Agricultural Digital Solution (ADS). It reuses OpenAgri Weather, Irrigation Management, and Pest & Disease services where configured, keeps run artifacts under operator-controlled project folders, and exposes a documented REST interface through FastAPI/OpenAPI.
+## Optional Services
 
-The current repository license is MIT. OpenAgri core services commonly use EUPL 1.2; see `docs/developer/release.md` for the current license decision note and release checklist.
+The Settings page shows whether optional services are:
+
+- Installed or Not installed
+- Connected or Not connected
+- Available or Not tested for OpenDroneMap
+
+Missing optional services are shown as dashboard warnings, not startup errors.
+
+## Persistent Folders
+
+The base Docker setup keeps data in these local folders:
+
+- `./data`
+- `./output`
+- `./runtime`
+
+Important runtime locations:
+
+- uploaded datasets: `data/uploads/<upload_id>/`
+- run metadata and logs: `runtime/runs/<run_id>/`
+- dashboard settings: `runtime/settings.json`
+- saved reports and orthophotos: `output/runs/<run_id>/`
+- exported run packages: `runtime/exports/`
+
+## Running Without Docker
+
+Docker is the recommended dashboard startup path.
+
+Python virtualenv setup is still supported for developers and advanced operators, but it is no longer required just to open the dashboard. See:
+
+- [docs/operator/install.md](D:\Jobs\Aigaio Skytech\OpenAgri\OpenAgri_Repository\agrivision-pipeline\docs\operator\install.md)
+- [docs/operator/run.md](D:\Jobs\Aigaio Skytech\OpenAgri\OpenAgri_Repository\agrivision-pipeline\docs\operator\run.md)
+- [docs/developer/local-dev.md](D:\Jobs\Aigaio Skytech\OpenAgri\OpenAgri_Repository\agrivision-pipeline\docs\developer\local-dev.md)
+
+## API Docs
+
+When the dashboard is running:
+
+- OpenAPI JSON: [http://127.0.0.1:8008/openapi.json](http://127.0.0.1:8008/openapi.json)
+- Swagger UI: [http://127.0.0.1:8008/docs](http://127.0.0.1:8008/docs)
+- ReDoc: [http://127.0.0.1:8008/redoc](http://127.0.0.1:8008/redoc)
+
+## OpenAgri Alignment
+
+AgriVision is designed as an OpenAgri-aligned Agricultural Digital Solution. It can integrate with OpenAgri Weather, Irrigation, and Pest & Disease services when those are installed and configured, but the dashboard can start independently with safe defaults.
