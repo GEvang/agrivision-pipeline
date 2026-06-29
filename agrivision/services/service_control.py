@@ -151,6 +151,7 @@ def service_statuses(*, include_logs: bool = False) -> list[dict[str, object]]:
 def _odm_status() -> dict[str, object]:
     docker_cli = shutil.which("docker")
     socket_path = Path("/var/run/docker.sock")
+    running_in_container = bool(os.getenv("APP_CONTAINER_PROJECT_ROOT", "").strip())
     if docker_cli is None:
         return {
             "key": "odm",
@@ -173,7 +174,29 @@ def _odm_status() -> dict[str, object]:
             "readiness_urls": [],
             "logs": "",
         }
-    if not socket_path.exists() and not os.getenv("APP_CONTAINER_PROJECT_ROOT"):
+    if running_in_container and not socket_path.exists():
+        return {
+            "key": "odm",
+            "name": "OpenDroneMap",
+            "base_url": "",
+            "docs_url": "",
+            "repo_dir": "",
+            "repo_exists": False,
+            "installed_label": "Not available",
+            "connection_label": "Not tested",
+            "status_label": "Not available",
+            "compose_file": "",
+            "state": "warn",
+            "detail": "Dashboard is running without Docker socket access. ODM processing is unavailable until socket access is enabled.",
+            "controls_available": False,
+            "controls_reason": "",
+            "primary_action_label": "",
+            "primary_action": "",
+            "show_restart": False,
+            "readiness_urls": [],
+            "logs": "",
+        }
+    if not socket_path.exists() and not running_in_container:
         try:
             subprocess.run(
                 [docker_cli, "version", "--format", "{{.Server.Version}}"],
@@ -225,27 +248,57 @@ def _odm_status() -> dict[str, object]:
                 "readiness_urls": [],
                 "logs": "",
             }
-    return {
-        "key": "odm",
-        "name": "OpenDroneMap",
-        "base_url": "",
-        "docs_url": "",
-        "repo_dir": "",
-        "repo_exists": False,
-        "installed_label": "Not tested",
-        "connection_label": "Not tested",
-        "status_label": "Not tested",
-        "compose_file": "",
-        "state": "warn",
-        "detail": "Dashboard is running without Docker socket access. ODM can be enabled later for advanced processing.",
-        "controls_available": False,
-        "controls_reason": "",
-        "primary_action_label": "",
-        "primary_action": "",
-        "show_restart": False,
-        "readiness_urls": [],
-        "logs": "",
-    }
+    try:
+        subprocess.run(
+            [docker_cli, "version", "--format", "{{.Server.Version}}"],
+            capture_output=True,
+            text=True,
+            timeout=2,
+            check=True,
+        )
+        return {
+            "key": "odm",
+            "name": "OpenDroneMap",
+            "base_url": "",
+            "docs_url": "",
+            "repo_dir": "",
+            "repo_exists": False,
+            "installed_label": "Available",
+            "connection_label": "Available",
+            "status_label": "Available",
+            "compose_file": "",
+            "state": "ok",
+            "detail": "Docker is available for ODM runs.",
+            "controls_available": False,
+            "controls_reason": "",
+            "primary_action_label": "",
+            "primary_action": "",
+            "show_restart": False,
+            "readiness_urls": [],
+            "logs": "",
+        }
+    except Exception:
+        return {
+            "key": "odm",
+            "name": "OpenDroneMap",
+            "base_url": "",
+            "docs_url": "",
+            "repo_dir": "",
+            "repo_exists": False,
+            "installed_label": "Not available",
+            "connection_label": "Not connected",
+            "status_label": "Not available",
+            "compose_file": "",
+            "state": "warn",
+            "detail": "Docker is installed but the ODM container runtime is not responding.",
+            "controls_available": False,
+            "controls_reason": "",
+            "primary_action_label": "",
+            "primary_action": "",
+            "show_restart": False,
+            "readiness_urls": [],
+            "logs": "",
+        }
 
 
 def missing_service_repos() -> list[dict[str, str]]:

@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import os
 from pathlib import Path
 
 from agrivision.config.settings import get_settings
@@ -10,6 +11,7 @@ from agrivision.services.runtime import (
     base_env_values,
     clone_repo_if_missing,
     ensure_env_file,
+    inspect_external_service_runtime,
     project_service_dir,
     reconcile_service_runtime,
     summarize_env_changes,
@@ -80,13 +82,19 @@ def _env_values() -> dict[str, str]:
 def ensure_repo_and_env(timeout_seconds: int = 90) -> ServiceRuntimeState:
     settings = get_settings()
     repo_dir = _service_dir()
-    clone_repo_if_missing(repo_dir, IRRIGATION_REPO_URL)
-    _apply_compatibility_patches(repo_dir)
     health_urls = [
         f"{settings.irrigation.base_url}/openapi.json",
         f"{settings.irrigation.base_url}/docs",
         f"{settings.irrigation.base_url}/api/v1/openapi.json",
     ]
+    if os.getenv("APP_CONTAINER_PROJECT_ROOT", "").strip():
+        return inspect_external_service_runtime(
+            repo_dir=repo_dir,
+            readiness_urls=health_urls,
+            timeout_seconds=timeout_seconds,
+        )
+    clone_repo_if_missing(repo_dir, IRRIGATION_REPO_URL)
+    _apply_compatibility_patches(repo_dir)
     return reconcile_service_runtime(
         repo_dir=repo_dir,
         repo_url=IRRIGATION_REPO_URL,

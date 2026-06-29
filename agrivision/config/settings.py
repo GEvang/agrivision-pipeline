@@ -15,6 +15,8 @@ _CONFIG_PATH = Path(os.getenv("AGRIVISION_CONFIG_PATH", str(_PROJECT_ROOT / "con
 _RUNTIME_SETTINGS_PATH = Path(
     os.getenv("AGRIVISION_RUNTIME_SETTINGS_PATH", str(_PROJECT_ROOT / "runtime" / "settings.json"))
 )
+DEFAULT_SERVICE_USERNAME = "dummy@email.com"
+DEFAULT_SERVICE_PASSWORD = "StrongPass1@"
 
 
 def load_local_env(env_path: Path | None = None) -> None:
@@ -47,6 +49,29 @@ def _remove_yaml_secrets(config: dict[str, Any]) -> dict[str, Any]:
     pdm_auth["username"] = ""
     pdm_auth["password"] = ""
     pdm["token"] = ""
+    return config
+
+
+def _apply_local_service_defaults(config: dict[str, Any]) -> dict[str, Any]:
+    weather = config.setdefault("weather", {})
+    if not weather.get("username"):
+        weather["username"] = DEFAULT_SERVICE_USERNAME
+    if not weather.get("password"):
+        weather["password"] = DEFAULT_SERVICE_PASSWORD
+
+    irrigation = config.setdefault("irrigation", {})
+    irrigation_auth = irrigation.setdefault("auth", {})
+    if not irrigation_auth.get("email"):
+        irrigation_auth["email"] = DEFAULT_SERVICE_USERNAME
+    if not irrigation_auth.get("password"):
+        irrigation_auth["password"] = DEFAULT_SERVICE_PASSWORD
+
+    pdm = config.setdefault("pdm", {})
+    pdm_auth = pdm.setdefault("auth", {})
+    if not pdm_auth.get("username"):
+        pdm_auth["username"] = DEFAULT_SERVICE_USERNAME
+    if not pdm_auth.get("password"):
+        pdm_auth["password"] = DEFAULT_SERVICE_PASSWORD
     return config
 
 
@@ -442,6 +467,7 @@ def load_config() -> dict:
     config = _deep_merge(config, load_runtime_settings())
     config = _remove_yaml_secrets(config)
     config = _apply_env_overrides(config)
+    config = _apply_local_service_defaults(config)
     config = _rewrite_loopback_urls_for_container(config)
     return config
 

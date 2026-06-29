@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import os
 from pathlib import Path
 
 from agrivision.config.settings import get_settings
@@ -10,6 +11,7 @@ from agrivision.services.runtime import (
     base_env_values,
     clone_repo_if_missing,
     ensure_env_file,
+    inspect_external_service_runtime,
     project_service_dir,
     reconcile_service_runtime,
     summarize_env_changes,
@@ -64,6 +66,12 @@ def ensure_repo_and_env(timeout_seconds: int = 120) -> ServiceRuntimeState:
         f"{settings.pdm.base_url}/health",
         f"{settings.pdm.base_url}/api/v1/openapi.json",
     ]
+    if os.getenv("APP_CONTAINER_PROJECT_ROOT", "").strip():
+        return inspect_external_service_runtime(
+            repo_dir=_service_dir(),
+            readiness_urls=health_urls,
+            timeout_seconds=timeout_seconds,
+        )
     return reconcile_service_runtime(
         repo_dir=_service_dir(),
         repo_url=PDM_REPO_URL,

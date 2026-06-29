@@ -339,6 +339,25 @@ def reconcile_service_runtime(
     )
 
 
+def inspect_external_service_runtime(
+    *,
+    repo_dir: Path,
+    readiness_urls: Sequence[str],
+    timeout_seconds: int = 90,
+) -> ServiceRuntimeState:
+    ready = wait_for_any_url(readiness_urls, timeout_seconds=timeout_seconds)
+    return ServiceRuntimeState(
+        repo_dir=repo_dir,
+        env_sync=EnvSyncResult(env_path=repo_dir / ".env", changed=False, changed_keys=()),
+        compose_file=repo_dir / ".external-service",
+        was_reachable=ready,
+        restarted=False,
+        started=False,
+        ready=ready,
+        readiness_urls=tuple(readiness_urls),
+    )
+
+
 def base_env_values() -> dict[str, str]:
     return {
         "DOCKER_REGISTRY": os.getenv("DOCKER_REGISTRY", "openagri-eu"),

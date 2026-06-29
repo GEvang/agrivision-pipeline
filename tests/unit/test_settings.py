@@ -38,11 +38,11 @@ def test_load_config_ignores_yaml_secret_values(monkeypatch, tmp_path):
 
     config = settings.load_config()
 
-    assert config["weather"]["username"] == ""
-    assert config["weather"]["password"] == ""
+    assert config["weather"]["username"] == settings.DEFAULT_SERVICE_USERNAME
+    assert config["weather"]["password"] == settings.DEFAULT_SERVICE_PASSWORD
     assert config["weather"]["openweather_api_key"] == ""
-    assert config["irrigation"]["auth"]["email"] == ""
-    assert config["irrigation"]["auth"]["password"] == ""
+    assert config["irrigation"]["auth"]["email"] == settings.DEFAULT_SERVICE_USERNAME
+    assert config["irrigation"]["auth"]["password"] == settings.DEFAULT_SERVICE_PASSWORD
     assert config["irrigation"]["token"] == ""
 
 
@@ -83,6 +83,9 @@ def test_load_config_returns_defaults_when_config_file_missing(monkeypatch, tmp_
     assert "weather" in cfg
     assert "irrigation" in cfg
     assert cfg["weather"]["service_dir"] == "OpenAgri-WeatherService"
+    assert cfg["weather"]["username"] == settings.DEFAULT_SERVICE_USERNAME
+    assert cfg["irrigation"]["auth"]["email"] == settings.DEFAULT_SERVICE_USERNAME
+    assert cfg["pdm"]["auth"]["username"] == settings.DEFAULT_SERVICE_USERNAME
 
 
 def test_get_project_root_uses_config_parent(monkeypatch, tmp_path):

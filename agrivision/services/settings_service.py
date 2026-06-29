@@ -11,6 +11,7 @@ from agrivision.app.schemas.settings import (
 from agrivision.config.runtime import get_runtime_config
 from agrivision.config.settings import (
     DEFAULT_CONFIG,
+    _apply_local_service_defaults,
     _deep_merge,
     _remove_yaml_secrets,
     get_config_path,
@@ -86,7 +87,7 @@ class SettingsService:
             for key in path[:-1]:
                 current = current.setdefault(key, {})
             current[path[-1]] = value
-        return config
+        return _apply_local_service_defaults(config)
 
     def get_settings_view(self) -> dict[str, Any]:
         config = self._load_config()

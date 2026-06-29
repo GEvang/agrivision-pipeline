@@ -8,6 +8,7 @@ from agrivision.app.schemas.settings import (
     SettingsUpdateRequest,
 )
 from agrivision.services.settings_service import SettingsService
+from agrivision.config import settings as config_settings
 
 
 def test_settings_masking_and_updates(tmp_path: Path) -> None:
@@ -79,3 +80,19 @@ def test_settings_service_creates_runtime_settings_on_first_launch(tmp_path: Pat
 
     assert runtime_settings_path.exists()
     assert service.get_settings_view()['non_secret']['settings_file'] == str(runtime_settings_path)
+
+
+def test_settings_view_uses_default_service_credentials_when_env_is_missing(tmp_path: Path) -> None:
+    config_path = tmp_path / 'config.yaml'
+    config_path.write_text('weather:\n  base_url: http://example\n', encoding='utf-8')
+    service = SettingsService(
+        config_path=config_path,
+        env_path=tmp_path / '.env',
+        runtime_settings_path=tmp_path / 'runtime' / 'settings.json',
+    )
+
+    masked = service.masked_credentials()
+
+    assert masked['shared_username'] == 'du***om'
+    assert masked['shared_password'] == 'St***1@'
+    assert config_settings.DEFAULT_SERVICE_USERNAME == 'dummy@email.com'

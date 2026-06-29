@@ -108,3 +108,24 @@ def test_service_status_hides_container_only_repo_from_user(tmp_path: Path, monk
 
     missing = service_control.missing_service_repos()
     assert {item['key'] for item in missing} == {'weather', 'irrigation', 'pdm'}
+
+
+def test_odm_status_reports_available_with_container_socket(monkeypatch) -> None:
+    monkeypatch.setenv('APP_CONTAINER_PROJECT_ROOT', '/app')
+    monkeypatch.setattr(service_control.shutil, 'which', lambda name: '/usr/bin/docker')
+
+    class FakeSocketPath:
+        def exists(self) -> bool:
+            return True
+
+    def fake_run(cmd: list[str], **kwargs: object) -> None:
+        return None
+
+    monkeypatch.setattr(service_control, 'Path', lambda value: FakeSocketPath())
+    monkeypatch.setattr(service_control.subprocess, 'run', fake_run)
+
+    status = next(item for item in service_control.service_statuses() if item['key'] == 'odm')
+
+    assert status['installed_label'] == 'Available'
+    assert status['connection_label'] == 'Available'
+    assert status['state'] == 'ok'
