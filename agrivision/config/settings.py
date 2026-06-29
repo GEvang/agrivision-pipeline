@@ -294,11 +294,18 @@ class AppSettings:
 def get_project_root() -> Path:
     """Return the active project root.
 
+    AGRIVISION_PROJECT_ROOT always wins when explicitly set. This is used by
+    the host-side service helper to operate on the real checkout through a bind
+    mount while reusing the packaged AgriVision Python code.
+
     When AGRIVISION_CONFIG_PATH points at a config file inside a bind-mounted
     workspace (for example /workspace/config.yaml in Docker), the config file's
     parent directory becomes the runtime project root. Otherwise we fall back to
     the repository root resolved from this module.
     """
+    overridden_root = os.getenv("AGRIVISION_PROJECT_ROOT", "").strip()
+    if overridden_root:
+        return Path(overridden_root).resolve()
     if _CONFIG_PATH.name == "config.yaml":
         return _CONFIG_PATH.resolve().parent
     return _PROJECT_ROOT

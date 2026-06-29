@@ -24,6 +24,10 @@ fi
 echo "Starting AgriVision dashboard..."
 docker compose up --build -d
 
+echo "Starting host service helper..."
+chmod +x "$PWD/scripts/service-helper-posix.sh"
+nohup "$PWD/scripts/service-helper-posix.sh" >/dev/null 2>&1 &
+
 echo "AgriVision is available at http://127.0.0.1:8008"
 if command -v xdg-open >/dev/null 2>&1; then
   xdg-open "http://127.0.0.1:8008" >/dev/null 2>&1 || true

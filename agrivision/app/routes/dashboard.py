@@ -6,7 +6,7 @@ from fastapi.responses import HTMLResponse
 from agrivision.app import dependencies as deps
 from agrivision.app.formatters import step_summary
 from agrivision.app.health import service_health
-from agrivision.services.service_control import missing_service_repos
+from agrivision.services.service_control import missing_service_repos, service_controls
 
 router = APIRouter()
 
@@ -35,6 +35,7 @@ def dashboard(request: Request) -> HTMLResponse:
             'latest_report': latest_report,
             'service_health': service_health(),
             'missing_services': missing_service_repos(),
+            'service_controls': service_controls(),
             'step_summary': step_summary,
         },
     )

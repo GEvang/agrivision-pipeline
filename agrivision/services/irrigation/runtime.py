@@ -4,13 +4,16 @@ from pathlib import Path
 
 from agrivision.config.settings import get_settings
 from agrivision.services.runtime import (
+    EnvSyncResult,
     ServiceBootstrapError,
     ServiceRuntimeState,
     base_env_values,
     clone_repo_if_missing,
+    ensure_env_file,
     project_service_dir,
     reconcile_service_runtime,
     summarize_env_changes,
+    update_env_file,
 )
 
 IRRIGATION_REPO_URL = "https://github.com/openagri-eu/OpenAgri-IrrigationManagement.git"
@@ -91,6 +94,14 @@ def ensure_repo_and_env(timeout_seconds: int = 90) -> ServiceRuntimeState:
         timeout_seconds=timeout_seconds,
         build_on_recreate=True,
     )
+
+
+def prepare_repo_and_env() -> EnvSyncResult:
+    repo_dir = _service_dir()
+    clone_repo_if_missing(repo_dir, IRRIGATION_REPO_URL)
+    _apply_compatibility_patches(repo_dir)
+    env_path = ensure_env_file(repo_dir)
+    return update_env_file(env_path, _env_values())
 
 
 def ensure_service_available(timeout_seconds: int = 90, verbose: bool = True) -> ServiceRuntimeState:

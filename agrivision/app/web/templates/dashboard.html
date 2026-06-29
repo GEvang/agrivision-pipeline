@@ -15,20 +15,26 @@
     <div>
       <span class="eyebrow">OpenAgri Services</span>
       <h2>Service Repositories Missing</h2>
-      <p class="muted">Download and start the required companion services before running weather, irrigation, or pest and disease enrichment.</p>
+      <p class="muted">Install the companion services before running weather, irrigation, or pest and disease enrichment.</p>
     </div>
+    {% if service_controls.available %}
     <form method="post" action="/ui/services/setup-missing" onsubmit="return confirm('Download and start missing OpenAgri service containers now?');">
       <button class="primary-action setup-services-button" type="submit">Setup Services</button>
     </form>
+    {% else %}
+    <a class="button-link secondary" href="/settings#services">Open Services</a>
+    {% endif %}
   </div>
   <div class="missing-service-list">
     {% for service in missing_services %}
     <div>
       <strong>{{ service.name }}</strong>
-      <span>{{ service.repo_dir }}</span>
     </div>
     {% endfor %}
   </div>
+  {% if not service_controls.available %}
+  <p class="muted">{{ service_controls.reason }}</p>
+  {% endif %}
 </section>
 {% endif %}
 

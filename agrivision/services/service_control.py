@@ -8,6 +8,11 @@ from pathlib import Path
 from typing import Callable
 
 from agrivision.config.settings import get_settings
+from agrivision.services.host_service_helper import (
+    helper_state as host_helper_state,
+    installed_service_state,
+    submit_command as submit_host_helper_command,
+)
 from agrivision.services.irrigation import runtime as irrigation_runtime
 from agrivision.services.pdm import runtime as pdm_runtime
 from agrivision.services.runtime import (
@@ -15,8 +20,10 @@ from agrivision.services.runtime import (
     check_first_reachable_url,
     compose_logs,
     compose_restart,
+    compose_stop,
     detect_compose_file,
     project_service_dir,
+    service_control_state,
 )
 from agrivision.services.weather import client as weather_client
 
@@ -79,12 +86,16 @@ def service_descriptors() -> dict[str, ServiceDescriptor]:
 
 def service_statuses(*, include_logs: bool = False) -> list[dict[str, object]]:
     items: list[dict[str, object]] = []
+    control = service_control_state()
+    running_in_container = bool(os.getenv("APP_CONTAINER_PROJECT_ROOT", "").strip())
     for descriptor in service_descriptors().values():
         repo_exists = descriptor.repo_dir.exists()
+        if running_in_container:
+            repo_exists = installed_service_state(descriptor.key).get("INSTALLED", "").lower() in {"1", "true", "yes"}
         compose_file = None
         compose_error = ""
         logs = ""
-        if repo_exists:
+        if repo_exists and control.available and not running_in_container:
             try:
                 compose_file = detect_compose_file(descriptor.repo_dir)
                 if include_logs:
@@ -93,10 +104,23 @@ def service_statuses(*, include_logs: bool = False) -> list[dict[str, object]]:
                 compose_error = str(exc)
         reachable = check_first_reachable_url(descriptor.readiness_urls)
         state = "ok" if reachable else ("warn" if repo_exists else "missing")
-        detail = "Connected" if reachable else ("Installed but not connected" if repo_exists else "Not installed")
+        status_label = "Connected" if reachable else ("Not connected" if repo_exists else "Not installed")
+        detail = status_label
         if compose_error:
             state = "warn"
             detail = compose_error
+        primary_action_label = ""
+        primary_action = ""
+        if control.available:
+            if not repo_exists:
+                primary_action_label = "Install"
+                primary_action = f"/ui/services/{descriptor.key}/start"
+            elif reachable:
+                primary_action_label = "Stop"
+                primary_action = f"/ui/services/{descriptor.key}/stop"
+            else:
+                primary_action_label = "Start"
+                primary_action = f"/ui/services/{descriptor.key}/start"
         items.append(
             {
                 "key": descriptor.key,
@@ -107,9 +131,15 @@ def service_statuses(*, include_logs: bool = False) -> list[dict[str, object]]:
                 "repo_exists": repo_exists,
                 "installed_label": "Installed" if repo_exists else "Not installed",
                 "connection_label": "Connected" if reachable else "Not connected",
+                "status_label": status_label,
                 "compose_file": str(compose_file) if compose_file else "",
                 "state": state,
                 "detail": detail,
+                "controls_available": control.available,
+                "controls_reason": control.reason,
+                "primary_action_label": primary_action_label,
+                "primary_action": primary_action,
+                "show_restart": control.available and repo_exists,
                 "readiness_urls": list(descriptor.readiness_urls),
                 "logs": logs,
             }
@@ -131,9 +161,15 @@ def _odm_status() -> dict[str, object]:
             "repo_exists": False,
             "installed_label": "Not available",
             "connection_label": "Not tested",
+            "status_label": "Not available",
             "compose_file": "",
             "state": "missing",
             "detail": "Docker CLI is not available in this dashboard environment.",
+            "controls_available": False,
+            "controls_reason": "",
+            "primary_action_label": "",
+            "primary_action": "",
+            "show_restart": False,
             "readiness_urls": [],
             "logs": "",
         }
@@ -155,9 +191,15 @@ def _odm_status() -> dict[str, object]:
                 "repo_exists": False,
                 "installed_label": "Available",
                 "connection_label": "Available",
+                "status_label": "Available",
                 "compose_file": "",
                 "state": "ok",
                 "detail": "Docker is available for local ODM runs.",
+                "controls_available": False,
+                "controls_reason": "",
+                "primary_action_label": "",
+                "primary_action": "",
+                "show_restart": False,
                 "readiness_urls": [],
                 "logs": "",
             }
@@ -171,9 +213,15 @@ def _odm_status() -> dict[str, object]:
                 "repo_exists": False,
                 "installed_label": "Not available",
                 "connection_label": "Not tested",
+                "status_label": "Not available",
                 "compose_file": "",
                 "state": "warn",
                 "detail": "Docker is installed but not responding.",
+                "controls_available": False,
+                "controls_reason": "",
+                "primary_action_label": "",
+                "primary_action": "",
+                "show_restart": False,
                 "readiness_urls": [],
                 "logs": "",
             }
@@ -186,9 +234,15 @@ def _odm_status() -> dict[str, object]:
         "repo_exists": False,
         "installed_label": "Not tested",
         "connection_label": "Not tested",
+        "status_label": "Not tested",
         "compose_file": "",
         "state": "warn",
         "detail": "Dashboard is running without Docker socket access. ODM can be enabled later for advanced processing.",
+        "controls_available": False,
+        "controls_reason": "",
+        "primary_action_label": "",
+        "primary_action": "",
+        "show_restart": False,
         "readiness_urls": [],
         "logs": "",
     }
@@ -197,7 +251,10 @@ def _odm_status() -> dict[str, object]:
 def missing_service_repos() -> list[dict[str, str]]:
     missing: list[dict[str, str]] = []
     for descriptor in service_descriptors().values():
-        if not descriptor.repo_dir.exists():
+        repo_exists = descriptor.repo_dir.exists()
+        if os.getenv("APP_CONTAINER_PROJECT_ROOT", "").strip():
+            repo_exists = installed_service_state(descriptor.key).get("INSTALLED", "").lower() in {"1", "true", "yes"}
+        if not repo_exists:
             missing.append(
                 {
                     "key": descriptor.key,
@@ -209,7 +266,25 @@ def missing_service_repos() -> list[dict[str, str]]:
     return missing
 
 
+def service_controls() -> dict[str, object]:
+    control = service_control_state()
+    return {
+        "available": control.available,
+        "reason": control.reason,
+    }
+
+
+def _require_controls_available() -> None:
+    control = service_control_state()
+    if not control.available:
+        raise ServiceBootstrapError(control.reason)
+
+
 def ensure_missing_services(*, timeout_seconds: int = 90) -> None:
+    _require_controls_available()
+    if os.getenv("APP_CONTAINER_PROJECT_ROOT", "").strip():
+        submit_host_helper_command(action="install_missing", timeout_seconds=max(timeout_seconds, 240))
+        return
     errors: list[str] = []
     for descriptor in service_descriptors().values():
         try:
@@ -221,11 +296,29 @@ def ensure_missing_services(*, timeout_seconds: int = 90) -> None:
 
 
 def ensure_service(key: str, *, timeout_seconds: int = 90) -> None:
+    _require_controls_available()
+    if os.getenv("APP_CONTAINER_PROJECT_ROOT", "").strip():
+        submit_host_helper_command(action="ensure", service_key=key, timeout_seconds=max(timeout_seconds, 240))
+        return
     descriptor = service_descriptors()[key]
     descriptor.ensure(timeout_seconds=timeout_seconds)
 
 
+def stop_service(key: str) -> None:
+    _require_controls_available()
+    if os.getenv("APP_CONTAINER_PROJECT_ROOT", "").strip():
+        submit_host_helper_command(action="stop", service_key=key, timeout_seconds=120)
+        return
+    descriptor = service_descriptors()[key]
+    compose_file = detect_compose_file(descriptor.repo_dir)
+    compose_stop(compose_file, descriptor.repo_dir)
+
+
 def restart_service(key: str, *, timeout_seconds: int = 90) -> None:
+    _require_controls_available()
+    if os.getenv("APP_CONTAINER_PROJECT_ROOT", "").strip():
+        submit_host_helper_command(action="restart", service_key=key, timeout_seconds=max(timeout_seconds, 240))
+        return
     descriptor = service_descriptors()[key]
     descriptor.ensure(timeout_seconds=timeout_seconds)
     compose_file = detect_compose_file(descriptor.repo_dir)

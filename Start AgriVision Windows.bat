@@ -26,6 +26,9 @@ if errorlevel 1 (
   exit /b 1
 )
 
+echo Starting host service helper...
+start "" powershell -NoProfile -ExecutionPolicy Bypass -WindowStyle Hidden -File "%~dp0scripts\service-helper-windows.ps1"
+
 echo Opening AgriVision at http://127.0.0.1:8008
 start "" "http://127.0.0.1:8008"
 exit /b 0

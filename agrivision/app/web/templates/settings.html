@@ -61,6 +61,9 @@
       <p class="muted">Optional services can be added later. Missing services do not block the dashboard.</p>
     </div>
   </div>
+  {% if not service_controls.available %}
+  <p class="muted">{{ service_controls.reason }}</p>
+  {% endif %}
   <div class="service-diagnostics compact-services">
     {% for service in services %}
     <article class="service-card embedded-service-card">
@@ -69,45 +72,23 @@
           <h3>{{ service.name }}</h3>
           <p class="muted">{{ service.base_url or 'Local capability check' }}</p>
         </div>
-        <span class="status-badge status-{{ 'completed' if service.state == 'ok' else 'failed' if service.state in ['warn', 'missing'] else service.state }}">{{ service.state }}</span>
+        <span class="status-badge status-{{ 'completed' if service.state == 'ok' else 'failed' if service.state in ['warn', 'missing'] else service.state }}">{{ service.status_label }}</span>
       </div>
-      <dl class="service-details">
-        <dt>Installed</dt><dd>{{ service.installed_label }}</dd>
-        <dt>Connection</dt><dd>{{ service.connection_label }}</dd>
-        <dt>Detail</dt><dd>{{ service.detail }}</dd>
-        {% if service.repo_dir %}
-        <dt>Repository</dt><dd>{{ service.repo_dir }}</dd>
-        {% endif %}
-        {% if service.compose_file %}
-        <dt>Compose</dt><dd>{{ service.compose_file }}</dd>
-        {% endif %}
-      </dl>
+      <p class="muted">{{ service.detail }}</p>
       {% if service.key != 'odm' %}
       <div class="button-row">
         <a class="button-link secondary compact" href="{{ service.docs_url }}" target="_blank" rel="noreferrer">Open docs</a>
-        <form method="post" action="/ui/services/{{ service.key }}/start">
-          <button class="compact" type="submit">Start/check</button>
+        {% if service.primary_action %}
+        <form method="post" action="{{ service.primary_action }}">
+          <button class="compact" type="submit">{{ service.primary_action_label }}</button>
         </form>
+        {% endif %}
+        {% if service.show_restart %}
         <form method="post" action="/ui/services/{{ service.key }}/restart" onsubmit="return confirm('Restart {{ service.name }} service containers?');">
           <button class="danger-button compact" type="submit">Restart</button>
         </form>
+        {% endif %}
       </div>
-      {% endif %}
-      {% if service.readiness_urls %}
-      <details>
-        <summary>Readiness URLs</summary>
-        <ul>
-          {% for url in service.readiness_urls %}
-          <li>{{ url }}</li>
-          {% endfor %}
-        </ul>
-      </details>
-      {% endif %}
-      {% if service.logs %}
-      <details>
-        <summary>Log tail</summary>
-        <pre class="log-box">{{ service.logs }}</pre>
-      </details>
       {% endif %}
     </article>
     {% endfor %}

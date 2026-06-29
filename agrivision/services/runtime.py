@@ -40,8 +40,40 @@ class ServiceRuntimeState:
     readiness_urls: tuple[str, ...]
 
 
+@dataclass(frozen=True)
+class ServiceControlState:
+    available: bool
+    reason: str
+
+
 def project_service_dir(dirname: str) -> Path:
     return get_project_root() / dirname
+
+
+def service_control_state() -> ServiceControlState:
+    if os.getenv("APP_CONTAINER_PROJECT_ROOT", "").strip():
+        helper_root = get_project_root() / "runtime" / "service-helper"
+        helper_file = helper_root / "helper.env"
+        if helper_file.exists():
+            try:
+                values = {}
+                for raw_line in helper_file.read_text(encoding="utf-8").splitlines():
+                    if "=" not in raw_line:
+                        continue
+                    key, value = raw_line.split("=", 1)
+                    values[key.strip()] = value.strip()
+                timestamp = int(values.get("TIMESTAMP_EPOCH", "0"))
+                if timestamp and (time.time() - timestamp) <= 15:
+                    return ServiceControlState(available=True, reason="")
+            except Exception:
+                pass
+        return ServiceControlState(
+            available=False,
+            reason=(
+                "Service install/start controls require the host helper. Start AgriVision from the OS launcher so the helper starts with it."
+            ),
+        )
+    return ServiceControlState(available=True, reason="")
 
 
 def clone_repo_if_missing(repo_dir: Path, repo_url: str) -> None:
@@ -194,6 +226,10 @@ def compose_up(
 
 def compose_restart(compose_file: Path, repo_dir: Path) -> None:
     _run_compose_command(compose_file, repo_dir, ["up", "-d", "--force-recreate"])
+
+
+def compose_stop(compose_file: Path, repo_dir: Path) -> None:
+    _run_compose_command(compose_file, repo_dir, ["stop"])
 
 
 def compose_logs(compose_file: Path, repo_dir: Path, *, tail: int = 100) -> str:

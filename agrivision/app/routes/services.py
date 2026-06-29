@@ -8,7 +8,9 @@ from agrivision.services.service_control import (
     ensure_service,
     restart_service,
     service_statuses,
+    stop_service,
 )
+from agrivision.services.runtime import ServiceBootstrapError
 
 router = APIRouter()
 
@@ -27,6 +29,8 @@ def services_status() -> list[dict[str, object]]:
 def setup_missing_services_ui() -> RedirectResponse:
     try:
         ensure_missing_services(timeout_seconds=90)
+    except ServiceBootstrapError as exc:
+        raise HTTPException(status_code=409, detail=str(exc)) from exc
     except Exception as exc:
         raise HTTPException(status_code=500, detail=str(exc)) from exc
     return RedirectResponse(url='/', status_code=303)
@@ -38,6 +42,21 @@ def start_service_ui(service_key: str) -> RedirectResponse:
         raise HTTPException(status_code=404, detail='Service not found.')
     try:
         ensure_service(service_key, timeout_seconds=90)
+    except ServiceBootstrapError as exc:
+        raise HTTPException(status_code=409, detail=str(exc)) from exc
+    except Exception as exc:
+        raise HTTPException(status_code=500, detail=str(exc)) from exc
+    return RedirectResponse(url='/settings#services', status_code=303)
+
+
+@router.post('/ui/services/{service_key}/stop')
+def stop_service_ui(service_key: str) -> RedirectResponse:
+    if service_key not in {'weather', 'irrigation', 'pdm'}:
+        raise HTTPException(status_code=404, detail='Service not found.')
+    try:
+        stop_service(service_key)
+    except ServiceBootstrapError as exc:
+        raise HTTPException(status_code=409, detail=str(exc)) from exc
     except Exception as exc:
         raise HTTPException(status_code=500, detail=str(exc)) from exc
     return RedirectResponse(url='/settings#services', status_code=303)
@@ -49,6 +68,8 @@ def restart_service_ui(service_key: str) -> RedirectResponse:
         raise HTTPException(status_code=404, detail='Service not found.')
     try:
         restart_service(service_key, timeout_seconds=90)
+    except ServiceBootstrapError as exc:
+        raise HTTPException(status_code=409, detail=str(exc)) from exc
     except Exception as exc:
         raise HTTPException(status_code=500, detail=str(exc)) from exc
     return RedirectResponse(url='/settings#services', status_code=303)

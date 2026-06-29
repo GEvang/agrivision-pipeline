@@ -16,12 +16,16 @@ import requests
 
 from agrivision.config.settings import get_settings, load_config
 from agrivision.services.runtime import (
+    EnvSyncResult,
     ServiceBootstrapError,
     ServiceRuntimeState,
     base_env_values,
+    clone_repo_if_missing,
+    ensure_env_file,
     project_service_dir,
     reconcile_service_runtime,
     summarize_env_changes,
+    update_env_file,
 )
 
 WEATHER_REPO_URL = "https://github.com/agstack/OpenAgri-WeatherService.git"
@@ -132,6 +136,13 @@ def ensure_weather_repo_and_env(timeout_seconds: int = 90) -> ServiceRuntimeStat
         readiness_urls=health_urls,
         timeout_seconds=timeout_seconds,
     )
+
+
+def prepare_weather_repo_and_env() -> EnvSyncResult:
+    repo_dir = _service_dir()
+    clone_repo_if_missing(repo_dir, WEATHER_REPO_URL)
+    env_path = ensure_env_file(repo_dir)
+    return update_env_file(env_path, _weather_env_values())
 
 
 def _validate_weather_runtime(token: str) -> None:
