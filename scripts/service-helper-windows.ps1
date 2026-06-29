@@ -1,4 +1,5 @@
 $ErrorActionPreference = "Stop"
+$PSNativeCommandUseErrorActionPreference = $false
 
 $RootDir = (Resolve-Path (Join-Path $PSScriptRoot "..")).Path
 $HelperDir = Join-Path $RootDir "runtime\service-helper"
@@ -74,19 +75,43 @@ function Write-HelperStatus() {
   ) | Set-Content -Path (Join-Path $HelperDir "helper.env")
 }
 
-function Invoke-Prepare([string]$serviceKey) {
-  docker run --rm `
-    -v "${RootDir}:/workspace" `
-    -w /workspace `
-    -e AGRIVISION_PROJECT_ROOT=/workspace `
-    -e AGRIVISION_CONFIG_PATH=/workspace/config.yaml `
-    -e AGRIVISION_RUNTIME_SETTINGS_PATH=/workspace/runtime/settings.json `
-    agrivision-pipeline:phase5 `
-    python run.py --service-control --service-key $serviceKey --service-action prepare
+function Invoke-Docker([string[]]$ArgumentList, [string]$LogPath) {
+  $stdoutPath = Join-Path $WorkDir ([guid]::NewGuid().ToString() + ".stdout.log")
+  $stderrPath = Join-Path $WorkDir ([guid]::NewGuid().ToString() + ".stderr.log")
+  try {
+    $process = Start-Process docker -ArgumentList $ArgumentList -Wait -NoNewWindow -PassThru `
+      -RedirectStandardOutput $stdoutPath -RedirectStandardError $stderrPath
+    if (Test-Path $stdoutPath) {
+      Get-Content $stdoutPath | Out-File -FilePath $LogPath -Append -Encoding utf8
+    }
+    if (Test-Path $stderrPath) {
+      Get-Content $stderrPath | Out-File -FilePath $LogPath -Append -Encoding utf8
+    }
+    return $process.ExitCode
+  } finally {
+    Remove-Item $stdoutPath, $stderrPath -Force -ErrorAction SilentlyContinue
+  }
 }
 
-function Invoke-ComposeUp([string]$serviceKey, [switch]$Restart) {
-  Invoke-Prepare $serviceKey
+function Invoke-Prepare([string]$serviceKey, [string]$LogPath) {
+  $dockerArgs = @(
+    "run", "--rm",
+    "-v", "${RootDir}:/workspace",
+    "-w", "/workspace",
+    "-e", "AGRIVISION_PROJECT_ROOT=/workspace",
+    "-e", "AGRIVISION_CONFIG_PATH=/workspace/config.yaml",
+    "-e", "AGRIVISION_RUNTIME_SETTINGS_PATH=/workspace/runtime/settings.json",
+    "agrivision-pipeline:phase5",
+    "python", "run.py", "--service-control", "--service-key", $serviceKey, "--service-action", "prepare"
+  )
+  $exitCode = Invoke-Docker -ArgumentList $dockerArgs -LogPath $LogPath
+  if ($exitCode -ne 0) {
+    throw "docker run prepare failed for $serviceKey"
+  }
+}
+
+function Invoke-ComposeUp([string]$serviceKey, [string]$LogPath, [switch]$Restart) {
+  Invoke-Prepare $serviceKey $LogPath
   $repoDir = Get-RepoDir $serviceKey
   $composeFile = Get-ComposeFile $serviceKey $repoDir
   $args = @("compose", "-f", $composeFile, "up", "-d")
@@ -98,8 +123,8 @@ function Invoke-ComposeUp([string]$serviceKey, [switch]$Restart) {
   }
   Push-Location $repoDir
   try {
-    & docker @args
-    if ($LASTEXITCODE -ne 0) {
+    $exitCode = Invoke-Docker -ArgumentList $args -LogPath $LogPath
+    if ($exitCode -ne 0) {
       throw "docker compose up failed for $serviceKey"
     }
   } finally {
@@ -107,13 +132,13 @@ function Invoke-ComposeUp([string]$serviceKey, [switch]$Restart) {
   }
 }
 
-function Invoke-ComposeStop([string]$serviceKey) {
+function Invoke-ComposeStop([string]$serviceKey, [string]$LogPath) {
   $repoDir = Get-RepoDir $serviceKey
   $composeFile = Get-ComposeFile $serviceKey $repoDir
   Push-Location $repoDir
   try {
-    & docker compose -f $composeFile stop
-    if ($LASTEXITCODE -ne 0) {
+    $exitCode = Invoke-Docker -ArgumentList @("compose", "-f", $composeFile, "stop") -LogPath $LogPath
+    if ($exitCode -ne 0) {
       throw "docker compose stop failed for $serviceKey"
     }
   } finally {
@@ -122,12 +147,27 @@ function Invoke-ComposeStop([string]$serviceKey) {
 }
 
 function Invoke-InstallMissing() {
+  $bootstrapLog = Join-Path $LogsDir "install-missing.log"
   foreach ($serviceKey in @("weather", "irrigation", "pdm")) {
     Write-ServiceState $serviceKey
     $stateFile = Join-Path $ServicesDir "$serviceKey.env"
     $installed = (Get-Content $stateFile | Where-Object { $_ -like "INSTALLED=*" }) -replace "^INSTALLED=", ""
     if ($installed -ne "1") {
-      Invoke-ComposeUp $serviceKey
+      Invoke-ComposeUp $serviceKey $bootstrapLog
+    }
+  }
+}
+
+function Prepare-AllServices() {
+  $bootstrapLog = Join-Path $LogsDir "startup-prepare.log"
+  foreach ($serviceKey in @("weather", "irrigation", "pdm")) {
+    try {
+      "Preparing $serviceKey" | Out-File -FilePath $bootstrapLog -Append -Encoding utf8
+      Invoke-Prepare $serviceKey $bootstrapLog
+    } catch {
+      "Prepare failed for $serviceKey`n$_" | Out-File -FilePath $bootstrapLog -Append -Encoding utf8
+    } finally {
+      Write-ServiceState $serviceKey
     }
   }
 }
@@ -150,10 +190,10 @@ function Process-Command([string]$commandPath) {
 
   try {
     switch ($action) {
-      "install_missing" { Invoke-InstallMissing *>&1 | Tee-Object -FilePath $logPath }
-      "ensure" { Invoke-ComposeUp $serviceKey *>&1 | Tee-Object -FilePath $logPath }
-      "restart" { Invoke-ComposeUp $serviceKey -Restart *>&1 | Tee-Object -FilePath $logPath }
-      "stop" { Invoke-ComposeStop $serviceKey *>&1 | Tee-Object -FilePath $logPath }
+      "install_missing" { Invoke-InstallMissing }
+      "ensure" { Invoke-ComposeUp $serviceKey $logPath }
+      "restart" { Invoke-ComposeUp $serviceKey $logPath -Restart }
+      "stop" { Invoke-ComposeStop $serviceKey $logPath }
       default { throw "Unknown action: $action" }
     }
   } catch {
@@ -177,6 +217,8 @@ function Process-Command([string]$commandPath) {
 foreach ($serviceKey in @("weather", "irrigation", "pdm")) {
   Write-ServiceState $serviceKey
 }
+
+Prepare-AllServices
 
 while ($true) {
   Write-HelperStatus

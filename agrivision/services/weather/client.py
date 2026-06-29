@@ -29,6 +29,8 @@ from agrivision.services.runtime import (
 )
 
 WEATHER_REPO_URL = "https://github.com/agstack/OpenAgri-WeatherService.git"
+DEFAULT_SERVICE_USERNAME = "dummy@email.com"
+DEFAULT_SERVICE_PASSWORD = "StrongPass1@"
 
 
 def _get_weather_settings() -> dict[str, Any]:
@@ -111,10 +113,10 @@ def _weather_env_values() -> dict[str, str]:
             "WEATHER_SRV_MONGO_INITDB_ROOT_PASSWORD": "root",
             "WEATHER_SRV_MONGO_INITDB_DATABASE": "openagridb",
             "WEATHER_SRV_OPENWEATHERMAP_API_KEY": settings.weather.openweather_api_key or "",
-            "GATEKEEPER_SUPERUSER_USERNAME": settings.weather.username or "root",
-            "GATEKEEPER_SUPERUSER_PASSWORD": settings.weather.password or "root",
-            "WEATHER_SRV_GATEKEEPER_USER": settings.weather.username or "root",
-            "WEATHER_SRV_GATEKEEPER_PASSWORD": settings.weather.password or "root",
+            "GATEKEEPER_SUPERUSER_USERNAME": settings.weather.username or DEFAULT_SERVICE_USERNAME,
+            "GATEKEEPER_SUPERUSER_PASSWORD": settings.weather.password or DEFAULT_SERVICE_PASSWORD,
+            "WEATHER_SRV_GATEKEEPER_USER": settings.weather.username or DEFAULT_SERVICE_USERNAME,
+            "WEATHER_SRV_GATEKEEPER_PASSWORD": settings.weather.password or DEFAULT_SERVICE_PASSWORD,
         }
     )
     return values

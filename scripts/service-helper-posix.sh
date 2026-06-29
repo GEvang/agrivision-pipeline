@@ -34,6 +34,19 @@ docker_run_prepare() {
     python run.py --service-control --service-key "$service_key" --service-action prepare
 }
 
+prepare_all_services_host() {
+  local bootstrap_log="$LOGS_DIR/startup-prepare.log"
+  : >"$bootstrap_log"
+  local service_key
+  for service_key in weather irrigation pdm; do
+    {
+      echo "Preparing $service_key"
+      docker_run_prepare "$service_key"
+    } >>"$bootstrap_log" 2>&1 || true
+    write_service_state "$service_key"
+  done
+}
+
 repo_dir_for() {
   case "$1" in
     weather) printf '%s\n' "$ROOT_DIR/OpenAgri-WeatherService" ;;
@@ -212,6 +225,8 @@ process_command() {
 for service_key in weather irrigation pdm; do
   write_service_state "$service_key"
 done
+
+prepare_all_services_host
 
 while true; do
   write_helper_status

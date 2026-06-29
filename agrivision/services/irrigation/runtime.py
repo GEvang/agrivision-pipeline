@@ -17,6 +17,8 @@ from agrivision.services.runtime import (
 )
 
 IRRIGATION_REPO_URL = "https://github.com/openagri-eu/OpenAgri-IrrigationManagement.git"
+DEFAULT_SERVICE_USERNAME = "dummy@email.com"
+DEFAULT_SERVICE_PASSWORD = "StrongPass1@"
 
 
 def _service_dir() -> Path:
@@ -68,8 +70,8 @@ def _env_values() -> dict[str, str]:
             "DB_USER": "postgres",
             "DB_PASSWORD": "postgres",
             "DB_NAME": "irrigation",
-            "IRRIGATION_SUPERUSER_EMAIL": settings.irrigation.auth.email or "",
-            "IRRIGATION_SUPERUSER_PASSWORD": settings.irrigation.auth.password or "",
+            "IRRIGATION_SUPERUSER_EMAIL": settings.irrigation.auth.email or DEFAULT_SERVICE_USERNAME,
+            "IRRIGATION_SUPERUSER_PASSWORD": settings.irrigation.auth.password or DEFAULT_SERVICE_PASSWORD,
         }
     )
     return values

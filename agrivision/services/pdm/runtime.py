@@ -17,6 +17,8 @@ from agrivision.services.runtime import (
 )
 
 PDM_REPO_URL = "https://github.com/openagri-eu/OpenAgri-PestAndDiseaseManagement.git"
+DEFAULT_SERVICE_USERNAME = "dummy@email.com"
+DEFAULT_SERVICE_PASSWORD = "StrongPass1@"
 
 
 def _service_dir() -> Path:
@@ -47,8 +49,8 @@ def _env_values() -> dict[str, str]:
             'CORS_ORIGINS': '["*"]',
             'LOGGING': 'DEBUG',
             'GATEKEEPER_BASE_URL': 'http://127.0.0.1:8001',
-            'GATEKEEPER_USERNAME': settings.pdm.auth.username or 'admin',
-            'GATEKEEPER_PASSWORD': settings.pdm.auth.password or 'admin',
+            'GATEKEEPER_USERNAME': settings.pdm.auth.username or DEFAULT_SERVICE_USERNAME,
+            'GATEKEEPER_PASSWORD': settings.pdm.auth.password or DEFAULT_SERVICE_PASSWORD,
         }
     )
     return values
