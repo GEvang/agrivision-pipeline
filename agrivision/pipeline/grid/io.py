@@ -21,6 +21,7 @@ def get_grid_settings(
     ndvi_tif = ndvi_dir / "ndvi.tif"
     ndvi_meta_json = ndvi_dir / "metadata.json"
     grid_png = ndvi_dir / "ndvi_grid_overlay.png"
+    analysis_mask_png = ndvi_dir / "analysis_mask.png"
     grid_table_csv = ndvi_dir / "ndvi_grid_cells.csv"
     grid_categories_csv = ndvi_dir / "ndvi_grid_categories.csv"
     grid_meta_json = ndvi_dir / "grid_metadata.json"
@@ -32,6 +33,7 @@ def get_grid_settings(
         "ndvi_meta_json": ndvi_meta_json,
         "ortho_rgb": ortho_rgb,
         "grid_png": grid_png,
+        "analysis_mask_png": analysis_mask_png,
         "grid_table_csv": grid_table_csv,
         "grid_categories_csv": grid_categories_csv,
         "grid_meta_json": grid_meta_json,
@@ -84,6 +86,10 @@ def save_cell_table_csv(
         "class",
         "index_name",
         "index_mode",
+        "r0",
+        "r1",
+        "c0",
+        "c1",
     ]
 
     with out_path.open("w", newline="", encoding="utf-8") as f:
@@ -104,6 +110,10 @@ def save_cell_table_csv(
                     "class": cell["class"],
                     "index_name": index_name,
                     "index_mode": index_mode,
+                    "r0": cell["r0"],
+                    "r1": cell["r1"],
+                    "c0": cell["c0"],
+                    "c1": cell["c1"],
                 }
             )
 

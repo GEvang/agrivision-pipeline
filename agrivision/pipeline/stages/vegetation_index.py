@@ -26,6 +26,8 @@ from typing import Any, Dict, Tuple
 import matplotlib.pyplot as plt
 import numpy as np
 import rasterio
+from rasterio.enums import Resampling
+from rasterio.windows import Window
 
 from agrivision.pipeline.io.paths import resolve_pipeline_paths
 
@@ -135,6 +137,41 @@ def _normalized_diff(
     idx = np.full(a.shape, np.nan, dtype="float32")
     idx[valid] = (a[valid] - b[valid]) / denom[valid]
     return np.clip(idx, -1.0, 1.0)
+
+
+def _index_definition(label: str, profile: Dict[str, Any]) -> tuple[str, int, int, Dict[str, Any]]:
+    mode = (profile.get("index_mode") or "").strip().lower()
+    if mode == "nir_red":
+        nir_idx = int(profile["nir_band"])
+        red_idx = int(profile["red_band"])
+        return mode, nir_idx, red_idx, {
+            "index_mode": "nir_red",
+            "index_name": "NDVI",
+            "formula": "(NIR - RED) / (NIR + RED)",
+            "band_mapping": {"nir_band": nir_idx, "red_band": red_idx},
+        }
+    if mode == "nir_green":
+        nir_idx = int(profile["nir_band"])
+        green_idx = int(profile["green_band"])
+        return mode, nir_idx, green_idx, {
+            "index_mode": "nir_green",
+            "index_name": "Vegetation Index",
+            "formula": "(NIR - GREEN) / (NIR + GREEN)",
+            "band_mapping": {"nir_band": nir_idx, "green_band": green_idx},
+        }
+    if mode == "pseudo":
+        nir_idx = int(profile["nir_band"])
+        red_idx = int(profile["red_band"])
+        return mode, nir_idx, red_idx, {
+            "index_mode": "pseudo",
+            "index_name": "Pseudo Vegetation Index",
+            "formula": "(B2 - B1) / (B2 + B1)  (configured bands)",
+            "band_mapping": {"band_a": nir_idx, "band_b": red_idx},
+        }
+    raise ValueError(
+        f"[VI] Unsupported index_mode '{mode}' for {label} profile. "
+        "Supported: 'nir_red', 'nir_green', 'pseudo'."
+    )
 
 
 def compute_index(
@@ -316,6 +353,118 @@ def summarize_index_quality(idx: np.ndarray) -> dict[str, Any]:
     }
 
 
+def _summarize_index_sample(total: int, count: int, sample: np.ndarray) -> dict[str, Any]:
+    if count == 0 or sample.size == 0:
+        return {
+            "valid_pixels": {"count": count, "total": total, "percent": 0.0},
+            "distribution": {},
+            "quality_flags": ["No valid vegetation-index pixels were produced."],
+        }
+
+    values = sample[np.isfinite(sample)]
+    percentiles = {
+        str(q): float(np.nanpercentile(values, q))
+        for q in (2, 10, 33, 50, 66, 90, 98)
+    }
+    saturated_high_percent = float(np.mean(values >= 0.95) * 100.0)
+    saturated_low_percent = float(np.mean(values <= -0.95) * 100.0)
+    flags: list[str] = []
+    if saturated_high_percent >= 50.0:
+        flags.append(
+            "Index distribution is highly saturated near 1.0; verify sensor band mapping and source calibration before agronomic interpretation."
+        )
+    if saturated_low_percent >= 50.0:
+        flags.append(
+            "Index distribution is highly saturated near -1.0; verify sensor band mapping and source calibration before agronomic interpretation."
+        )
+    flags.append("Distribution statistics were estimated from a block sample to keep memory use bounded.")
+    return {
+        "valid_pixels": {
+            "count": count,
+            "total": total,
+            "percent": float(count / total * 100.0),
+        },
+        "distribution": {
+            "min": float(np.nanmin(values)),
+            "max": float(np.nanmax(values)),
+            "mean": float(np.nanmean(values)),
+            "median": float(np.nanmedian(values)),
+            "std": float(np.nanstd(values)),
+            "percentiles": percentiles,
+            "saturated_high_percent": saturated_high_percent,
+            "saturated_low_percent": saturated_low_percent,
+        },
+        "quality_flags": flags,
+    }
+
+
+def _save_png_from_tif(tif_path: Path, out_path: Path, title: str, out_dir: Path) -> None:
+    out_dir.mkdir(parents=True, exist_ok=True)
+    with rasterio.open(tif_path) as src:
+        max_edge = 1800
+        scale = min(1.0, max_edge / max(src.width, src.height))
+        height = max(1, int(src.height * scale))
+        width = max(1, int(src.width * scale))
+        arr = src.read(
+            1,
+            out_shape=(height, width),
+            masked=True,
+            resampling=Resampling.average,
+        ).filled(np.nan).astype("float32")
+    save_png(arr, out_path, title=title, out_dir=out_dir)
+
+
+def compute_index_streaming(
+    src: rasterio.io.DatasetReader,
+    label: str,
+    profile: Dict[str, Any],
+    out_tif: Path,
+    out_png: Path,
+    out_dir: Path,
+) -> tuple[Dict[str, Any], dict[str, Any]]:
+    mode, first_idx, second_idx, idx_meta = _index_definition(label, profile)
+    if first_idx < 1 or first_idx > src.count or second_idx < 1 or second_idx > src.count:
+        raise ValueError(f"Invalid band mapping for {label}. Available bands: 1..{src.count}")
+
+    print(f"[VI] {label} index_mode={mode} -> computing in memory-safe blocks")
+    out_dir.mkdir(parents=True, exist_ok=True)
+    out_profile = src.profile.copy()
+    out_profile.update(dtype=rasterio.float32, count=1, nodata=np.nan, tiled=True, blockxsize=512, blockysize=512)
+
+    total_pixels = int(src.width * src.height)
+    valid_pixels = 0
+    samples: list[np.ndarray] = []
+    chunk_size = 1024
+    with rasterio.open(out_tif, "w", **out_profile) as dst:
+        for row in range(0, src.height, chunk_size):
+            height = min(chunk_size, src.height - row)
+            for col in range(0, src.width, chunk_size):
+                width = min(chunk_size, src.width - col)
+                window = Window(col, row, width, height)
+                first = src.read(first_idx, window=window).astype("float32")
+                second = src.read(second_idx, window=window).astype("float32")
+                valid_mask = np.isfinite(first) & np.isfinite(second)
+                if src.nodata is not None:
+                    valid_mask &= first != src.nodata
+                    valid_mask &= second != src.nodata
+                if src.count >= 4:
+                    valid_mask &= src.read(4, window=window) > 0
+                idx = _normalized_diff(first, second, valid_mask)
+                dst.write(idx, 1, window=window)
+
+                valid = idx[np.isfinite(idx)]
+                valid_pixels += int(valid.size)
+                if valid.size:
+                    step = max(1, valid.size // 5000)
+                    samples.append(valid[::step].astype("float32", copy=False))
+
+    sample = np.concatenate(samples) if samples else np.array([], dtype="float32")
+    quality = _summarize_index_sample(total_pixels, valid_pixels, sample)
+    print(f"[VI] GeoTIFF saved: {out_tif}")
+    _save_png_from_tif(out_tif, out_png, title=idx_meta["index_name"], out_dir=out_dir)
+    return idx_meta, quality
+
+
 # ---------------------------------------------------------------------
 # Public entry point
 # ---------------------------------------------------------------------
@@ -353,10 +502,21 @@ def run_ndvi(
     out_dir.mkdir(parents=True, exist_ok=True)
 
     with rasterio.open(src_path) as src:
-        idx, idx_meta = compute_index(src, label, profile)
-        quality = summarize_index_quality(idx)
-        save_geotiff(src, idx, out_tif, out_dir)
-        save_png(idx, out_png, title=idx_meta["index_name"], out_dir=out_dir)
+        pixel_count = int(src.width * src.height)
+        if pixel_count > 30_000_000:
+            idx_meta, quality = compute_index_streaming(
+                src,
+                label,
+                profile,
+                out_tif,
+                out_png,
+                out_dir,
+            )
+        else:
+            idx, idx_meta = compute_index(src, label, profile)
+            quality = summarize_index_quality(idx)
+            save_geotiff(src, idx, out_tif, out_dir)
+            save_png(idx, out_png, title=idx_meta["index_name"], out_dir=out_dir)
 
         meta = {
             "generated_at_utc": datetime.utcnow().replace(microsecond=0).isoformat() + "Z",

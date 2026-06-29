@@ -102,7 +102,7 @@ class RunExportService:
             '@type': ['SoftwareApplication', 'ocsm:AgriVisionRun'],
             'identifier': run.run_id,
             'name': run.run_name or run.dataset_name,
-            'softwareVersion': '0.1.0',
+            'softwareVersion': '1.0.0',
             'actionStatus': run.status,
             'dateCreated': run.created_at.isoformat(),
             'dateModified': run.updated_at.isoformat() if run.updated_at else None,
@@ -163,9 +163,11 @@ class RunExportService:
         for key, arcname in (
             ('ndvi_metadata', 'quality/metadata.json'),
             ('grid_metadata', 'quality/grid_metadata.json'),
+            ('disease_risk_summary', 'risk/disease_risk_summary.json'),
             ('ndvi_tif', 'rasters/vegetation_index.tif'),
             ('orthophoto_rgb', 'rasters/orthophoto_rgb.tif'),
             ('orthophoto_mapir', 'rasters/orthophoto_mapir.tif'),
+            ('orthophoto_thermal', 'rasters/orthophoto_thermal.tif'),
         ):
             value = run.outputs.get(key)
             if value:
@@ -179,8 +181,15 @@ class RunExportService:
                 (workspace.ndvi_output / 'ndvi_grid_categories.csv', 'quality/grid_categories.csv'),
                 (workspace.ndvi_output / 'metadata.json', 'quality/metadata.json'),
                 (workspace.ndvi_output / 'grid_metadata.json', 'quality/grid_metadata.json'),
+                (workspace.ndvi_output / 'disease_risk' / 'summary.json', 'risk/disease_risk_summary.json'),
             ]
         )
+        risk_dir = workspace.ndvi_output / 'disease_risk'
+        if risk_dir.exists():
+            for path in sorted(risk_dir.glob('*_overlay.png')):
+                candidates.append((path, f'risk/{path.name}'))
+            for path in sorted(risk_dir.glob('*_cells.csv')):
+                candidates.append((path, f'risk/{path.name}'))
 
         seen: set[str] = set()
         deduped: list[tuple[Path, str]] = []

@@ -29,6 +29,28 @@ def test_settings_masking_and_updates(tmp_path: Path) -> None:
     assert runtime_settings_path.exists()
 
 
+def test_update_deployment_settings(tmp_path: Path) -> None:
+    config_path = tmp_path / 'config.yaml'
+    config_path.write_text('app:\n  deployment_mode: local\n', encoding='utf-8')
+    service = SettingsService(config_path=config_path, env_path=tmp_path / '.env')
+
+    view = service.update_non_secret_settings(
+        SettingsUpdateRequest(
+            deployment_mode='self_hosted',
+            public_url='https://agrivision.example.com',
+            min_free_disk_gb=75,
+            max_active_odm_runs=2,
+            external_access_protection_confirmed=True,
+        )
+    )
+
+    assert view['non_secret']['deployment_mode'] == 'self_hosted'
+    assert view['non_secret']['public_url'] == 'https://agrivision.example.com'
+    assert view['non_secret']['min_free_disk_gb'] == 75
+    assert view['non_secret']['max_active_odm_runs'] == 2
+    assert view['non_secret']['external_access_protection_confirmed'] is True
+
+
 def test_update_credentials_refreshes_runtime_environment(tmp_path: Path, monkeypatch) -> None:
     config_path = tmp_path / 'config.yaml'
     config_path.write_text('weather:\n  base_url: http://example\n', encoding='utf-8')

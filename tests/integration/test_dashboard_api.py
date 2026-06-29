@@ -38,7 +38,10 @@ def test_api_create_run_upload_reports_and_settings(tmp_path: Path, monkeypatch)
     def fake_launch(run_id: str):
         report_path = tmp_path / 'output' / 'report' / 'index.html'
         report_path.parent.mkdir(parents=True, exist_ok=True)
-        report_path.write_text('<html>ok</html>', encoding='utf-8')
+        report_path.write_text(
+            '<html><head></head><body><header class="report-appbar">old chrome</header>ok</body></html>',
+            encoding='utf-8',
+        )
         ortho = tmp_path / 'ortho.tif'
         Image.new('RGB', (30, 30)).save(ortho)
         return run_service.update_status(run_id, status='completed', outputs={'report_html': str(report_path), 'orthophoto_rgb': str(ortho)})
@@ -85,6 +88,16 @@ def test_api_create_run_upload_reports_and_settings(tmp_path: Path, monkeypatch)
     reports = client.get('/reports', headers={'accept': 'application/json'})
     assert reports.status_code == 200
     assert reports.json()[0]['run_id'] == run_id
+
+    embedded_report = client.get(f'/artifacts/{run_id}/report?embedded=true')
+    assert embedded_report.status_code == 200
+    assert '<body class="report-embedded">' in embedded_report.text
+    assert 'old chrome' not in embedded_report.text
+
+    printable_report = client.get(f'/artifacts/{run_id}/report')
+    assert printable_report.status_code == 200
+    assert '<body class="report-embedded">' not in printable_report.text
+    assert 'old chrome' in printable_report.text
 
     settings = client.post('/settings', json={'location_name': 'Farm X'})
     assert settings.status_code == 200

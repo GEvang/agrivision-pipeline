@@ -194,6 +194,32 @@ def _odm_status() -> dict[str, object]:
     }
 
 
+def missing_service_repos() -> list[dict[str, str]]:
+    missing: list[dict[str, str]] = []
+    for descriptor in service_descriptors().values():
+        if not descriptor.repo_dir.exists():
+            missing.append(
+                {
+                    "key": descriptor.key,
+                    "name": descriptor.name,
+                    "repo_dir": str(descriptor.repo_dir),
+                    "base_url": descriptor.base_url,
+                }
+            )
+    return missing
+
+
+def ensure_missing_services(*, timeout_seconds: int = 90) -> None:
+    errors: list[str] = []
+    for descriptor in service_descriptors().values():
+        try:
+            ensure_service(descriptor.key, timeout_seconds=timeout_seconds)
+        except Exception as exc:
+            errors.append(f"{descriptor.name}: {exc}")
+    if errors:
+        raise ServiceBootstrapError("; ".join(errors))
+
+
 def ensure_service(key: str, *, timeout_seconds: int = 90) -> None:
     descriptor = service_descriptors()[key]
     descriptor.ensure(timeout_seconds=timeout_seconds)

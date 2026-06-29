@@ -13,7 +13,7 @@ from agrivision.services.runtime import (
     summarize_env_changes,
 )
 
-IRRIGATION_REPO_URL = "https://github.com/agstack/OpenAgri-IrrigationManagement.git"
+IRRIGATION_REPO_URL = "https://github.com/openagri-eu/OpenAgri-IrrigationManagement.git"
 
 
 def _service_dir() -> Path:
@@ -22,6 +22,13 @@ def _service_dir() -> Path:
 
 
 def _apply_compatibility_patches(repo_dir: Path) -> None:
+    entrypoint_path = repo_dir / "entrypoint.sh"
+    if entrypoint_path.exists():
+        entrypoint = entrypoint_path.read_bytes()
+        normalized = entrypoint.replace(b"\r\n", b"\n")
+        if normalized != entrypoint:
+            entrypoint_path.write_bytes(normalized)
+
     main_path = repo_dir / "app" / "main.py"
     if not main_path.exists():
         return

@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import shutil
 import subprocess
 from pathlib import Path
 from urllib.error import URLError
@@ -23,19 +24,19 @@ class PreflightService:
         manifest = self.storage.read_json(self.storage.upload_dir(request.upload_run_id) / 'manifest.json', default={})
         rgb_count = len(manifest.get('rgb_files', []))
         mapir_count = len(manifest.get('mapir_files', []))
-        if rgb_count < 2:
-            blockers.append('Upload must contain at least 2 RGB images.')
-            checks.append(self._check('RGB images', 'error', f'{rgb_count} found'))
-        else:
-            checks.append(self._check('RGB images', 'ok', f'{rgb_count} found'))
-        if mapir_count < 2:
-            warnings.append('MAPIR upload has fewer than 2 images; vegetation index may fall back to RGB/pseudo mode.')
-            checks.append(self._check('MAPIR images', 'warn', f'{mapir_count} found'))
-        else:
-            checks.append(self._check('MAPIR images', 'ok', f'{mapir_count} found'))
+        thermal_count = len(manifest.get('thermal_files', []))
+        checks.append(self._check('RGB images', 'ok' if rgb_count >= 2 else 'warn', f'{rgb_count} found'))
+        checks.append(self._check('MAPIR images', 'ok' if mapir_count >= 2 else 'warn', f'{mapir_count} found'))
+        checks.append(self._check('Thermal images', 'ok' if thermal_count >= 2 else 'warn', f'{thermal_count} found'))
 
         config = load_config()
         if request.selected_steps.run_odm:
+            if rgb_count < 2 and mapir_count < 2 and thermal_count < 2:
+                blockers.append('ODM needs at least 2 RGB, MAPIR, or thermal images.')
+            disk_check = self._disk_space_check(config)
+            checks.append(disk_check)
+            if disk_check['state'] == 'error':
+                blockers.append(disk_check['detail'])
             docker_check = self._docker_check()
             checks.append(docker_check)
             if docker_check['state'] != 'ok':
@@ -44,7 +45,8 @@ class PreflightService:
             source_run_id = request.parameters.source_orthophoto_run_id
             ortho_checks = self._saved_orthophoto_checks(source_run_id) if source_run_id else self._existing_orthophoto_checks(config)
             checks.extend(ortho_checks)
-            if not any(item['state'] == 'ok' for item in ortho_checks):
+            usable_index_orthos = [item for item in ortho_checks if 'thermal' not in item['name'].lower()]
+            if not any(item['state'] == 'ok' for item in usable_index_orthos):
                 blockers.append('Existing orthophoto mode needs an RGB or MAPIR orthophoto already generated.')
 
         if request.selected_steps.fetch_weather:
@@ -82,6 +84,29 @@ class PreflightService:
             return self._check('Docker', 'ok', version)
         return self._check('Docker', 'error', 'Daemon unavailable')
 
+    def _disk_space_check(self, config: dict) -> dict[str, str]:
+        app_cfg = config.get('app', {}) if isinstance(config.get('app'), dict) else {}
+        min_free_gb = self._as_int(app_cfg.get('min_free_disk_gb'), 50)
+        project_root = get_project_root()
+        try:
+            usage = shutil.disk_usage(project_root)
+        except OSError:
+            return self._check('Free disk space', 'warn', 'Could not check disk space')
+        free_gb = usage.free / (1024**3)
+        detail = f'{free_gb:.1f} GB free; minimum {min_free_gb} GB'
+        if free_gb < min_free_gb:
+            return self._check('Free disk space', 'error', detail)
+        warn_threshold = max(min_free_gb * 1.5, min_free_gb + 20)
+        if free_gb < warn_threshold:
+            return self._check('Free disk space', 'warn', detail)
+        return self._check('Free disk space', 'ok', detail)
+
+    def _as_int(self, value: object, fallback: int) -> int:
+        try:
+            return max(0, int(value))
+        except (TypeError, ValueError):
+            return fallback
+
     def _url_check(self, name: str, base_url: str) -> dict[str, str]:
         for path in ('/health', '/docs', '/openapi.json'):
             url = base_url.rstrip('/') + path
@@ -113,6 +138,7 @@ class PreflightService:
         candidates = (
             ('RGB orthophoto', project_root / paths.get('odm_project_root_rgb', 'data/odm_project_rgb') / 'project' / 'odm_orthophoto' / 'odm_orthophoto.tif'),
             ('MAPIR orthophoto', project_root / paths.get('odm_project_root_mapir', 'data/odm_project_mapir') / 'project' / 'odm_orthophoto' / 'odm_orthophoto.tif'),
+            ('Thermal orthophoto', project_root / paths.get('odm_project_root_thermal', 'data/odm_project_thermal') / 'project' / 'odm_orthophoto' / 'odm_orthophoto.tif'),
         )
         checks: list[dict[str, str]] = []
         for name, path in candidates:
@@ -127,6 +153,7 @@ class PreflightService:
         candidates = (
             ('Saved RGB orthophoto', outputs.get('orthophoto_rgb')),
             ('Saved MAPIR orthophoto', outputs.get('orthophoto_mapir')),
+            ('Saved thermal orthophoto', outputs.get('orthophoto_thermal')),
         )
         checks: list[dict[str, str]] = []
         for name, path in candidates:

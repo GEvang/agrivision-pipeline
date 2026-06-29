@@ -23,3 +23,17 @@ docker compose up --build -d
 ```
 
 Then open `http://127.0.0.1:8008`.
+
+Helpful Docker checks:
+
+```bash
+docker compose config
+docker compose ps
+docker compose logs --tail 100
+```
+
+## Optional services
+
+- missing Weather, Irrigation, and PDM services appear in Settings instead of blocking startup
+- verify service base URLs before enabling integrations
+- put service credentials and tokens in `.env` if you later enable those services

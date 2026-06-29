@@ -64,10 +64,13 @@ DEFAULT_CONFIG: dict[str, Any] = {
         "odm_project_root": "data/odm_project_rgb",
         "odm_project_root_rgb": "data/odm_project_rgb",
         "odm_project_root_mapir": "data/odm_project_mapir",
+        "odm_project_root_thermal": "data/odm_project_thermal",
         "ndvi_output": "output/ndvi",
         "runs_output": "output/runs",
         "images_full_mapir": "data/images_full/mapir",
         "images_resized_mapir": "data/images_resized/mapir",
+        "images_full_thermal": "data/images_full/thermal",
+        "images_resized_thermal": "data/images_resized/thermal",
     },
     "resize": {
         "max_long_edge": 3000,
@@ -81,10 +84,10 @@ DEFAULT_CONFIG: dict[str, Any] = {
         "grid_rows": 17,
         "grid_cols": 17,
         "mapir_profile": {
-            "index_mode": "nir_green",
-            "nir_band": 1,
-            "green_band": 2,
-            "red_band": None,
+            "index_mode": "nir_red",
+            "nir_band": 3,
+            "green_band": None,
+            "red_band": 1,
         },
         "rgb_profile": {
             "index_mode": "pseudo",
@@ -118,6 +121,13 @@ DEFAULT_CONFIG: dict[str, Any] = {
         "odm_docker_image": "opendronemap/odm:latest",
         "orthophoto_resolution_cm": 1,
     },
+    "app": {
+        "deployment_mode": "local",
+        "public_url": "",
+        "min_free_disk_gb": 50,
+        "max_active_odm_runs": 1,
+        "external_access_protection_confirmed": False,
+    },
     "pdm": {
         "enabled_by_default": True,
         "base_url": "http://127.0.0.1:8006",
@@ -146,6 +156,15 @@ _ENV_SECRET_OVERRIDES: tuple[tuple[tuple[str, ...], str, str], ...] = (
     (("pdm", "auth", "username"), "PDM_USERNAME", "pdm.auth.username"),
     (("pdm", "auth", "password"), "PDM_PASSWORD", "pdm.auth.password"),
     (("pdm", "token"), "PDM_TOKEN", "pdm.token"),
+    (("app", "deployment_mode"), "AGRIVISION_DEPLOYMENT_MODE", "app.deployment_mode"),
+    (("app", "public_url"), "AGRIVISION_PUBLIC_URL", "app.public_url"),
+    (("app", "min_free_disk_gb"), "AGRIVISION_MIN_FREE_DISK_GB", "app.min_free_disk_gb"),
+    (("app", "max_active_odm_runs"), "AGRIVISION_MAX_ACTIVE_ODM_RUNS", "app.max_active_odm_runs"),
+    (
+        ("app", "external_access_protection_confirmed"),
+        "AGRIVISION_EXTERNAL_ACCESS_PROTECTION_CONFIRMED",
+        "app.external_access_protection_confirmed",
+    ),
 )
 
 
@@ -158,15 +177,29 @@ class PathsSettings:
     odm_project_root: str
     odm_project_root_rgb: str
     odm_project_root_mapir: str
+    odm_project_root_thermal: str
     ndvi_output: str
     runs_output: str
     images_full_mapir: str
     images_resized_mapir: str
+    images_full_thermal: str
+    images_resized_thermal: str
+
 
 @dataclass(frozen=True)
 class OrthophotoSettings:
     odm_docker_image: str
     orthophoto_resolution_cm: int
+
+
+@dataclass(frozen=True)
+class ApplicationSettings:
+    deployment_mode: str
+    public_url: str
+    min_free_disk_gb: int
+    max_active_odm_runs: int
+    external_access_protection_confirmed: bool
+
 
 @dataclass(frozen=True)
 class WeatherSettings:
@@ -247,6 +280,7 @@ class ResizeSettings:
 
 @dataclass(frozen=True)
 class AppSettings:
+    app: ApplicationSettings
     paths: PathsSettings
     weather: WeatherSettings
     location: LocationSettings
@@ -429,6 +463,19 @@ def _as_float(value: Any, fallback: float) -> float:
         return fallback
 
 
+def _as_bool(value: Any, fallback: bool) -> bool:
+    if isinstance(value, bool):
+        return value
+    if value is None:
+        return fallback
+    normalized = str(value).strip().lower()
+    if normalized in {"1", "true", "yes", "on"}:
+        return True
+    if normalized in {"0", "false", "no", "off"}:
+        return False
+    return fallback
+
+
 def get_settings() -> AppSettings:
     """Build typed settings from merged config without import-time caching."""
     cfg = load_config()
@@ -445,6 +492,7 @@ def get_settings() -> AppSettings:
     ndvi_cfg = _as_dict(cfg.get("ndvi"))
     resize_cfg = _as_dict(cfg.get("resize"))
     orthophoto_cfg = _as_dict(cfg.get("orthophoto"))
+    app_cfg = _as_dict(cfg.get("app"))
 
     paths_defaults = _as_dict(defaults.get("paths"))
     weather_defaults = _as_dict(defaults.get("weather"))
@@ -457,8 +505,31 @@ def get_settings() -> AppSettings:
     ndvi_defaults = _as_dict(defaults.get("ndvi"))
     resize_defaults = _as_dict(defaults.get("resize"))
     orthophoto_defaults = _as_dict(defaults.get("orthophoto"))
+    app_defaults = _as_dict(defaults.get("app"))
 
     return AppSettings(
+        app=ApplicationSettings(
+            deployment_mode=_as_str(
+                app_cfg.get("deployment_mode"),
+                _as_str(app_defaults.get("deployment_mode"), "local"),
+            ),
+            public_url=_as_str(app_cfg.get("public_url"), _as_str(app_defaults.get("public_url"))),
+            min_free_disk_gb=max(
+                0,
+                _as_int(app_cfg.get("min_free_disk_gb"), _as_int(app_defaults.get("min_free_disk_gb"), 50)),
+            ),
+            max_active_odm_runs=max(
+                1,
+                _as_int(
+                    app_cfg.get("max_active_odm_runs"),
+                    _as_int(app_defaults.get("max_active_odm_runs"), 1),
+                ),
+            ),
+            external_access_protection_confirmed=_as_bool(
+                app_cfg.get("external_access_protection_confirmed"),
+                _as_bool(app_defaults.get("external_access_protection_confirmed"), False),
+            ),
+        ),
         paths=PathsSettings(
             data_root=_as_str(paths_cfg.get("data_root"), _as_str(paths_defaults.get("data_root"))),
             output_root=_as_str(paths_cfg.get("output_root"), _as_str(paths_defaults.get("output_root"))),
@@ -473,6 +544,10 @@ def get_settings() -> AppSettings:
                 paths_cfg.get("odm_project_root_mapir"),
                 _as_str(paths_defaults.get("odm_project_root_mapir")),
             ),
+            odm_project_root_thermal=_as_str(
+                paths_cfg.get("odm_project_root_thermal"),
+                _as_str(paths_defaults.get("odm_project_root_thermal")),
+            ),
             ndvi_output=_as_str(paths_cfg.get("ndvi_output"), _as_str(paths_defaults.get("ndvi_output"))),
             runs_output=_as_str(paths_cfg.get("runs_output"), _as_str(paths_defaults.get("runs_output"))),
             images_full_mapir=_as_str(
@@ -482,6 +557,14 @@ def get_settings() -> AppSettings:
             images_resized_mapir=_as_str(
                 paths_cfg.get("images_resized_mapir"),
                 _as_str(paths_defaults.get("images_resized_mapir")),
+            ),
+            images_full_thermal=_as_str(
+                paths_cfg.get("images_full_thermal"),
+                _as_str(paths_defaults.get("images_full_thermal")),
+            ),
+            images_resized_thermal=_as_str(
+                paths_cfg.get("images_resized_thermal"),
+                _as_str(paths_defaults.get("images_resized_thermal")),
             ),
         ),
         weather=WeatherSettings(

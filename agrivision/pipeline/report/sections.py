@@ -239,6 +239,10 @@ def render_irrigation_section(
     eto_from = eto.get("from_date", "")
     eto_to = eto.get("to_date", "")
     eto_count = eto.get("count", None)
+    eto_formatting = eto.get("formatting", "")
+    eto_statistics = eto.get("statistics") or {}
+    eto_options = eto.get("option_types") or {}
+    soil_moisture = eto.get("soil_moisture") or {}
     eto_preview = eto.get("preview", "")
     eto_artifact_path = eto.get("artifact_path", "")
     weather_debug = eto.get("weather_debug") or {}
@@ -335,7 +339,11 @@ def render_irrigation_section(
   <tr><th align="left">Request status</th><td><span style="color:{eto_color}; font-weight:bold;">{safe_html(eto_label)}</span> (HTTP {safe_html(eto_status)})</td></tr>
   <tr><th align="left">Location ID</th><td>{safe_html(eto_location_id)}</td></tr>
   <tr><th align="left">Date range</th><td>{safe_html(eto_from)} → {safe_html(eto_to)}</td></tr>
+  <tr><th align="left">Response format</th><td>{safe_html(eto_formatting or "JSON-LD")}</td></tr>
   <tr><th align="left">Returned values</th><td>{safe_html(eto_count_msg)}</td></tr>
+  <tr><th align="left">ETo statistics</th><td>{safe_html(eto_statistics or "Not available")}</td></tr>
+  <tr><th align="left">Crop/stage options</th><td>{safe_html(eto_options or "Not available")}</td></tr>
+  <tr><th align="left">Soil moisture probe</th><td>{safe_html(soil_moisture or "Not available")}</td></tr>
   <tr><th align="left">Raw response artifact</th><td>{eto_link_html}</td></tr>
 </table>
 
@@ -385,6 +393,7 @@ def render_pdm_section(
   <tr><th align="left">Remote latest timestamp</th><td>{safe_html(time_window.get('remote_latest_timestamp', 'N/A'))}</td></tr>
   <tr><th align="left">Remote highest timestamp</th><td>{safe_html(time_window.get('remote_highest_timestamp', 'N/A'))}</td></tr>
   <tr><th align="left">Risk level</th><td>{safe_html(pdm_summary.get('risk_level', 'Unavailable'))}</td></tr>
+  <tr><th align="left">Risk score</th><td>{safe_html(pdm_summary.get('risk_score', 'N/A'))}</td></tr>
   <tr><th align="left">Recommendation</th><td>{safe_html(pdm_summary.get('recommendation', pdm_summary.get('error_message', '')))}</td></tr>
   <tr><th align="left">Service URL</th><td>{safe_html((pdm_summary.get('service_status') or {}).get('base_url', ''))}</td></tr>
   <tr><th align="left">Service reachable</th><td>{safe_html((pdm_summary.get('service_status') or {}).get('reachable', False))}</td></tr>

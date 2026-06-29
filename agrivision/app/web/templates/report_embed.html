@@ -5,14 +5,38 @@
   <meta name="viewport" content="width=device-width, initial-scale=1" />
   <title>{{ run.dataset_name }} Report</title>
   <style>
-    html, body { margin: 0; padding: 0; height: 100%; background: #fff; }
-    .report-shell { width: 100%; height: 100vh; }
-    .report-shell iframe { display: block; width: 100%; height: 100%; border: 0; background: #fff; }
+    html, body { margin: 0; padding: 0; background: #fff; }
+    .report-shell { width: 100%; }
+    .report-shell iframe { display: block; width: 100%; height: 100vh; border: 0; background: #fff; overflow: hidden; }
   </style>
 </head>
 <body>
   <div class="report-shell">
-    <iframe src="/artifacts/{{ run.run_id }}/report" title="Report for {{ run.dataset_name }}"></iframe>
+    <iframe data-auto-height="true" scrolling="no" src="/artifacts/{{ run.run_id }}/report?embedded=true" title="Report for {{ run.dataset_name }}"></iframe>
   </div>
+  <script>
+    function resizeReportFrame(frame) {
+      try {
+        const doc = frame.contentDocument || frame.contentWindow.document;
+        const height = Math.max(
+          doc.body.scrollHeight,
+          doc.documentElement.scrollHeight,
+          doc.body.offsetHeight,
+          doc.documentElement.offsetHeight
+        );
+        frame.style.height = `${height}px`;
+      } catch (error) {
+        frame.style.height = '100vh';
+      }
+    }
+
+    document.querySelectorAll('iframe[data-auto-height="true"]').forEach((frame) => {
+      frame.addEventListener('load', () => {
+        resizeReportFrame(frame);
+        setTimeout(() => resizeReportFrame(frame), 250);
+        setTimeout(() => resizeReportFrame(frame), 1000);
+      });
+    });
+  </script>
 </body>
 </html>

@@ -9,6 +9,8 @@ PDM_MODEL_CATALOG: list[dict[str, Any]] = [
         'label': 'Grapevine Powdery Mildew',
         'organism_name': 'Erysiphe necator',
         'eppo_code': 'UNCINE',
+        'fuzzy_crop_name': 'Vineyard',
+        'fuzzy_scientific_names': ['Uncinula necator', 'Erysiphe necator'],
         'calculation_type': 'risk_index',
         'description': 'Starter weather-driven risk index for grapevine powdery mildew.',
         'risk_rules': [
@@ -38,6 +40,8 @@ PDM_MODEL_CATALOG: list[dict[str, Any]] = [
         'label': 'Olive Leaf Spot',
         'organism_name': 'Venturia oleaginea',
         'eppo_code': 'CYCLOL',
+        'fuzzy_crop_name': 'Olive',
+        'fuzzy_scientific_names': ['Venturia oleaginea', 'Spilocea oleagina'],
         'calculation_type': 'risk_index',
         'description': 'Starter weather-driven risk index for olive leaf spot / peacock spot.',
         'risk_rules': [
@@ -68,6 +72,8 @@ PDM_MODEL_CATALOG: list[dict[str, Any]] = [
         'label': 'Grapevine Downy Mildew',
         'organism_name': 'Plasmopara viticola',
         'eppo_code': 'PLASVI',
+        'fuzzy_crop_name': 'Vineyard',
+        'fuzzy_scientific_names': ['Plasmopora viticola', 'Plasmopara viticola'],
         'calculation_type': 'risk_index',
         'description': 'Starter weather-driven risk index for grapevine downy mildew.',
         'risk_rules': [
@@ -98,6 +104,8 @@ PDM_MODEL_CATALOG: list[dict[str, Any]] = [
         'label': 'Olive Fruit Fly',
         'organism_name': 'Bactrocera oleae',
         'eppo_code': 'DACUOL',
+        'fuzzy_crop_name': 'Olive',
+        'fuzzy_scientific_names': ['Bactrocera oleae'],
         'calculation_type': 'risk_index',
         'description': 'Starter weather-driven risk index for olive fruit fly activity.',
         'risk_rules': [

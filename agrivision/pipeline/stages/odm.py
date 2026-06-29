@@ -153,6 +153,9 @@ def _get_odm_settings(
         "images_full_mapir": resolved["images_full_mapir"],
         "images_resized_mapir": resolved["images_resized_mapir"],
         "odm_project_root_mapir": resolved["odm_project_root_mapir"],
+        "images_full_thermal": resolved["images_full_thermal"],
+        "images_resized_thermal": resolved["images_resized_thermal"],
+        "odm_project_root_thermal": resolved["odm_project_root_thermal"],
         "odm_docker_image": orthophoto["odm_docker_image"],
         "ortho_resolution_cm": orthophoto["orthophoto_resolution_cm"],
     }
@@ -169,36 +172,29 @@ def _folder_has_images(folder: Path) -> bool:
     return False
 
 
-def _choose_input_folder(label: str, full_dir: Path, resized_dir: Path) -> Path:
+def _choose_input_folder(label: str, full_dir: Path, resized_dir: Path | None = None) -> Path:
     """
-    Decide which folder to use for a dataset (RGB or MAPIR):
-
-        1) resized_dir (if it has images)
-        2) full_dir    (fallback)
+    Decide which folder to use for a dataset.
 
     Raises RuntimeError if neither has images.
+
+    The resize stage remains available as a standalone module, but ODM always
+    uses the full image directory so multispectral matching is not weakened by
+    downsampled inputs.
     """
-    resized_has = _folder_has_images(resized_dir)
     full_has = _folder_has_images(full_dir)
 
-    if resized_has:
-        print(f"[ODM-{label}] Using resized images: {resized_dir}")
-        return resized_dir
-
     if full_has:
-        print(
-            f"[ODM-{label}] No resized images detected. "
-            f"Falling back to full-resolution images:\n"
-            f"            {full_dir}"
-        )
+        print(f"[ODM-{label}] Using full-resolution images: {full_dir}")
         return full_dir
 
+    checked = [str(full_dir)]
+    if resized_dir is not None:
+        checked.append(str(resized_dir))
     raise RuntimeError(
-        f"\n[ERROR] ODM-{label} cannot run because no images were found in either:\n"
-        f"  - {resized_dir}\n"
-        f"  - {full_dir}\n\n"
-        "Make sure you have placed images in at least one of these folders,\n"
-        "or run the resize step with --run-resize.\n"
+        f"\n[ERROR] ODM-{label} cannot run because no images were found in:\n"
+        + "\n".join(f"  - {path}" for path in checked)
+        + "\n\nMake sure you have uploaded images for this camera category.\n"
     )
 
 
@@ -294,9 +290,7 @@ def run_odm_rgb(
     """
     Run ODM for the RGB dataset.
 
-    Uses:
-      - images_resized/rgb  (preferred, if not empty)
-      - images_full/rgb     (fallback)
+    Uses full-resolution RGB images.
 
     Writes project into:
       - data/odm_project_rgb/project
@@ -305,7 +299,6 @@ def run_odm_rgb(
     settings = _get_odm_settings(workspace_root=workspace_root, config=config)
 
     images_full_rgb = settings["images_full_rgb"]
-    images_resized_rgb = settings["images_resized_rgb"]
     odm_project_root_rgb = settings["odm_project_root_rgb"]
     odm_docker_image = settings["odm_docker_image"]
     resolved_resolution_cm = ortho_resolution_cm or settings["ortho_resolution_cm"]
@@ -313,7 +306,6 @@ def run_odm_rgb(
     input_folder = _choose_input_folder(
         label="RGB",
         full_dir=images_full_rgb,
-        resized_dir=images_resized_rgb,
     )
 
     _prepare_odm_project(
@@ -338,24 +330,16 @@ def run_odm_mapir(
     """
     Run ODM for the MAPIR dataset.
 
-    Uses:
-      - images_resized/mapir  (preferred, if not empty)
-      - images_full/mapir     (fallback)
+    Uses full-resolution MAPIR images.
 
     Writes project into:
       - data/odm_project_mapir/project
 
-    NOTE:
-      This function is implemented and ready to use, but the main
-      pipeline controller does not call it yet. In upcoming steps,
-      we will wire this into the pipeline so that MAPIR orthophotos
-      are produced alongside RGB orthophotos.
     """
     print("\n[ODM-MAPIR] Starting ODM photogrammetry for MAPIR dataset...")
     settings = _get_odm_settings(workspace_root=workspace_root, config=config)
 
     images_full_mapir = settings["images_full_mapir"]
-    images_resized_mapir = settings["images_resized_mapir"]
     odm_project_root_mapir = settings["odm_project_root_mapir"]
     odm_docker_image = settings["odm_docker_image"]
     resolved_resolution_cm = ortho_resolution_cm or settings["ortho_resolution_cm"]
@@ -363,7 +347,6 @@ def run_odm_mapir(
     input_folder = _choose_input_folder(
         label="MAPIR",
         full_dir=images_full_mapir,
-        resized_dir=images_resized_mapir,
     )
 
     _prepare_odm_project(
@@ -375,6 +358,45 @@ def run_odm_mapir(
     _run_odm_docker(
         project_root=odm_project_root_mapir,
         label="MAPIR",
+        odm_docker_image=odm_docker_image,
+        ortho_resolution_cm=resolved_resolution_cm,
+    )
+
+
+def run_odm_thermal(
+    ortho_resolution_cm: int | None = None,
+    workspace_root: Path | None = None,
+    config: dict[str, Any] | None = None,
+) -> None:
+    """
+    Run ODM for the thermal dataset.
+
+    Thermal imagery often has less visual texture than RGB imagery. This
+    enables thermal orthophoto creation, but externally generated thermal
+    orthos can still be the more reliable route for hard datasets.
+    """
+    print("\n[ODM-THERMAL] Starting ODM photogrammetry for thermal dataset...")
+    settings = _get_odm_settings(workspace_root=workspace_root, config=config)
+
+    images_full_thermal = settings["images_full_thermal"]
+    odm_project_root_thermal = settings["odm_project_root_thermal"]
+    odm_docker_image = settings["odm_docker_image"]
+    resolved_resolution_cm = ortho_resolution_cm or settings["ortho_resolution_cm"]
+
+    input_folder = _choose_input_folder(
+        label="THERMAL",
+        full_dir=images_full_thermal,
+    )
+
+    _prepare_odm_project(
+        src_images_dir=input_folder,
+        project_root=odm_project_root_thermal,
+        label="THERMAL",
+    )
+
+    _run_odm_docker(
+        project_root=odm_project_root_thermal,
+        label="THERMAL",
         odm_docker_image=odm_docker_image,
         ortho_resolution_cm=resolved_resolution_cm,
     )

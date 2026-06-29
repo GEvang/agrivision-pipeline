@@ -10,7 +10,7 @@ Configuration is the control-plane input to the system. It determines project ro
 
 ### Input imagery
 
-Raw or resized drone imagery acts as the primary data-plane input.
+Raw drone imagery acts as the primary data-plane input.
 
 ### Derived geospatial artifacts
 

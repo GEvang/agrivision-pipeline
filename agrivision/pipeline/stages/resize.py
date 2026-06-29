@@ -8,13 +8,16 @@ Resizing behavior is now controlled by:
   - The CLI flag: --run-resize  (whether the step runs at all)
   - config.yaml -> resize.max_long_edge  (how aggressively to resize)
 
-This module now supports TWO datasets:
+This module now supports three datasets:
 
   - RGB images:
       data/images_full/rgb     -> data/images_resized/rgb
 
   - MAPIR images (multispectral):
       data/images_full/mapir   -> data/images_resized/mapir
+
+  - Thermal images:
+      data/images_full/thermal -> data/images_resized/thermal
 
 If a given source folder is missing or empty, that dataset is skipped
 with a friendly message.
@@ -48,6 +51,8 @@ def _get_resize_settings(
         "images_resized_rgb": resolved["images_resized_rgb"],
         "images_full_mapir": resolved["images_full_mapir"],
         "images_resized_mapir": resolved["images_resized_mapir"],
+        "images_full_thermal": resolved["images_full_thermal"],
+        "images_resized_thermal": resolved["images_resized_thermal"],
         "max_long_edge": resize_cfg.get("max_long_edge", 3000),
     }
 
@@ -109,7 +114,7 @@ def run_resize(
     config: dict[str, Any] | None = None,
 ) -> None:
     """
-    Resize images for all supported datasets (RGB, MAPIR).
+    Resize images for all supported datasets (RGB, MAPIR, thermal).
 
     - RGB:
         data/images_full/rgb     -> data/images_resized/rgb
@@ -125,6 +130,8 @@ def run_resize(
     images_resized_rgb = settings["images_resized_rgb"]
     images_full_mapir = settings["images_full_mapir"]
     images_resized_mapir = settings["images_resized_mapir"]
+    images_full_thermal = settings["images_full_thermal"]
+    images_resized_thermal = settings["images_resized_thermal"]
 
     print("\n[AgriVision] Resize step")
     print(f"  Max long edge : {max_long_edge} px\n")
@@ -139,11 +146,19 @@ def run_resize(
         max_long_edge=max_long_edge,
     )
 
-    # 2) MAPIR dataset (for real NDVI, wired in next steps)
+    # 2) MAPIR dataset
     total_processed += _resize_dataset(
         src_dir=images_full_mapir,
         dst_dir=images_resized_mapir,
         label="MAPIR",
+        max_long_edge=max_long_edge,
+    )
+
+    # 3) Thermal dataset
+    total_processed += _resize_dataset(
+        src_dir=images_full_thermal,
+        dst_dir=images_resized_thermal,
+        label="Thermal",
         max_long_edge=max_long_edge,
     )
 
@@ -152,6 +167,7 @@ def run_resize(
         print("  Make sure you have placed images in at least one of:")
         print(f"    - {images_full_rgb}")
         print(f"    - {images_full_mapir}")
+        print(f"    - {images_full_thermal}")
     else:
         print(f"[AgriVision] Resize step finished. Total images processed: {total_processed}")
 

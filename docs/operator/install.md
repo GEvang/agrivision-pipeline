@@ -1,6 +1,6 @@
 # Install AgriVision Pipeline
 
-The recommended operator install path is now dashboard-first with Docker.
+The recommended operator install path is dashboard-first with Docker.
 
 ## Windows
 
@@ -45,7 +45,13 @@ docker compose up --build -d
 
 ## Notes
 
-- `.env` is optional for dashboard startup.
-- `runtime/settings.json` is created automatically on first launch.
-- Optional OpenAgri services can be configured later from the Settings page.
-- Python virtualenv setup remains available for development and advanced local runs, but it is not required for dashboard-only use.
+- `.env` is optional for dashboard startup
+- `runtime/settings.json` is created automatically on first launch
+- optional OpenAgri services can be configured later from the Settings page
+- Python virtualenv setup remains available for development and advanced local runs, but it is not required for dashboard-only use
+
+## Advanced references
+
+- `docs/developer/local-dev.md`
+- `docs/developer/config.md`
+- `docs/operator/windows-self-hosting.md`

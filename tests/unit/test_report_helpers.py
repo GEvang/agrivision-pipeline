@@ -1,6 +1,7 @@
 from pathlib import Path
 
 from agrivision.pipeline.report.assets import get_index_title
+from agrivision.pipeline.report.html import build_report_html
 from agrivision.pipeline.report.sections import render_weather_section
 from agrivision.pipeline.report.tables import render_grid_table
 
@@ -62,3 +63,43 @@ def test_render_weather_section_includes_weather_heading() -> None:
     assert "Spray Condition Forecast" not in html
     assert "Forecast JSON-LD / OCSM Preview" not in html
     assert "UAV model" not in html
+
+
+def test_build_report_html_uses_risk_mapping_layout() -> None:
+    html = build_report_html(
+        generated_at="2026-05-18 12:00 UTC",
+        index_title="Vegetation Index",
+        location_label="Neapolis Field",
+        quality={
+            "quality_state": "OK",
+            "source": "MAPIR / nir_green",
+            "valid_pixels": "60.1%",
+            "mean_median": "0.023 / 0.025",
+            "thresholds": "0.017 / 0.036",
+            "classification": "percentile_calibrated",
+            "dataset": "MAPIR",
+        },
+        weather_html="<section>Weather</section>",
+        methodology_html="<section>Method</section>",
+        artifacts_list_html="<li>Artifact</li>",
+        visible_image_html='<img src="visible.png" alt="Visible" />',
+        ndvi_color_html='<img src="ndvi.png" alt="NDVI" />',
+        thermal_image_html='<img src="mapir.png" alt="MAPIR placeholder" />',
+        grid_meta_html="<table><tr><td>Grid</td></tr></table>",
+        grid_overlay_html='<img src="grid.png" alt="Risk grid" />',
+        grid_table_html="<table><tr><td>A1</td></tr></table>",
+        irrigation_html="<section>Irrigation</section>",
+        pdm_html="<section>PDM</section>",
+    )
+
+    assert "Field Analysis and Risk Mapping" in html
+    assert "Visible Orthomosaic" in html
+    assert "Thermal" in html
+    assert "Thermal layer will appear after thermal imagery is uploaded and processed" in html
+    assert "Risk Index" in html
+    assert "Detailed Analysis" in html
+    assert "Neapolis Field" in html
+    assert "60.1%" in html
+    assert "Demo Vineyard" not in html
+    assert "7.2 ha" not in html
+    assert '<svg class="svg-icon' in html

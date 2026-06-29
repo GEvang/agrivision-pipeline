@@ -104,6 +104,11 @@ class SettingsService:
                 'resize_max_long_edge': config.get('resize', {}).get('max_long_edge', ''),
                 'orthophoto_resolution_cm': config.get('orthophoto', {}).get('orthophoto_resolution_cm', ''),
                 'settings_file': str(self.runtime_settings_path),
+                'deployment_mode': config.get('app', {}).get('deployment_mode', 'local'),
+                'public_url': config.get('app', {}).get('public_url', ''),
+                'min_free_disk_gb': config.get('app', {}).get('min_free_disk_gb', 50),
+                'max_active_odm_runs': config.get('app', {}).get('max_active_odm_runs', 1),
+                'external_access_protection_confirmed': config.get('app', {}).get('external_access_protection_confirmed', False),
             },
             'credentials': self.masked_credentials(),
             'diagnostics': get_runtime_config(),
@@ -170,6 +175,16 @@ class SettingsService:
             payload.setdefault('resize', {})['max_long_edge'] = request.resize_max_long_edge
         if request.orthophoto_resolution_cm is not None:
             payload.setdefault('orthophoto', {})['orthophoto_resolution_cm'] = request.orthophoto_resolution_cm
+        if request.deployment_mode is not None:
+            payload.setdefault('app', {})['deployment_mode'] = request.deployment_mode
+        if request.public_url is not None:
+            payload.setdefault('app', {})['public_url'] = request.public_url
+        if request.min_free_disk_gb is not None:
+            payload.setdefault('app', {})['min_free_disk_gb'] = request.min_free_disk_gb
+        if request.max_active_odm_runs is not None:
+            payload.setdefault('app', {})['max_active_odm_runs'] = request.max_active_odm_runs
+        if request.external_access_protection_confirmed is not None:
+            payload.setdefault('app', {})['external_access_protection_confirmed'] = request.external_access_protection_confirmed
 
         self.runtime_settings_path.parent.mkdir(parents=True, exist_ok=True)
         self.runtime_settings_path.write_text(json.dumps(payload, indent=2), encoding='utf-8')

@@ -22,10 +22,14 @@ class RunWorkspace:
     images_resized_rgb: Path
     images_full_mapir: Path
     images_resized_mapir: Path
+    images_full_thermal: Path
+    images_resized_thermal: Path
     odm_project_root_rgb: Path
     odm_project_root_mapir: Path
+    odm_project_root_thermal: Path
     ortho_rgb: Path
     ortho_mapir: Path
+    ortho_thermal: Path
     report_path: Path
 
     @classmethod
@@ -44,9 +48,13 @@ class RunWorkspace:
             images_resized_rgb=resolved['images_resized_rgb'],
             images_full_mapir=resolved['images_full_mapir'],
             images_resized_mapir=resolved['images_resized_mapir'],
+            images_full_thermal=resolved['images_full_thermal'],
+            images_resized_thermal=resolved['images_resized_thermal'],
             odm_project_root_rgb=resolved['odm_project_root_rgb'],
             odm_project_root_mapir=resolved['odm_project_root_mapir'],
+            odm_project_root_thermal=resolved['odm_project_root_thermal'],
             ortho_rgb=resolved['ortho_rgb'],
             ortho_mapir=resolved['ortho_mapir'],
+            ortho_thermal=resolved['ortho_thermal'],
             report_path=resolved['report_path'],
         )

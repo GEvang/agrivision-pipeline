@@ -69,6 +69,8 @@ class RunService:
                 'orthophoto_preset': request.parameters.orthophoto_preset,
                 'orthophoto_resolution_cm': request.parameters.orthophoto_resolution_cm,
                 'source_orthophoto_run_id': request.parameters.source_orthophoto_run_id,
+                'camera_targets': request.parameters.camera_targets,
+                'import_camera_targets': request.parameters.import_camera_targets,
                 'pdm_crop': request.parameters.pdm_crop,
                 'pdm_model_key': request.parameters.pdm_model_key,
             },
@@ -96,12 +98,11 @@ class RunService:
 
     def _build_stages(self, selected_steps) -> list[StageStatus]:
         stages = [StageStatus(key='stage_inputs', label='Stage inputs')]
-        if selected_steps.resize_images:
-            stages.append(StageStatus(key='resize_images', label='Resize images'))
         if selected_steps.run_odm:
             stages.extend([
                 StageStatus(key='run_odm_rgb', label='Run ODM RGB'),
                 StageStatus(key='run_odm_mapir', label='Run ODM MAPIR'),
+                StageStatus(key='run_odm_thermal', label='Run ODM thermal'),
             ])
         if self._is_orthophoto_creation_run(selected_steps):
             return stages
@@ -115,6 +116,7 @@ class RunService:
             stages.append(StageStatus(key='irrigation_enrichment', label='Irrigation enrichment'))
         if selected_steps.run_pdm:
             stages.append(StageStatus(key='pdm_enrichment', label='Pest & disease enrichment'))
+        stages.append(StageStatus(key='disease_risk', label='Score disease risk'))
         if selected_steps.generate_report:
             stages.append(StageStatus(key='generate_report', label='Generate report'))
         return stages
@@ -465,6 +467,8 @@ class RunService:
         workspace = self.workspace_for_record(record)
         target_rgb = workspace.images_full_rgb
         target_mapir = workspace.images_full_mapir
+        camera_targets = set(record.parameters.get('camera_targets') or ['rgb', 'mapir'])
+        target_thermal = workspace.images_full_thermal
 
         def _reset_target(target_dir: Path) -> None:
             target_dir.mkdir(parents=True, exist_ok=True)
@@ -481,8 +485,13 @@ class RunService:
 
         _reset_target(target_rgb)
         _reset_target(target_mapir)
-        _copy_inputs(upload_dir / 'rgb', target_rgb)
-        _copy_inputs(upload_dir / 'mapir', target_mapir)
+        _reset_target(target_thermal)
+        if 'rgb' in camera_targets:
+            _copy_inputs(upload_dir / 'rgb', target_rgb)
+        if 'mapir' in camera_targets:
+            _copy_inputs(upload_dir / 'mapir', target_mapir)
+        if 'thermal' in camera_targets:
+            _copy_inputs(upload_dir / 'thermal', target_thermal)
 
     def stage_saved_orthophotos_for_run(self, run_id: str, source_run_id: str) -> None:
         source = self.load_run(source_run_id)
@@ -490,6 +499,7 @@ class RunService:
         targets = {
             'orthophoto_rgb': workspace.ortho_rgb,
             'orthophoto_mapir': workspace.ortho_mapir,
+            'orthophoto_thermal': workspace.ortho_thermal,
         }
         for key, target in targets.items():
             source_path = source.outputs.get(key)
@@ -545,7 +555,7 @@ class RunService:
         saved_outputs = {
             key: value
             for key, value in latest_run.outputs.items()
-            if key in {'orthophoto_rgb', 'orthophoto_mapir'}
+            if key in {'orthophoto_rgb', 'orthophoto_mapir', 'orthophoto_thermal'}
             and value
             and Path(value).exists()
             and 'orthophotos' in Path(value).parts
@@ -579,6 +589,12 @@ class RunService:
         thread.start()
         return record
 
+    def _as_positive_int(self, value: object, fallback: int) -> int:
+        try:
+            return max(1, int(value))
+        except (TypeError, ValueError):
+            return fallback
+
     def request_stop(self, run_id: str) -> RunRecord:
         record = self.load_run(run_id)
         if record.status not in {'queued', 'running'}:
@@ -607,7 +623,7 @@ class RunService:
             raise RunCancelled('Run stopped by operator.')
 
     def _stop_odm_containers(self) -> None:
-        for container_name in ('agrivision-odm-rgb', 'agrivision-odm-mapir'):
+        for container_name in ('agrivision-odm-rgb', 'agrivision-odm-mapir', 'agrivision-odm-thermal'):
             with contextlib.suppress(FileNotFoundError):
                 subprocess.run(
                     ['docker', 'stop', container_name],
@@ -625,6 +641,8 @@ class RunService:
             self._raise_if_cancelled(run_id)
             self.update_stage(run_id, 'stage_inputs', 'running', 'Staging MAPIR and RGB inputs')
             self._clear_discoverable_outputs_for_run(record)
+            self.update_stage(run_id, 'stage_inputs', 'running', 'Staging camera inputs')
+            self._clear_discoverable_outputs_for_run(record)
             self.stage_inputs_for_run(run_id)
             source_orthophoto_run_id = record.parameters.get('source_orthophoto_run_id')
             if source_orthophoto_run_id and not record.selected_steps.run_odm:
@@ -634,6 +652,7 @@ class RunService:
 
             selected = record.selected_steps
             orthophoto_creation_only = self._is_orthophoto_creation_run(record)
+            camera_targets = set(record.parameters.get('camera_targets') or ['rgb', 'mapir'])
             def callback(stage_key: str, message: str, state: str = 'running') -> None:
                 self._raise_if_cancelled(run_id)
                 self.update_stage(run_id, stage_key, state, message)
@@ -641,8 +660,11 @@ class RunService:
             with log_path.open('a', encoding='utf-8') as log_handle:
                 with contextlib.redirect_stdout(log_handle), contextlib.redirect_stderr(log_handle):
                     run_full_pipeline(
-                        run_resize_step=selected.resize_images,
+                        run_resize_step=False,
                         skip_odm=not selected.run_odm,
+                        skip_odm_rgb='rgb' not in camera_targets,
+                        skip_odm_mapir='mapir' not in camera_targets,
+                        skip_odm_thermal='thermal' not in camera_targets,
                         skip_ndvi=orthophoto_creation_only,
                         skip_grid=orthophoto_creation_only,
                         skip_weather=not selected.fetch_weather,
@@ -735,10 +757,16 @@ class RunService:
     def _artifact_stage(self, record: RunRecord, key: str) -> str:
         if key == 'report_html':
             return 'generate_report'
+        if key == 'disease_risk_summary':
+            return 'disease_risk'
         if key.startswith('orthophoto_'):
             if record.parameters.get('source_orthophoto_run_id') and not record.selected_steps.run_odm:
                 return 'stage_inputs'
-            return 'run_odm_mapir' if key == 'orthophoto_mapir' else 'run_odm_rgb'
+            if key == 'orthophoto_mapir':
+                return 'run_odm_mapir'
+            if key == 'orthophoto_thermal':
+                return 'run_odm_thermal'
+            return 'run_odm_rgb'
         if key.startswith('grid_'):
             return 'generate_grid'
         return 'compute_ndvi'
@@ -787,6 +815,7 @@ class RunService:
         record = RunRecord.model_validate(self.storage.read_json(run_dir / 'status.json'))
         workspace = self.workspace_for_record(record)
         selected = record.selected_steps
+        camera_targets = set(record.parameters.get('camera_targets') or ['rgb', 'mapir'])
         report_candidates = [
             workspace.report_path,
             workspace.output_root / 'report' / 'index.html',
@@ -798,6 +827,7 @@ class RunService:
                     'ndvi_tif': workspace.ndvi_output / 'ndvi.tif',
                     'ndvi_metadata': workspace.ndvi_output / 'metadata.json',
                     'grid_metadata': workspace.ndvi_output / 'grid_metadata.json',
+                    'disease_risk_summary': workspace.ndvi_output / 'disease_risk' / 'summary.json',
                     'ndvi_color_png': workspace.ndvi_output / 'ndvi_color.png',
                     'grid_overlay_png': workspace.ndvi_output / 'ndvi_grid_overlay.png',
                     'grid_cells_csv': workspace.ndvi_output / 'ndvi_grid_cells.csv',
@@ -808,8 +838,9 @@ class RunService:
             ),
             **(
                 {
-                    'orthophoto_rgb': workspace.ortho_rgb,
-                    'orthophoto_mapir': workspace.ortho_mapir,
+                    **({'orthophoto_rgb': workspace.ortho_rgb} if 'rgb' in camera_targets else {}),
+                    **({'orthophoto_mapir': workspace.ortho_mapir} if 'mapir' in camera_targets else {}),
+                    **({'orthophoto_thermal': workspace.ortho_thermal} if 'thermal' in camera_targets else {}),
                 }
                 if include_orthophotos
                 else {}
@@ -827,6 +858,8 @@ class RunService:
                 stored_path = self._persist_output_for_run(record, path, 'orthophoto_rgb.tif')
             elif name == 'orthophoto_mapir':
                 stored_path = self._persist_output_for_run(record, path, 'orthophoto_mapir.tif')
+            elif name == 'orthophoto_thermal':
+                stored_path = self._persist_output_for_run(record, path, 'orthophoto_thermal.tif')
             outputs[name] = str(stored_path)
             artifacts[name] = self._artifact_record(
                 record,
@@ -835,7 +868,6 @@ class RunService:
                 discovered_path=path,
                 discovered_at=discovered_at,
             )
-
         report_path = next((path for path in report_candidates if path.exists()), None)
         if selected.generate_report and report_path is not None:
             stored_report = self._persist_report_for_run(record, report_path)

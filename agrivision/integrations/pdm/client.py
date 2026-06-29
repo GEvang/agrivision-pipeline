@@ -153,6 +153,25 @@ class PdmClient:
             summary['notes'].append(str(exc))
         return summary
 
+    def supports_fuzzy_risk(self) -> bool:
+        try:
+            payload = self._request('GET', '/api/v1/openapi.json', expected_ok=False).json()
+        except Exception:
+            return False
+        paths = payload.get('paths', {}) if isinstance(payload, dict) else {}
+        return '/api/v1/fuzzy-risk/forecast/' in paths or '/api/v1/fuzzy-risk/historical/' in paths
+
+    def list_crops(self) -> list[dict[str, Any]]:
+        payload = self._request('GET', '/api/v1/crop/').json()
+        return payload if isinstance(payload, list) else []
+
+    def list_threat_models(self, *, crop_id: str | None = None) -> list[dict[str, Any]]:
+        path = '/api/v1/threat-model/'
+        if crop_id:
+            path = f'{path}?crop_id={crop_id}'
+        payload = self._request('GET', path).json()
+        return payload if isinstance(payload, list) else []
+
     def list_pest_models(self) -> list[dict[str, Any]]:
         payload = self._request('GET', '/api/v1/pest-model/').json()
         pests = payload.get('pests', []) if isinstance(payload, dict) else []
@@ -210,6 +229,14 @@ class PdmClient:
         except ValueError:
             return {'message': response.text}
 
+    def create_parcel_lat_lon(self, *, name: str, latitude: float, longitude: float, timeout: int | None = None) -> dict[str, Any]:
+        payload = {'name': name, 'latitude': latitude, 'longitude': longitude}
+        response = self._request('POST', '/api/v1/parcel/', json=payload, timeout=timeout or max(self.config.timeout_seconds, 90))
+        try:
+            return response.json() if response.content else {}
+        except ValueError:
+            return {'message': response.text}
+
     def upload_weather_dataset(self, *, parcel_id: int, records: list[dict[str, Any]]) -> dict[str, Any]:
         response = self._request('POST', f'/api/v1/data/{parcel_id}/', json=records)
         try:
@@ -253,6 +280,39 @@ class PdmClient:
         if isinstance(payload, list):
             return {'entries': payload, '_request_path': path}
         return {'raw_text': text, '_request_path': path}
+
+    def calculate_fuzzy_risk(
+        self,
+        *,
+        parcel_id: int,
+        threat_model_ids: list[str],
+        from_date: str | None = None,
+        to_date: str | None = None,
+        days_ahead: int = 7,
+        mode: str = 'historical',
+    ) -> dict[str, Any]:
+        if mode == 'forecast' or not from_date or not to_date:
+            path = '/api/v1/fuzzy-risk/forecast/?format=json-ld'
+            payload = {
+                'parcel_id': parcel_id,
+                'threat_model_ids': threat_model_ids,
+                'days_ahead': days_ahead,
+            }
+        else:
+            path = '/api/v1/fuzzy-risk/historical/?format=json-ld'
+            payload = {
+                'parcel_id': parcel_id,
+                'threat_model_ids': threat_model_ids,
+                'from_date': from_date,
+                'to_date': to_date,
+            }
+        response = self._request('POST', path, json=payload, timeout=max(self.config.timeout_seconds, 90))
+        parsed = response.json() if response.content else {}
+        if isinstance(parsed, dict):
+            parsed.setdefault('_request_path', path)
+            parsed.setdefault('_request_payload', payload)
+            return parsed
+        return {'entries': parsed, '_request_path': path, '_request_payload': payload}
 
 
 
