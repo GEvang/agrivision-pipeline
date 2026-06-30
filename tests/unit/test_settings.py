@@ -2,6 +2,7 @@ import json
 from pathlib import Path
 
 from agrivision.config import runtime, settings
+from agrivision.services.weather import client as weather_client
 
 
 def write_test_config(path: Path) -> None:
@@ -188,3 +189,39 @@ weather:
 
     assert cfg["location"]["name"] == "Runtime Farm"
     assert cfg["weather"]["base_url"] == "http://runtime-weather"
+
+
+def test_collect_weather_summary_disables_weather_without_openweather_key(monkeypatch, tmp_path):
+    config_path = tmp_path / "config.yaml"
+    runtime_settings_path = tmp_path / "runtime" / "settings.json"
+    config_path.write_text("weather:\n  base_url: \"http://example\"\n", encoding="utf-8")
+
+    monkeypatch.setattr(settings, "_CONFIG_PATH", config_path)
+    monkeypatch.setattr(settings, "_RUNTIME_SETTINGS_PATH", runtime_settings_path)
+    monkeypatch.delenv("OPENWEATHER_API_KEY", raising=False)
+
+    summary = weather_client.collect_weather_summary()
+
+    assert summary["enabled"] is False
+    assert any("Missing weather.openweather_api_key" in note for note in summary["notes"])
+
+
+def test_load_local_env_prefers_runtime_env_file(monkeypatch, tmp_path):
+    config_path = tmp_path / "config.yaml"
+    runtime_settings_path = tmp_path / "runtime" / "settings.json"
+    runtime_env_path = tmp_path / "runtime" / "app-secrets.env"
+    config_env_path = tmp_path / ".env"
+    config_path.write_text("weather: {}\n", encoding="utf-8")
+    runtime_settings_path.parent.mkdir(parents=True, exist_ok=True)
+    runtime_settings_path.write_text("{}", encoding="utf-8")
+    runtime_env_path.write_text("OPENWEATHER_API_KEY=runtime-key\n", encoding="utf-8")
+    config_env_path.write_text("OPENWEATHER_API_KEY=config-key\n", encoding="utf-8")
+
+    monkeypatch.setattr(settings, "_CONFIG_PATH", config_path)
+    monkeypatch.setattr(settings, "_RUNTIME_SETTINGS_PATH", runtime_settings_path)
+    monkeypatch.delenv("OPENWEATHER_API_KEY", raising=False)
+
+    settings.load_local_env()
+
+    assert settings.get_runtime_env_path() == runtime_env_path
+    assert __import__("os").environ["OPENWEATHER_API_KEY"] == "runtime-key"

@@ -82,6 +82,19 @@ def test_settings_service_creates_runtime_settings_on_first_launch(tmp_path: Pat
     assert service.get_settings_view()['non_secret']['settings_file'] == str(runtime_settings_path)
 
 
+def test_settings_service_defaults_secret_env_to_runtime_directory(tmp_path: Path) -> None:
+    config_path = tmp_path / 'config.yaml'
+    runtime_settings_path = tmp_path / 'runtime' / 'settings.json'
+    config_path.write_text('weather:\n  base_url: http://example\n', encoding='utf-8')
+
+    service = SettingsService(
+        config_path=config_path,
+        runtime_settings_path=runtime_settings_path,
+    )
+
+    assert service.env_path == tmp_path / 'runtime' / 'app-secrets.env'
+
+
 def test_settings_view_uses_default_service_credentials_when_env_is_missing(tmp_path: Path) -> None:
     config_path = tmp_path / 'config.yaml'
     config_path.write_text('weather:\n  base_url: http://example\n', encoding='utf-8')

@@ -15,6 +15,7 @@ from agrivision.config.settings import (
     _deep_merge,
     _remove_yaml_secrets,
     get_config_path,
+    get_runtime_env_path,
     get_runtime_settings_path,
     load_local_env,
     load_raw_config,
@@ -39,8 +40,8 @@ class SettingsService:
         runtime_settings_path: Path | None = None,
     ) -> None:
         self.config_path = config_path or get_config_path()
-        self.env_path = env_path or self.config_path.parent / '.env'
         self.runtime_settings_path = runtime_settings_path or get_runtime_settings_path()
+        self.env_path = env_path or self.runtime_settings_path.with_name('app-secrets.env')
         self.ensure_runtime_settings_file()
 
     def ensure_runtime_settings_file(self) -> None:

@@ -358,6 +358,8 @@ def collect_pdm_snapshot(
         base_summary['raw_payload_artifact'] = _write_json('summary.json', base_summary, artifact_dir=artifact_dir)
         return base_summary
 
+    client = PdmClient(get_pdm_service_config())
+    client.login()
     raw_payload = client.calculate_risk_index(
         parcel_id=int(base_summary['remote_parcel_id']),
         model_ids=[base_summary['remote_model_id']],

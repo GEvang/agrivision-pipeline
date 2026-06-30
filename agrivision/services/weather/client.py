@@ -518,6 +518,7 @@ def collect_weather_summary(
     }
 
     try:
+        _require_openweather_key()
         token = get_token()
         _validate_weather_runtime(token)
     except Exception as exc:

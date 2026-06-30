@@ -19,8 +19,11 @@ DEFAULT_SERVICE_USERNAME = "dummy@email.com"
 DEFAULT_SERVICE_PASSWORD = "StrongPass1@"
 
 
-def load_local_env(env_path: Path | None = None) -> None:
-    resolved = env_path or (get_config_path().parent / ".env")
+def get_runtime_env_path() -> Path:
+    return get_runtime_settings_path().with_name("app-secrets.env")
+
+
+def _load_env_file(resolved: Path) -> None:
     if not resolved.exists():
         return
     for raw_line in resolved.read_text(encoding="utf-8").splitlines():
@@ -32,6 +35,16 @@ def load_local_env(env_path: Path | None = None) -> None:
         value = value.strip().strip('"').strip("'")
         if key and key not in os.environ:
             os.environ[key] = value
+
+
+def load_local_env(env_path: Path | None = None) -> None:
+    if env_path is not None:
+        _load_env_file(env_path)
+        return
+    runtime_env_path = get_runtime_env_path()
+    config_env_path = get_config_path().parent / ".env"
+    for candidate in (runtime_env_path, config_env_path):
+        _load_env_file(candidate)
 
 
 def _remove_yaml_secrets(config: dict[str, Any]) -> dict[str, Any]:
