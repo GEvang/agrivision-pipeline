@@ -76,21 +76,38 @@ function Write-HelperStatus() {
 }
 
 function Invoke-Docker([string[]]$ArgumentList, [string]$LogPath) {
-  $stdoutPath = Join-Path $WorkDir ([guid]::NewGuid().ToString() + ".stdout.log")
-  $stderrPath = Join-Path $WorkDir ([guid]::NewGuid().ToString() + ".stderr.log")
-  try {
-    $process = Start-Process docker -ArgumentList $ArgumentList -Wait -NoNewWindow -PassThru `
-      -RedirectStandardOutput $stdoutPath -RedirectStandardError $stderrPath
-    if (Test-Path $stdoutPath) {
-      Get-Content $stdoutPath | Out-File -FilePath $LogPath -Append -Encoding utf8
+  $quotedArgs = $ArgumentList | ForEach-Object {
+    if ($_ -eq "") {
+      '""'
+    } elseif ($_ -notmatch '[\s"]') {
+      $_
+    } else {
+      '"' + (($_ -replace '(\\*)"', '$1$1\"') -replace '(\\+)$', '$1$1') + '"'
     }
-    if (Test-Path $stderrPath) {
-      Get-Content $stderrPath | Out-File -FilePath $LogPath -Append -Encoding utf8
-    }
-    return $process.ExitCode
-  } finally {
-    Remove-Item $stdoutPath, $stderrPath -Force -ErrorAction SilentlyContinue
   }
+
+  $psi = New-Object System.Diagnostics.ProcessStartInfo
+  $psi.FileName = "docker"
+  $psi.Arguments = ($quotedArgs -join " ")
+  $psi.UseShellExecute = $false
+  $psi.RedirectStandardOutput = $true
+  $psi.RedirectStandardError = $true
+  $psi.CreateNoWindow = $true
+
+  $process = New-Object System.Diagnostics.Process
+  $process.StartInfo = $psi
+  $null = $process.Start()
+  $stdout = $process.StandardOutput.ReadToEnd()
+  $stderr = $process.StandardError.ReadToEnd()
+  $process.WaitForExit()
+
+  if ($stdout) {
+    $stdout | Out-File -FilePath $LogPath -Append -Encoding utf8
+  }
+  if ($stderr) {
+    $stderr | Out-File -FilePath $LogPath -Append -Encoding utf8
+  }
+  return $process.ExitCode
 }
 
 function Invoke-Prepare([string]$serviceKey, [string]$LogPath) {

@@ -3,6 +3,7 @@ from __future__ import annotations
 import os
 from pathlib import Path
 
+import agrivision.services.settings_service as settings_service_module
 from agrivision.app.schemas.settings import (
     CredentialsUpdateRequest,
     SettingsUpdateRequest,
@@ -109,3 +110,46 @@ def test_settings_view_uses_default_service_credentials_when_env_is_missing(tmp_
     assert masked['shared_username'] == 'du***om'
     assert masked['shared_password'] == 'St***1@'
     assert config_settings.DEFAULT_SERVICE_USERNAME == 'dummy@email.com'
+
+
+def test_update_credentials_resyncs_and_restarts_affected_services(tmp_path: Path, monkeypatch) -> None:
+    config_path = tmp_path / 'config.yaml'
+    config_path.write_text('weather:\n  base_url: http://example\n', encoding='utf-8')
+    runtime_settings_path = tmp_path / 'runtime' / 'settings.json'
+    service = SettingsService(
+        config_path=config_path,
+        env_path=tmp_path / 'runtime' / 'app-secrets.env',
+        runtime_settings_path=runtime_settings_path,
+    )
+
+    restarted: list[str] = []
+
+    monkeypatch.setattr(
+        settings_service_module.weather_client,
+        'prepare_weather_repo_and_env',
+        lambda: None,
+    )
+    monkeypatch.setattr(
+        settings_service_module.irrigation_runtime,
+        'prepare_repo_and_env',
+        lambda: None,
+    )
+    monkeypatch.setattr(
+        settings_service_module.pdm_runtime,
+        'prepare_repo_and_env',
+        lambda: None,
+    )
+    monkeypatch.setattr(
+        settings_service_module.service_control,
+        'service_controls',
+        lambda: {'available': True, 'reason': ''},
+    )
+    monkeypatch.setattr(
+        settings_service_module.service_control,
+        'restart_service',
+        lambda key, timeout_seconds=240: restarted.append(key),
+    )
+
+    service.update_credentials(CredentialsUpdateRequest(openweather_api_key='abc123'))
+
+    assert restarted == ['weather']

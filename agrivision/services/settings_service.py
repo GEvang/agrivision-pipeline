@@ -21,7 +21,11 @@ from agrivision.config.settings import (
     load_raw_config,
     load_runtime_settings,
 )
+from agrivision.services import service_control
+from agrivision.services.irrigation import runtime as irrigation_runtime
+from agrivision.services.pdm import runtime as pdm_runtime
 from agrivision.services.runtime import mask_env_value, update_env_file
+from agrivision.services.weather import client as weather_client
 
 
 class SettingsService:
@@ -223,4 +227,39 @@ class SettingsService:
             update_env_file(self.env_path, values)
             for env_name, value in values.items():
                 __import__('os').environ[env_name] = value
+            self._sync_changed_service_credentials(values)
         return self.get_settings_view()
+
+    def _sync_changed_service_credentials(self, values: dict[str, str]) -> None:
+        service_keys: list[str] = []
+        if any(
+            env_name in values
+            for env_name in ('WEATHER_USERNAME', 'WEATHER_PASSWORD', 'OPENWEATHER_API_KEY')
+        ):
+            weather_client.prepare_weather_repo_and_env()
+            service_keys.append('weather')
+        if any(
+            env_name in values
+            for env_name in ('IRRIGATION_EMAIL', 'IRRIGATION_PASSWORD', 'IRRIGATION_TOKEN')
+        ):
+            irrigation_runtime.prepare_repo_and_env()
+            service_keys.append('irrigation')
+        if any(
+            env_name in values
+            for env_name in ('PDM_USERNAME', 'PDM_PASSWORD', 'PDM_TOKEN')
+        ):
+            pdm_runtime.prepare_repo_and_env()
+            service_keys.append('pdm')
+
+        controls = service_control.service_controls()
+        if not controls.get('available'):
+            return
+
+        for service_key in service_keys:
+            try:
+                service_control.restart_service(service_key, timeout_seconds=240)
+            except Exception:
+                # Persisting credentials should still succeed even if the companion service
+                # cannot be restarted immediately. The next explicit start/restart will
+                # pick up the synchronized .env file.
+                continue
