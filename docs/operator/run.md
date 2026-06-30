@@ -1,4 +1,4 @@
-# Run AgriVision Pipeline
+# Run AgriVision
 
 ## Recommended startup
 
@@ -20,6 +20,7 @@ Then open:
 
 - the dashboard creates `runtime/settings.json` if it does not exist
 - missing optional services appear in Settings as `Not installed` or `Not connected`
+- the Weather settings form only requires an OpenWeather API key when Weather enrichment is needed
 - missing `.env` does not block startup
 
 ## Where outputs live

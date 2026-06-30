@@ -1,6 +1,6 @@
-# AgriVision Pipeline
+# AgriVision
 
-AgriVision is a dashboard-first drone imagery workflow for orthophotos, vegetation analysis, disease-risk scoring, farmer-facing reports, and optional OpenAgri service integrations.
+AgriVision is a dashboard-first crop risk assessment tool for orthophotos, vegetation analysis, disease-risk scoring, farmer-facing reports, and optional OpenAgri service integrations.
 
 The simplest way to start it is:
 
@@ -20,7 +20,7 @@ The dashboard starts even if `.env` is missing and even if optional services are
 
 1. Install Docker Desktop.
 2. Clone or download AgriVision.
-3. Double-click [Start AgriVision Windows.bat](D:\Jobs\Aigaio Skytech\OpenAgri\OpenAgri_Repository\agrivision-pipeline\Start AgriVision Windows.bat).
+3. Double-click `Start AgriVision Windows.bat`.
 4. Your browser opens at [http://127.0.0.1:8008](http://127.0.0.1:8008).
 
 ### Linux
@@ -46,7 +46,7 @@ chmod +x "Start AgriVision Linux.sh"
 chmod +x "Start AgriVision macOS.command"
 ```
 
-4. Double-click [Start AgriVision macOS.command](D:\Jobs\Aigaio Skytech\OpenAgri\OpenAgri_Repository\agrivision-pipeline\Start AgriVision macOS.command).
+4. Double-click `Start AgriVision macOS.command`.
 5. Your browser opens at [http://127.0.0.1:8008](http://127.0.0.1:8008).
 
 ## What Works On First Launch
@@ -119,12 +119,12 @@ Python virtualenv setup is still supported for developers and advanced operators
 
 Useful references:
 
-- [docs/operator/install.md](D:\Jobs\Aigaio Skytech\OpenAgri\OpenAgri_Repository\agrivision-pipeline\docs\operator\install.md)
-- [docs/operator/run.md](D:\Jobs\Aigaio Skytech\OpenAgri\OpenAgri_Repository\agrivision-pipeline\docs\operator\run.md)
-- [docs/operator/windows-self-hosting.md](D:\Jobs\Aigaio Skytech\OpenAgri\OpenAgri_Repository\agrivision-pipeline\docs\operator\windows-self-hosting.md)
-- [docs/developer/local-dev.md](D:\Jobs\Aigaio Skytech\OpenAgri\OpenAgri_Repository\agrivision-pipeline\docs\developer\local-dev.md)
-- [docs/developer/testing.md](D:\Jobs\Aigaio Skytech\OpenAgri\OpenAgri_Repository\agrivision-pipeline\docs\developer\testing.md)
-- [docs/developer/config.md](D:\Jobs\Aigaio Skytech\OpenAgri\OpenAgri_Repository\agrivision-pipeline\docs\developer\config.md)
+- `docs/operator/install.md`
+- `docs/operator/run.md`
+- `docs/operator/windows-self-hosting.md`
+- `docs/developer/local-dev.md`
+- `docs/developer/testing.md`
+- `docs/developer/config.md`
 
 ## API Docs
 

@@ -3,7 +3,7 @@
 <section class="panel run-workflow">
   <div class="panel-header">
     <div>
-      <h2>{{ 'Complete dataset' if completion_context else 'Start Processing' }}</h2>
+      <h2>{{ 'Complete dataset' if completion_context else 'New Analysis' }}</h2>
       <p class="muted">
         {% if completion_context %}
         Add the missing orthophotos for {{ completion_context.dataset_name }}.

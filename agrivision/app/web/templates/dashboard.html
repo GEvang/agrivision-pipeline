@@ -6,7 +6,7 @@
     <h2>Dashboard</h2>
     <p class="muted">{{ total_runs }} total runs, {{ active_runs }} active. Monitor services, review outputs, and continue field analysis.</p>
   </div>
-  <a class="button-link primary-action" href="/runs/new">Start Processing</a>
+  <a class="button-link primary-action" href="/runs/new">New Analysis</a>
 </section>
 
 {% if missing_services %}
@@ -73,7 +73,7 @@
       {% if latest_report %}
       <a class="button-link" href="/reports/{{ latest_report.run_id }}/view">Open report</a>
       {% else %}
-      <a class="button-link" href="/runs/new">Start Processing</a>
+      <a class="button-link" href="/runs/new">New Analysis</a>
       {% endif %}
     </div>
     {% if latest_report %}

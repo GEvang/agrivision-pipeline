@@ -6,9 +6,9 @@
     <p class="muted">{{ filtered_count }} shown from {{ total_runs }} total runs</p>
   </div>
   <div class="button-row">
-    <a class="button-link" href="/runs/new">Start Processing</a>
+    <a class="button-link" href="/runs/new">New Analysis</a>
     <form method="post" action="/ui/runs/clear-incomplete" onsubmit="return confirm('Delete failed, cancelled, and stale queued/running run records?');">
-      <button class="button-link secondary" type="submit">Clear incomplete</button>
+      <button class="button-link secondary" type="submit">Clean run history</button>
     </form>
   </div>
 </section>
