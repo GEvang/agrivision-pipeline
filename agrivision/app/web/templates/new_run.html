@@ -203,10 +203,6 @@
             submitButton.disabled = true;
             submitButton.textContent = 'Creating run...';
           }
-          const logWindow = window.open('', '_blank');
-          if (logWindow) {
-            logWindow.document.write('<!doctype html><title>Starting run</title><body style="font-family:Segoe UI,Arial,sans-serif;padding:24px;">Creating run...</body>');
-          }
           try {
             const initResponse = await fetch(form.dataset.initUrl, {
               method: 'POST',
@@ -222,9 +218,6 @@
             if (!initResponse.ok) {
               throw new Error(Array.isArray(initPayload.detail) ? initPayload.detail.join(', ') : initPayload.detail || 'Could not create run.');
             }
-            if (logWindow) {
-              logWindow.location.href = initPayload.redirect;
-            }
             if (submitButton) submitButton.textContent = 'Uploading files... 0%';
             const xhr = new XMLHttpRequest();
             xhr.open('POST', initPayload.upload_url);
@@ -236,14 +229,30 @@
             });
             xhr.addEventListener('load', () => {
               if (xhr.status >= 200 && xhr.status < 300) {
-                window.location.href = initPayload.redirect;
+                let uploadPayload = null;
+                try {
+                  uploadPayload = xhr.responseText ? JSON.parse(xhr.responseText) : null;
+                } catch (parseError) {
+                  uploadPayload = null;
+                }
+                window.location.href = uploadPayload?.redirect || initPayload.redirect;
                 return;
               }
               if (submitButton) {
                 submitButton.disabled = false;
                 submitButton.textContent = originalButtonText;
               }
-              window.alert('Upload failed. The run page has the failure details.');
+              let detail = 'Upload failed before the dashboard received the files.';
+              try {
+                const payload = xhr.responseText ? JSON.parse(xhr.responseText) : null;
+                if (Array.isArray(payload?.detail)) {
+                  detail = payload.detail.join(', ');
+                } else if (payload?.detail) {
+                  detail = payload.detail;
+                }
+              } catch (parseError) {
+              }
+              window.alert(detail);
             });
             xhr.addEventListener('error', () => {
               if (submitButton) {
@@ -254,7 +263,6 @@
             });
             xhr.send(formData);
           } catch (error) {
-            if (logWindow) logWindow.close();
             if (submitButton) {
               submitButton.disabled = false;
               submitButton.textContent = originalButtonText;

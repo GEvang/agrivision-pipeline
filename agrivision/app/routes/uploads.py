@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import shutil
+import time
 import warnings
 import threading
 from datetime import datetime, timezone
@@ -38,6 +39,7 @@ ORTHOPHOTO_OUTPUT_KEYS = {
     'thermal': 'orthophoto_thermal',
 }
 UPLOAD_VALIDATE_STAGE = 'upload_validate'
+PENDING_UPLOAD_TIMEOUT_SECONDS = 300
 
 
 def _selected_uploads(uploads: list[UploadFile]) -> list[UploadFile]:
@@ -129,6 +131,41 @@ def _pending_upload_response(record) -> dict[str, str]:
         'redirect': f'/runs/{record.run_id}',
         'upload_url': f'/ui/orthophotos/{record.run_id}/files',
     }
+
+
+def _has_pending_upload_content(upload_dir: Path, run_id: str) -> bool:
+    pending_root = upload_dir / '.pending' / 'orthophotos' / run_id
+    if pending_root.exists():
+        return any(path.is_file() for path in pending_root.rglob('*'))
+    return any(path.is_file() for path in upload_dir.rglob('*') if path.name != 'manifest.json')
+
+
+def _expire_pending_upload_if_idle(run_id: str, *, timeout_seconds: int = PENDING_UPLOAD_TIMEOUT_SECONDS) -> None:
+    time.sleep(max(timeout_seconds, 1))
+    try:
+        record = deps.run_service.load_run(run_id)
+    except FileNotFoundError:
+        return
+    if record.status != 'running':
+        return
+    if record.current_stage != UPLOAD_VALIDATE_STAGE or record.stage_message != 'Waiting for upload':
+        return
+    upload_dir = Path(record.input_path)
+    if _has_pending_upload_content(upload_dir, run_id):
+        return
+    message = f'Upload did not start within {timeout_seconds} seconds.'
+    _log_run_event(run_id, message)
+    _fail_pending_orthophoto_run(run_id, [message], 'Upload timed out before files reached the dashboard.')
+
+
+def _schedule_pending_upload_timeout(run_id: str, *, timeout_seconds: int = PENDING_UPLOAD_TIMEOUT_SECONDS) -> None:
+    thread = threading.Thread(
+        target=_expire_pending_upload_if_idle,
+        kwargs={'run_id': run_id, 'timeout_seconds': timeout_seconds},
+        daemon=True,
+        name=f'agrivision-upload-timeout-{run_id}',
+    )
+    thread.start()
 
 
 async def _store_images(kind: str, uploads: list[UploadFile], target_dir: Path) -> tuple[list[str], list[str]]:
@@ -382,6 +419,7 @@ async def init_orthophotos_ui(payload: dict = Body(...)) -> dict[str, str]:
         import_camera_targets=import_camera_targets,
         notes='Mixed ODM/import orthophoto intake' if raw_camera_targets and import_camera_targets else None,
     )
+    _schedule_pending_upload_timeout(record.run_id)
     return _pending_upload_response(record)
 
 
@@ -404,6 +442,7 @@ async def init_complete_orthophoto_dataset_ui(run_id: str, payload: dict = Body(
         source_orthophoto_run_id=run_id,
         notes='Completed missing orthophotos',
     )
+    _schedule_pending_upload_timeout(record.run_id)
     return _pending_upload_response(record)
 
 

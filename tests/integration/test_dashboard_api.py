@@ -378,6 +378,49 @@ def test_upload_rejects_excess_files_per_group_and_cleans_up(tmp_path: Path, mon
     assert list(storage.layout.uploads_root.glob('*')) == []
 
 
+def test_pending_orthophoto_run_times_out_when_upload_never_arrives(tmp_path: Path, monkeypatch) -> None:
+    storage = StorageService(project_root=tmp_path)
+    run_service = RunService(storage)
+    report_service = ReportService(run_service=run_service)
+    config_path = tmp_path / 'config.yaml'
+    config_path.write_text('weather:\n  base_url: http://example\n', encoding='utf-8')
+    settings_service = SettingsService(config_path=config_path, env_path=tmp_path / '.env')
+
+    monkeypatch.setattr(deps, 'storage_service', storage)
+    monkeypatch.setattr(deps, 'run_service', run_service)
+    monkeypatch.setattr(deps, 'report_service', report_service)
+    monkeypatch.setattr(deps, 'settings_service', settings_service)
+    monkeypatch.setattr(upload_routes.time, 'sleep', lambda _: None)
+
+    client = TestClient(api.app)
+    response = client.post(
+        '/ui/orthophotos/init',
+        json={
+            'dataset_name': 'Dataset API',
+            'orthophoto_preset': 'balanced',
+            'raw_camera_targets': ['rgb'],
+            'import_camera_targets': [],
+        },
+    )
+
+    assert response.status_code == 200
+    run_id = response.json()['run_id']
+
+    upload_routes._expire_pending_upload_if_idle(run_id, timeout_seconds=1)
+    record = run_service.load_run(run_id)
+
+    assert record.status == 'failed'
+    assert record.stage_message == 'Upload timed out before files reached the dashboard.'
+    assert record.errors == ['Upload did not start within 1 seconds.']
+
+
+def test_new_run_template_waits_for_upload_completion_before_redirect() -> None:
+    template = Path('agrivision/app/web/templates/new_run.html').read_text(encoding='utf-8')
+
+    assert "window.open('', '_blank')" not in template
+    assert "window.location.href = uploadPayload?.redirect || initPayload.redirect;" in template
+
+
 def test_runs_api_surfaces_corrupted_run_records(tmp_path: Path, monkeypatch) -> None:
     storage = StorageService(project_root=tmp_path)
     run_service = RunService(storage)
