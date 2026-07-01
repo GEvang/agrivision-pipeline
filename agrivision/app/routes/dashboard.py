@@ -22,7 +22,7 @@ def dashboard(request: Request) -> HTMLResponse:
     status_summary: dict[str, int] = {}
     for run in runs:
         status_summary[run.status] = status_summary.get(run.status, 0) + 1
-    latest_report = deps.report_service.latest_report(generate_preview=False)
+    latest_report = deps.report_service.latest_report(generate_preview=True)
     active_runs = sum(1 for run in runs if run.status in {'queued', 'running'})
     return deps.templates.TemplateResponse(
         request,

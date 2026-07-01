@@ -1,199 +1,224 @@
 {% extends 'base.html' %}
+{% block container_class %}container-wide{% endblock %}
 {% block content %}
-<section class="dashboard-hero">
+{% set completed_count = status_summary.get('completed', 0) %}
+{% set queued_count = status_summary.get('queued', 0) %}
+{% set running_count = status_summary.get('running', 0) %}
+{% set attention_count = status_summary.get('failed', 0) + status_summary.get('cancelled', 0) %}
+{% set latest_quality = latest_report.quality if latest_report and latest_report.quality else {} %}
+{% set quality_mean = latest_quality.get('mean') %}
+{% set crop_health_score = ((((quality_mean | float) + 1) * 50) | round(0, 'common') | int) if quality_mean is not none else none %}
+
+<section class="page-topbar">
   <div>
-    <span class="eyebrow">Pipeline Overview</span>
-    <h2>Dashboard</h2>
-    <p class="muted">{{ total_runs }} total runs, {{ active_runs }} active. Monitor services, review outputs, and continue field analysis.</p>
+    <h1 class="page-title">Good morning</h1>
+    <p class="page-subtitle">Here's what's happening across your analysis workspace today.</p>
   </div>
-  <a class="button-link primary-action" href="/runs/new">New Analysis</a>
+  <div class="topbar-actions">
+    <div class="topbar-chip">
+      <span class="topbar-chip-label">Queue</span>
+      <strong>{{ active_runs }} active jobs</strong>
+      <small>{{ queued_count }} queued{% if running_count %} and {{ running_count }} running{% endif %}</small>
+    </div>
+    <a class="app-button app-button-primary" href="/runs/new">Start New Analysis</a>
+  </div>
 </section>
 
 {% if missing_services %}
-<section class="panel setup-services-panel">
-  <div class="panel-header">
-    <div>
-      <span class="eyebrow">OpenAgri Services</span>
-      <h2>Service Repositories Missing</h2>
-      <p class="muted">Install the companion services before running weather, irrigation, or pest and disease enrichment.</p>
-    </div>
-    {% if service_controls.available %}
-    <form method="post" action="/ui/services/setup-missing" onsubmit="return confirm('Download and start missing OpenAgri service containers now?');">
-      <button class="primary-action setup-services-button" type="submit">Setup Services</button>
-    </form>
-    {% else %}
-    <a class="button-link secondary" href="/settings#services">Open Services</a>
-    {% endif %}
+<section class="notice-banner notice-banner-warn">
+  <div>
+    <strong>Optional services still need setup.</strong>
+    <span>Weather, irrigation, and pest analysis become available after their companion services are installed.</span>
   </div>
-  <div class="missing-service-list">
-    {% for service in missing_services %}
-    <div>
-      <strong>{{ service.name }}</strong>
-    </div>
-    {% endfor %}
-  </div>
-  {% if not service_controls.available %}
-  <p class="muted">{{ service_controls.reason }}</p>
+  {% if service_controls.available %}
+  <form method="post" action="/ui/services/setup-missing" onsubmit="return confirm('Download and start missing OpenAgri service containers now?');">
+    <button class="app-button app-button-primary" type="submit">Install Services</button>
+  </form>
+  {% else %}
+  <a class="app-button app-button-secondary" href="/settings#services">Open Settings</a>
   {% endif %}
 </section>
 {% endif %}
 
-<section class="metric-grid">
-  <div class="metric metric-feature">
-    <span class="metric-label">Active runs</span>
-    <strong>{{ active_runs }}</strong>
-    <small>{{ total_runs }} total pipeline runs</small>
-  </div>
-  {% for key, value in status_summary.items() %}
-  <div class="metric">
-    <span class="metric-label">{{ key }}</span>
-    <strong>{{ value }}</strong>
-    <span class="status-dot status-dot-{{ key }}"></span>
-  </div>
-  {% else %}
-  <div class="metric">
-    <strong>0</strong>
-    <span class="metric-label">No runs</span>
-  </div>
-  {% endfor %}
+<section class="insight-grid">
+  <article class="insight-card">
+    <div class="insight-icon insight-green">
+      <img class="icon-art icon-art-sm" src="/static/icons/tractor.png" alt="" />
+    </div>
+    <div class="insight-copy">
+      <span class="insight-label">Active Jobs</span>
+      <strong>{{ active_runs }}</strong>
+      <small>{{ running_count }} running{% if queued_count %} and {{ queued_count }} queued{% endif %}</small>
+    </div>
+  </article>
+  <article class="insight-card">
+    <div class="insight-icon insight-mint">
+      <img class="icon-art icon-art-sm" src="/static/icons/report.png" alt="" />
+    </div>
+    <div class="insight-copy">
+      <span class="insight-label">Completed Reports</span>
+      <strong>{{ completed_count }}</strong>
+      <small>{{ total_runs }} total recorded runs</small>
+    </div>
+  </article>
+  <article class="insight-card insight-card-score">
+    <div class="insight-icon insight-leaf">
+      <img class="icon-art icon-art-md" src="/static/icons/olive-branch.png" alt="" />
+    </div>
+    <div class="insight-copy">
+      <span class="insight-label">Crop Health Score</span>
+      <strong>{% if crop_health_score is not none %}{{ crop_health_score }}<small>/100</small>{% else %}--{% endif %}</strong>
+      <div class="score-track">
+        <span class="score-fill" style="width:{% if crop_health_score is not none %}{{ crop_health_score }}{% else %}0{% endif %}%"></span>
+      </div>
+      <small>{% if latest_report %}Based on the latest completed analysis{% else %}No completed analysis yet{% endif %}</small>
+    </div>
+  </article>
 </section>
 
-<section class="dashboard-command-grid">
-  <section class="panel latest-report-panel">
-    <div class="panel-header">
+<section class="dashboard-layout">
+  <article class="glass-panel latest-analysis-card">
+    <div class="card-head">
       <div>
-        <span class="eyebrow">Latest Output</span>
-        <h2>Latest Report</h2>
+        <h2>Latest Field Analysis</h2>
         {% if latest_report %}
-        <p class="muted">Run {{ latest_report.run_id }} - {{ latest_report.dataset_name }}</p>
+        <p>{{ latest_report.dataset_name }}{% if latest_report.run_name %} &middot; {{ latest_report.run_name }}{% endif %}</p>
         {% else %}
-        <p class="muted">No completed reports yet.</p>
+        <p>No completed analyses yet.</p>
         {% endif %}
       </div>
       {% if latest_report %}
-      <a class="button-link" href="/reports/{{ latest_report.run_id }}/view">Open report</a>
-      {% else %}
-      <a class="button-link" href="/runs/new">New Analysis</a>
+      <a class="app-button app-button-ghost" href="/reports/{{ latest_report.run_id }}/view">View Full Report</a>
       {% endif %}
     </div>
     {% if latest_report %}
-    <div class="report-summary report-summary-feature">
-      <div>
-        <span class="summary-label">Status</span>
-        <strong class="status-badge status-{{ latest_report.status }}">{{ latest_report.status }}</strong>
+    <div class="latest-analysis-body">
+      <div class="analysis-preview-shell">
+        {% if latest_report.preview_path %}
+        <img class="analysis-preview-image" src="/artifacts/{{ latest_report.run_id }}/preview" alt="Latest orthophoto preview" />
+        {% else %}
+        <div class="analysis-preview-placeholder">Preview unavailable</div>
+        {% endif %}
       </div>
-      <div>
-        <span class="summary-label">Created</span>
-        <strong>{{ latest_report.created_at | system_datetime }}</strong>
-      </div>
-      <div>
-        <span class="summary-label">Artifacts</span>
-        <strong>{% if latest_report.orthophoto_path %}Orthophoto ready{% else %}Report only{% endif %}</strong>
-      </div>
-      {% if latest_report.quality %}
-      <div>
-        <span class="summary-label">Index Quality</span>
-        <strong class="quality-state quality-{{ latest_report.quality.state }}">{{ latest_report.quality.state }}</strong>
-      </div>
-      <div>
-        <span class="summary-label">Valid Pixels</span>
-        <strong>{{ '%.1f'|format(latest_report.quality.valid_percent) if latest_report.quality.valid_percent is not none else '-' }}%</strong>
-      </div>
-      <div>
-        <span class="summary-label">Classification</span>
-        <strong>{{ latest_report.quality.classification_mode or '-' }}</strong>
-      </div>
-      {% endif %}
-    </div>
-    {% if latest_report.quality and latest_report.quality.flags %}
-    <div class="quality-alert">
-      <strong>Quality warnings</strong>
-      <ul>
-        {% for flag in latest_report.quality.flags %}
-        <li>{{ flag }}</li>
-        {% endfor %}
-      </ul>
-    </div>
-    {% endif %}
-    {% endif %}
-  </section>
-
-  <section class="panel service-health-panel">
-    <div class="panel-header">
-      <div>
-        <span class="eyebrow">Runtime</span>
-        <h2>Service Health</h2>
-        <p class="muted">Runtime checks before starting a pipeline run.</p>
-      </div>
-    </div>
-    <div class="service-grid service-grid-compact">
-      {% for service in service_health %}
-      <div class="service-tile service-{{ service.state }}">
-        <div>
-          <strong>{{ service.name }}</strong>
-          <span>{{ service.detail }}</span>
+      <div class="analysis-metrics-grid">
+        <div class="metric-chip">
+          <span>Status</span>
+          <strong class="status-badge status-{{ latest_report.status }}">{{ latest_report.status }}</strong>
         </div>
-        <span class="health-dot"></span>
+        <div class="metric-chip">
+          <span>Completed</span>
+          <strong>{{ latest_report.created_at | system_datetime }}</strong>
+        </div>
+        <div class="metric-chip">
+          <span>Crop Health</span>
+          <strong>{% if crop_health_score is not none %}{{ crop_health_score }}/100{% else %}-{% endif %}</strong>
+        </div>
+        <div class="metric-chip">
+          <span>Valid Pixels</span>
+          <strong>{% if latest_quality.get('valid_percent') is not none %}{{ '%.1f'|format(latest_quality.get('valid_percent')) }}%{% else %}-{% endif %}</strong>
+        </div>
+        <div class="metric-chip metric-chip-wide">
+          <span>Classification</span>
+          <strong>{{ latest_quality.get('classification_mode') or 'Not available' }}</strong>
+        </div>
+        <div class="metric-chip metric-chip-wide">
+          <span>Attention flags</span>
+          <strong>{% if latest_quality.get('flags') %}{{ latest_quality.get('flags')[0] }}{% else %}No critical flags{% endif %}</strong>
+        </div>
       </div>
-      {% endfor %}
     </div>
-  </section>
+    <div class="analysis-note">
+      <img class="icon-art icon-art-xs" src="/static/icons/{% if latest_quality.get('flags') %}warning.png{% else %}verified.png{% endif %}" alt="" />
+      <span>{% if latest_quality.get('flags') %}Review the highlighted quality note before sharing this report externally.{% else %}Latest analysis is ready for review and export.{% endif %}</span>
+    </div>
+    {% else %}
+    <div class="empty-state">Run an analysis to populate the latest field summary.</div>
+    {% endif %}
+  </article>
+
+  <div class="dashboard-side-column">
+    <article class="glass-panel system-status-card">
+      <div class="card-head">
+        <div class="card-head-icon">
+          <img class="icon-art icon-art-sm" src="/static/icons/verified.png" alt="" />
+        </div>
+        <div>
+          <h2>System Status</h2>
+          <p>Live readiness of the dashboard and optional services.</p>
+        </div>
+      </div>
+      <div class="status-list">
+        {% for service in service_health %}
+        <div class="status-list-item status-list-{{ service.state }}">
+          <div>
+            <strong>{{ service.name }}</strong>
+            <span>{{ service.detail }}</span>
+          </div>
+          <span class="health-dot"></span>
+        </div>
+        {% endfor %}
+      </div>
+      <div class="status-footer {% if attention_count %}status-footer-warn{% else %}status-footer-ok{% endif %}">
+        <strong>{% if attention_count %}{{ attention_count }} runs need attention{% else %}All systems healthy{% endif %}</strong>
+      </div>
+    </article>
+  </div>
 </section>
 
-<section class="panel recent-runs-panel">
-  <div class="panel-header">
+<section class="glass-panel analysis-table-panel">
+  <div class="card-head card-head-spread">
     <div>
-      <span class="eyebrow">History</span>
-      <h2>Recent Runs</h2>
-      <p class="muted">Showing the latest 10. Use filters to focus the table.</p>
+      <h2>Recent Analyses</h2>
+      <p>The latest runs across completed, active, and failed work.</p>
     </div>
     <div class="filter-tabs" aria-label="Run status filters">
       <button type="button" class="filter-tab active" data-filter="all">All</button>
-      <button type="button" class="filter-tab" data-filter="active">Active</button>
       <button type="button" class="filter-tab" data-filter="completed">Completed</button>
-      <button type="button" class="filter-tab" data-filter="failed">Failed</button>
-      <button type="button" class="filter-tab" data-filter="cancelled">Cancelled</button>
+      <button type="button" class="filter-tab" data-filter="active">In Progress</button>
+      <button type="button" class="filter-tab" data-filter="failed">Attention</button>
     </div>
   </div>
-  <div class="table-wrap">
-    <table>
+  <div class="analysis-table-wrap">
+    <table class="analysis-table">
       <thead>
         <tr>
-          <th>Created</th>
-          <th>Name</th>
-          <th>Dataset</th>
+          <th>Date &amp; Time</th>
+          <th>Field / Dataset</th>
           <th>Status</th>
+          <th>Health Score</th>
+          <th>Issue</th>
           <th>Duration</th>
-          <th>Steps</th>
-          <th>Last message</th>
           <th>Actions</th>
         </tr>
       </thead>
       <tbody id="recent-runs-body">
-      {% for run in recent_runs %}
+        {% for run in recent_runs %}
+        {% set run_report = latest_report if latest_report and latest_report.run_id == run.run_id else none %}
+        {% set run_quality = run_report.quality if run_report and run_report.quality else {} %}
+        {% set run_quality_mean = run_quality.get('mean') %}
+        {% set run_health = ((((run_quality_mean | float) + 1) * 50) | round(0, 'common') | int) if run_quality_mean is not none else none %}
         <tr data-status="{{ run.status }}">
           <td>{{ run.created_at | system_datetime }}</td>
-          <td>{{ run.run_name or '-' }}</td>
-          <td>{{ run.dataset_name }}</td>
+          <td>
+            <div class="table-dataset">
+              <strong>{{ run.run_name or run.dataset_name }}</strong>
+              <span>{{ run.dataset_name }}</span>
+            </div>
+          </td>
           <td><span class="status-badge status-{{ run.status }}">{{ run.status }}</span></td>
-          <td>{{ run.started_at | duration(run.finished_at) }}</td>
-          <td class="muted">{{ step_summary(run) }}</td>
+          <td>{% if run_health is not none %}{{ run_health }}/100{% else %}--{% endif %}</td>
           <td class="message-cell">{{ run.errors[-1] if run.errors else run.stage_message }}</td>
+          <td>{{ run.started_at | duration(run.finished_at) }}</td>
           <td class="table-actions">
             <a class="action-chip" href="/runs/{{ run.run_id }}">View</a>
             {% if run.status in ['completed', 'failed', 'cancelled'] %}
             <a class="action-chip" href="/runs/{{ run.run_id }}/package">Package</a>
             {% endif %}
-            {% if run.status in ['queued', 'running'] %}
-            <form method="post" action="/ui/runs/{{ run.run_id }}/stop">
-              <button class="action-chip danger-text" type="submit">Stop</button>
-            </form>
-            {% endif %}
           </td>
         </tr>
-      {% else %}
-        <tr><td colspan="8"><div class="empty-state">No runs yet.</div></td></tr>
-      {% endfor %}
+        {% else %}
+        <tr><td colspan="7"><div class="empty-state">No analyses yet.</div></td></tr>
+        {% endfor %}
       </tbody>
     </table>
   </div>
@@ -207,6 +232,7 @@ function rowMatches(row, filter) {
   const status = row.dataset.status;
   if (filter === 'all') return true;
   if (filter === 'active') return status === 'queued' || status === 'running';
+  if (filter === 'failed') return status === 'failed' || status === 'cancelled';
   return status === filter;
 }
 
@@ -222,3 +248,4 @@ filterButtons.forEach((button) => {
 });
 </script>
 {% endblock %}
+

@@ -1,119 +1,236 @@
 {% extends 'base.html' %}
+{% block container_class %}container-wide{% endblock %}
 {% block content %}
-<section class="panel run-workflow">
-  <div class="panel-header">
-    <div>
-      <h2>{{ 'Complete dataset' if completion_context else 'New Analysis' }}</h2>
-      <p class="muted">
-        {% if completion_context %}
-        Add the missing orthophotos for {{ completion_context.dataset_name }}.
-        {% else %}
-        Create orthophotos first, then run parcel analysis from an orthophoto dataset.
-        {% endif %}
-      </p>
-    </div>
-  </div>
+{% set preset_options = orthophoto_presets or [
+  {'key': 'preview', 'label': 'Quick Preview', 'resolution_cm': 8, 'reduce_images': false, 'description': 'Low resolution for fast results and quick overview.'},
+  {'key': 'balanced', 'label': 'Balanced', 'resolution_cm': 3, 'reduce_images': false, 'description': 'Good balance of detail and speed for most field analysis.'},
+  {'key': 'high', 'label': 'High Detail', 'resolution_cm': 2, 'reduce_images': false, 'description': 'Higher resolution with more detail for deeper insights.'},
+  {'key': 'maximum', 'label': 'Maximum Detail', 'resolution_cm': 1, 'reduce_images': false, 'description': 'Highest resolution for maximum accuracy and zoom.'}
+] %}
+{% set camera_sources = [
+  {'key': 'rgb', 'label': 'RGB', 'raw_name': 'rgb_files', 'ortho_name': 'rgb_orthophoto', 'recommended': 'Recommended: 50-500 images', 'supported_raw': 'Supported: JPG, JPEG, TIFF', 'supported_ortho': 'Supported: TIF, TIFF'},
+  {'key': 'mapir', 'label': 'MAPIR', 'raw_name': 'mapir_files', 'ortho_name': 'mapir_orthophoto', 'recommended': 'Recommended: 50-500 images', 'supported_raw': 'Supported: JPG, TIFF', 'supported_ortho': 'Supported: TIF, TIFF'},
+  {'key': 'thermal', 'label': 'Thermal', 'raw_name': 'thermal_files', 'ortho_name': 'thermal_orthophoto', 'recommended': 'Recommended: 50-500 images', 'supported_raw': 'Supported: JPG, TIFF, TIF', 'supported_ortho': 'Supported: TIF, TIFF'}
+] %}
+{% set selected_preset = form_values.get('orthophoto_preset', 'balanced') if form_values else 'balanced' %}
 
+<section class="page-topbar">
+  <div>
+    <h1 class="page-title">{{ 'Complete Dataset' if completion_context else 'New Analysis' }}</h1>
+    <p class="page-subtitle">
+      {% if completion_context %}
+      Add the missing orthophotos for {{ completion_context.dataset_name }} and continue the analysis workflow.
+      {% else %}
+      Create orthophotos and run field analysis from your drone imagery.
+      {% endif %}
+    </p>
+  </div>
+  <div class="topbar-actions">
+    <a class="app-button app-button-secondary" href="/runs">Open Reports</a>
+  </div>
+</section>
+
+<section class="glass-panel run-workflow analysis-workflow-shell">
   <input class="workflow-tab-input" type="radio" name="workflow_tab" id="tab-orthophoto" {% if not validation_result and not completion_context %}checked{% endif %} />
   {% if completion_context %}
   <input class="workflow-tab-input" type="radio" name="workflow_tab" id="tab-complete-orthophoto" checked />
   {% endif %}
   <input class="workflow-tab-input" type="radio" name="workflow_tab" id="tab-analysis" {% if validation_result %}checked{% endif %} />
+
   {% if not completion_context %}
-  <div class="workflow-tabs" role="tablist">
-    <label for="tab-orthophoto" class="workflow-tab">1. Orthophoto Creation</label>
-    <label for="tab-analysis" class="workflow-tab">2. Perform Parcel Analysis</label>
+  <div class="analysis-stepper" role="tablist" aria-label="Analysis workflow">
+    <label for="tab-orthophoto" class="analysis-step">
+      <span class="analysis-step-number">1</span>
+      <span class="analysis-step-text">Build Orthophotos</span>
+    </label>
+    <label for="tab-analysis" class="analysis-step">
+      <span class="analysis-step-number">2</span>
+      <span class="analysis-step-text">Analyze Field</span>
+    </label>
+    <span class="analysis-step-progress" aria-hidden="true"></span>
   </div>
   {% endif %}
 
   <div class="workflow-tab-panel orthophoto-panel">
-    <div class="odm-workspace">
-      <section class="odm-action-panel odm-intake-panel">
-        <div class="section-title-row">
+    <div class="analysis-stage-layout">
+      <section class="glass-panel analysis-stage-panel">
+        <div class="card-head">
           <div>
-            <h3>Orthophoto Intake</h3>
-            <p class="muted">For each camera, build a new orthophoto from drone images or use an orthophoto you already have.</p>
+            <h2>Orthophoto Intake</h2>
+            <p>Upload your drone imagery or use existing orthophotos to begin.</p>
           </div>
         </div>
-        <form class="workflow-form" method="post" action="/ui/orthophotos" enctype="multipart/form-data" data-async-orthophoto-form data-init-url="/ui/orthophotos/init">
-          <div class="form-grid">
-            <label>Dataset name<input type="text" name="dataset_name" required /></label>
-          </div>
-          {% set camera_sources = [
-            {'key': 'rgb', 'label': 'RGB', 'raw_name': 'rgb_files', 'ortho_name': 'rgb_orthophoto'},
-            {'key': 'mapir', 'label': 'MAPIR', 'raw_name': 'mapir_files', 'ortho_name': 'mapir_orthophoto'},
-            {'key': 'thermal', 'label': 'Thermal', 'raw_name': 'thermal_files', 'ortho_name': 'thermal_orthophoto'}
-          ] %}
-          <div class="camera-input-grid">
+
+        <form class="workflow-form analysis-intake-form" method="post" action="/ui/orthophotos" enctype="multipart/form-data" data-async-orthophoto-form data-init-url="/ui/orthophotos/init">
+          <label class="analysis-field">
+            <span>Dataset name</span>
+            <input type="text" name="dataset_name" placeholder="Enter a name for this dataset (e.g., North Field 2025)" required />
+          </label>
+
+          <div class="analysis-camera-grid">
             {% for camera in camera_sources %}
-            <section class="camera-input-card" data-camera-input>
-              <div class="camera-input-head">
+            <section class="analysis-camera-card" data-camera-input>
+              <div class="analysis-camera-card-head">
                 <strong>{{ camera.label }}</strong>
-                <div class="source-toggle" role="radiogroup" aria-label="{{ camera.label }} source">
+                <div class="source-toggle analysis-source-toggle" role="radiogroup" aria-label="{{ camera.label }} source">
                   <label>
                     <input type="radio" name="{{ camera.key }}_source" value="raw" checked />
-                    <span>Build from images</span>
+                    <span>Upload Images</span>
                   </label>
                   <label>
                     <input type="radio" name="{{ camera.key }}_source" value="ortho" />
-                    <span>Use ready orthophoto</span>
+                    <span>Use Existing</span>
                   </label>
                 </div>
               </div>
+
               <div class="source-panel source-panel-raw">
-                <label>{{ camera.label }} drone images<input type="file" name="{{ camera.raw_name }}" multiple /></label>
+                <label class="upload-dropzone">
+                  <span class="upload-dropzone-icon">
+                    <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 16V7"></path><path d="m8.5 10.5 3.5-3.5 3.5 3.5"></path><path d="M6 17.5A4.5 4.5 0 1 1 7 8.6a5.5 5.5 0 0 1 10.7 1.4A4 4 0 1 1 18 17.5Z"></path></svg>
+                  </span>
+                  <strong>Drag &amp; drop image files here</strong>
+                  <small>or</small>
+                  <span class="browse-files-button">Browse Files</span>
+                  <input type="file" name="{{ camera.raw_name }}" multiple />
+                </label>
+                <div class="upload-meta">
+                  <small>{{ camera.recommended }}</small>
+                  <small>{{ camera.supported_raw }}</small>
+                </div>
               </div>
+
               <div class="source-panel source-panel-ortho" hidden>
-                <label>{{ camera.label }} ready orthophoto<input type="file" name="{{ camera.ortho_name }}" accept=".tif,.tiff" /></label>
+                <label class="upload-dropzone upload-dropzone-compact">
+                  <strong>Select a ready {{ camera.label }} orthophoto</strong>
+                  <small>Accepted format: GeoTIFF</small>
+                  <span class="browse-files-button">Choose Orthophoto</span>
+                  <input type="file" name="{{ camera.ortho_name }}" accept=".tif,.tiff" />
+                </label>
+                <div class="upload-meta">
+                  <small>{{ camera.supported_ortho }}</small>
+                </div>
               </div>
             </section>
             {% endfor %}
           </div>
-          <fieldset class="compact-fieldset">
-            <legend>Quality preset</legend>
-            <div class="preset-list">
-              {% set preset_options = orthophoto_presets or [
-                {'key': 'preview', 'label': 'Preview', 'resolution_cm': 8, 'reduce_images': false, 'description': 'Lowest orthophoto detail for checking image coverage.'},
-                {'key': 'balanced', 'label': 'Balanced (recommended)', 'resolution_cm': 3, 'reduce_images': false, 'description': 'Good default for dashboard analysis and normal field reports.'},
-                {'key': 'high', 'label': 'High detail', 'resolution_cm': 2, 'reduce_images': false, 'description': 'More detail with longer ODM processing time.'},
-                {'key': 'maximum', 'label': 'Maximum detail', 'resolution_cm': 1, 'reduce_images': false, 'description': 'Slowest option for final orthophotos on capable hardware.'}
-              ] %}
+
+          <section class="analysis-quality-panel">
+            <div class="card-head">
+              <div>
+                <h2>Choose Orthophoto Quality</h2>
+                <p>Select the processing quality that best fits your needs.</p>
+              </div>
+            </div>
+
+            <fieldset class="analysis-quality-grid">
+              <legend class="visually-hidden">Orthophoto quality preset</legend>
               {% for preset in preset_options %}
-              <label class="preset-option">
-                <input type="radio" name="orthophoto_preset" value="{{ preset.key }}" {% if preset.key == 'balanced' %}checked{% endif %} />
-                <span>
-                  <strong>{{ preset.label }}</strong>
-                  <small>{{ preset.resolution_cm }} cm orthophoto</small>
-                  <small>{{ preset.description }}</small>
+              <label class="analysis-quality-card {% if preset.key == 'balanced' %}analysis-quality-card-recommended{% endif %}">
+                <input type="radio" name="orthophoto_preset" value="{{ preset.key }}" {% if preset.key == selected_preset %}checked{% endif %} />
+                <span class="analysis-quality-copy">
+                  <span class="analysis-quality-title-row">
+                    <strong>{{ preset.label }}</strong>
+                    {% if preset.key == 'balanced' %}
+                    <small class="quality-recommended-badge">Recommended</small>
+                    {% endif %}
+                  </span>
+                  <span>{{ preset.description }}</span>
+                  <small>{{ preset.resolution_cm }} cm output resolution</small>
+                  <small>
+                    {% if preset.key == 'preview' %}~15-30 min
+                    {% elif preset.key == 'balanced' %}~30-60 min
+                    {% elif preset.key == 'high' %}~1-2 hrs
+                    {% else %}~2-4 hrs+
+                    {% endif %}
+                  </small>
                 </span>
               </label>
               {% endfor %}
+            </fieldset>
+
+            <div class="analysis-quality-footer">
+              <div class="quality-estimate">
+                <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 7v5l3 3"></path><path d="M12 21a9 9 0 1 0 0-18 9 9 0 0 0 0 18Z"></path></svg>
+                <div>
+                  <span>Estimated processing time</span>
+                  <strong>~30-60 min</strong>
+                </div>
+              </div>
+              <div class="quality-actions">
+                <a class="app-button app-button-secondary" href="#saved-orthophotos">View Saved Sets</a>
+                <button class="app-button app-button-primary" type="submit">Generate Orthophotos</button>
+              </div>
             </div>
-          </fieldset>
-          <button type="submit">Save / Generate Orthophotos</button>
+          </section>
         </form>
       </section>
-    </div>
 
-    <div class="orthophoto-library">
-      <div class="section-title-row">
-        <div>
-          <h3>Orthophoto Library</h3>
-          <p class="muted">{{ orthophoto_runs|length }} saved set{% if orthophoto_runs|length != 1 %}s{% endif %}</p>
+      <aside class="glass-panel analysis-help-panel">
+        <div class="card-head">
+          <div>
+            <h2>Before you start</h2>
+          </div>
         </div>
-      </div>
-      {% if orthophoto_runs %}
-      <div class="orthophoto-grid">
-        {% for item in orthophoto_runs %}
-        <div class="orthophoto-card orthophoto-row">
-          <div class="orthophoto-card-head">
+        <div class="analysis-help-list">
+          <div class="analysis-help-item">
+            <div class="analysis-help-icon">
+              <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M3 7h5l2 2h11v8a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2Z"></path><path d="M3 7V5a2 2 0 0 1 2-2h4l2 2h3"></path></svg>
+            </div>
             <div>
-              <strong>{{ item.run_name or item.dataset_name }}</strong>
-              <span>{{ item.created_at | system_datetime }}</span>
-              <small>Quality used: {{ item.preset }}{% if item.resolution_cm and item.resolution_cm != '-' %}, {{ item.resolution_cm }} cm{% endif %}</small>
+              <strong>Keep camera folders separate</strong>
+              <span>Organize RGB, MAPIR, and Thermal images in separate folders.</span>
             </div>
           </div>
-          <div class="ortho-camera-grid">
+          <div class="analysis-help-item">
+            <div class="analysis-help-icon">
+              <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M7 16V8"></path><path d="M17 16V8"></path><path d="M3 12h18"></path><path d="M5 5h4v3H5z"></path><path d="M15 5h4v3h-4z"></path><path d="M10 14h4v5h-4z"></path></svg>
+            </div>
+            <div>
+              <strong>Use images from the same flight</strong>
+              <span>Consistent flights improve alignment and orthophoto quality.</span>
+            </div>
+          </div>
+          <div class="analysis-help-item">
+            <div class="analysis-help-icon">
+              <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 21s7-4.4 7-11a7 7 0 1 0-14 0c0 6.6 7 11 7 11Z"></path><path d="M12 11.5a2.5 2.5 0 1 0 0-5 2.5 2.5 0 0 0 0 5Z"></path></svg>
+            </div>
+            <div>
+              <strong>Ensure GPS tagging is enabled</strong>
+              <span>Geotagged imagery gives the pipeline the location data it needs.</span>
+            </div>
+          </div>
+        </div>
+        <a class="analysis-help-cta" href="/settings#services">Need help? Review service setup and imaging guidance.</a>
+      </aside>
+    </div>
+
+    <section class="glass-panel orthophoto-library-panel" id="saved-orthophotos">
+      <div class="card-head">
+        <div>
+          <h2>Saved Orthophotos</h2>
+          <p>Previously generated orthophotos and their current status.</p>
+        </div>
+      </div>
+
+      {% if orthophoto_runs %}
+      <div class="orthophoto-grid orthophoto-grid-stacked">
+        {% for item in orthophoto_runs %}
+        <article class="orthophoto-card orthophoto-card-library">
+          <div class="orthophoto-library-head">
+            <div class="orthophoto-library-preview">
+              <div class="orthophoto-library-thumb">
+                <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 7.5A2.5 2.5 0 0 1 6.5 5h11A2.5 2.5 0 0 1 20 7.5v9a2.5 2.5 0 0 1-2.5 2.5h-11A2.5 2.5 0 0 1 4 16.5Z"></path><path d="m8 14 2.5-2.5L13 14l2-2 3 3"></path><path d="M9 10h.01"></path></svg>
+              </div>
+              <div>
+                <strong>{{ item.run_name or item.dataset_name }}</strong>
+                <span>{{ item.created_at | system_datetime }}</span>
+                <small>Quality: {{ item.preset }}{% if item.resolution_cm and item.resolution_cm != '-' %} &middot; {{ item.resolution_cm }} cm{% endif %}</small>
+              </div>
+            </div>
+          </div>
+
+          <div class="ortho-camera-grid ortho-camera-grid-library">
             {% if item.rgb_ready %}
             <a class="camera-tile camera-ready camera-tile-action" href="/artifacts/{{ item.rgb_run_id or item.run_id }}/orthophoto-rgb">
               <span>RGB</span>
@@ -125,6 +242,7 @@
               <strong>{{ 'Add source' if item.rgb_uploaded else 'Missing' }}</strong>
             </a>
             {% endif %}
+
             {% if item.mapir_ready %}
             <a class="camera-tile camera-ready camera-tile-action" href="/artifacts/{{ item.mapir_run_id or item.run_id }}/orthophoto-mapir">
               <span>MAPIR</span>
@@ -136,6 +254,7 @@
               <strong>{{ 'Add source' if item.mapir_uploaded else 'Missing' }}</strong>
             </a>
             {% endif %}
+
             {% if item.thermal_ready %}
             <a class="camera-tile camera-ready camera-tile-action" href="/artifacts/{{ item.thermal_run_id or item.run_id }}/orthophoto-thermal">
               <span>Thermal</span>
@@ -148,264 +267,312 @@
             </a>
             {% endif %}
           </div>
-          <div class="orthophoto-row-actions">
-            <a class="action-chip" href="/runs/{{ item.run_id }}">Logs</a>
+
+          <div class="orthophoto-row-actions orthophoto-row-actions-split">
+            <a class="action-chip" href="/runs/{{ item.run_id }}">View Details</a>
             <form method="post" action="/ui/orthophotos/{{ item.run_id }}/delete" onsubmit="return confirm('Delete this saved orthophoto set?');">
               <button class="action-chip danger-text" type="submit">Delete</button>
             </form>
           </div>
-        </div>
+        </article>
         {% endfor %}
       </div>
       {% else %}
       <div class="empty-state">No saved orthophotos yet.</div>
       {% endif %}
-    </div>
+    </section>
   </div>
-
-  <script>
-    window.addEventListener('DOMContentLoaded', () => {
-      document.querySelectorAll('[data-camera-input]').forEach((card) => {
-        const rawPanel = card.querySelector('.source-panel-raw');
-        const orthoPanel = card.querySelector('.source-panel-ortho');
-        const syncPanels = () => {
-          const selected = card.querySelector('input[type="radio"]:checked')?.value || 'raw';
-          rawPanel.hidden = selected !== 'raw';
-          orthoPanel.hidden = selected !== 'ortho';
-        };
-        card.querySelectorAll('input[type="radio"]').forEach((input) => {
-          input.addEventListener('change', syncPanels);
-        });
-        syncPanels();
-      });
-
-      document.querySelectorAll('[data-async-orthophoto-form]').forEach((form) => {
-        form.addEventListener('submit', async (event) => {
-          if (!window.fetch || !window.FormData || !window.XMLHttpRequest) return;
-          event.preventDefault();
-          const submitButton = form.querySelector('button[type="submit"]');
-          const originalButtonText = submitButton ? submitButton.textContent : '';
-          const formData = new FormData(form);
-          const rawTargets = [];
-          const importTargets = [];
-          ['rgb', 'mapir', 'thermal'].forEach((camera) => {
-            const source = formData.get(`${camera}_source`) || 'raw';
-            const rawFiles = form.querySelector(`input[name="${camera}_files"]`)?.files || [];
-            const orthoFiles = form.querySelector(`input[name="${camera}_orthophoto"]`)?.files || [];
-            if (source === 'raw' && rawFiles.length > 0) rawTargets.push(camera);
-            if (source === 'ortho' && orthoFiles.length > 0) importTargets.push(camera);
-          });
-          if (rawTargets.length === 0 && importTargets.length === 0) {
-            window.alert('Choose images or a ready orthophoto for at least one camera.');
-            return;
-          }
-          if (submitButton) {
-            submitButton.disabled = true;
-            submitButton.textContent = 'Creating run...';
-          }
-          try {
-            const initResponse = await fetch(form.dataset.initUrl, {
-              method: 'POST',
-              headers: { 'content-type': 'application/json', 'accept': 'application/json' },
-              body: JSON.stringify({
-                dataset_name: formData.get('dataset_name') || '',
-                orthophoto_preset: formData.get('orthophoto_preset') || 'balanced',
-                raw_camera_targets: rawTargets,
-                import_camera_targets: importTargets
-              })
-            });
-            const initPayload = await initResponse.json();
-            if (!initResponse.ok) {
-              throw new Error(Array.isArray(initPayload.detail) ? initPayload.detail.join(', ') : initPayload.detail || 'Could not create run.');
-            }
-            if (submitButton) submitButton.textContent = 'Uploading files... 0%';
-            const xhr = new XMLHttpRequest();
-            xhr.open('POST', initPayload.upload_url);
-            xhr.setRequestHeader('accept', 'application/json');
-            xhr.upload.addEventListener('progress', (progressEvent) => {
-              if (!submitButton || !progressEvent.lengthComputable) return;
-              const percent = Math.max(1, Math.min(99, Math.round((progressEvent.loaded / progressEvent.total) * 100)));
-              submitButton.textContent = `Uploading files... ${percent}%`;
-            });
-            xhr.addEventListener('load', () => {
-              if (xhr.status >= 200 && xhr.status < 300) {
-                let uploadPayload = null;
-                try {
-                  uploadPayload = xhr.responseText ? JSON.parse(xhr.responseText) : null;
-                } catch (parseError) {
-                  uploadPayload = null;
-                }
-                window.location.href = uploadPayload?.redirect || initPayload.redirect;
-                return;
-              }
-              if (submitButton) {
-                submitButton.disabled = false;
-                submitButton.textContent = originalButtonText;
-              }
-              let detail = 'Upload failed before the dashboard received the files.';
-              try {
-                const payload = xhr.responseText ? JSON.parse(xhr.responseText) : null;
-                if (Array.isArray(payload?.detail)) {
-                  detail = payload.detail.join(', ');
-                } else if (payload?.detail) {
-                  detail = payload.detail;
-                }
-              } catch (parseError) {
-              }
-              window.alert(detail);
-            });
-            xhr.addEventListener('error', () => {
-              if (submitButton) {
-                submitButton.disabled = false;
-                submitButton.textContent = originalButtonText;
-              }
-              window.alert('Upload failed before it reached the dashboard.');
-            });
-            xhr.send(formData);
-          } catch (error) {
-            if (submitButton) {
-              submitButton.disabled = false;
-              submitButton.textContent = originalButtonText;
-            }
-            window.alert(error.message || 'Could not start upload.');
-          }
-        });
-      });
-    });
-  </script>
 
   {% if completion_context %}
   <div class="workflow-tab-panel complete-orthophoto-panel">
-    <section class="odm-action-panel odm-intake-panel">
-      <div class="section-title-row">
+    <section class="glass-panel analysis-stage-panel">
+      <div class="card-head">
         <div>
-          <h3>Missing orthophotos</h3>
-          <p class="muted">{{ completion_context.dataset_name }}</p>
+          <h2>Missing Orthophotos</h2>
+          <p>{{ completion_context.dataset_name }}</p>
         </div>
       </div>
-      <form class="workflow-form" method="post" action="/ui/orthophotos/{{ completion_context.run_id }}/complete" enctype="multipart/form-data" data-async-orthophoto-form data-init-url="/ui/orthophotos/{{ completion_context.run_id }}/complete/init">
-        <div class="camera-input-grid">
+      <form class="workflow-form analysis-intake-form" method="post" action="/ui/orthophotos/{{ completion_context.run_id }}/complete" enctype="multipart/form-data" data-async-orthophoto-form data-init-url="/ui/orthophotos/{{ completion_context.run_id }}/complete/init">
+        <div class="analysis-camera-grid">
           {% for camera in completion_context.missing_cameras %}
-          <section class="camera-input-card" data-camera-input>
-            <div class="camera-input-head">
+          <section class="analysis-camera-card" data-camera-input>
+            <div class="analysis-camera-card-head">
               <strong>{{ camera.label }}</strong>
-              <div class="source-toggle" role="radiogroup" aria-label="{{ camera.label }} source">
+              <div class="source-toggle analysis-source-toggle" role="radiogroup" aria-label="{{ camera.label }} source">
                 <label>
                   <input type="radio" name="{{ camera.key }}_source" value="raw" checked />
-                  <span>Build from images</span>
+                  <span>Upload Images</span>
                 </label>
                 <label>
                   <input type="radio" name="{{ camera.key }}_source" value="ortho" />
-                  <span>Use ready orthophoto</span>
+                  <span>Use Existing</span>
                 </label>
               </div>
             </div>
             <div class="source-panel source-panel-raw">
-              <label>{{ camera.label }} drone images<input type="file" name="{{ camera.key }}_files" multiple /></label>
+              <label class="upload-dropzone">
+                <strong>Drag &amp; drop image files here</strong>
+                <small>or</small>
+                <span class="browse-files-button">Browse Files</span>
+                <input type="file" name="{{ camera.key }}_files" multiple />
+              </label>
             </div>
             <div class="source-panel source-panel-ortho" hidden>
-              <label>{{ camera.label }} ready orthophoto<input type="file" name="{{ camera.key }}_orthophoto" accept=".tif,.tiff" /></label>
+              <label class="upload-dropzone upload-dropzone-compact">
+                <strong>Select a ready {{ camera.label }} orthophoto</strong>
+                <small>Accepted format: GeoTIFF</small>
+                <span class="browse-files-button">Choose Orthophoto</span>
+                <input type="file" name="{{ camera.key }}_orthophoto" accept=".tif,.tiff" />
+              </label>
             </div>
           </section>
           {% endfor %}
         </div>
-        <fieldset class="compact-fieldset">
-          <legend>Quality preset</legend>
-          <div class="preset-list">
-            {% for preset in orthophoto_presets %}
-            <label class="preset-option">
-              <input type="radio" name="orthophoto_preset" value="{{ preset.key }}" {% if preset.key == 'balanced' %}checked{% endif %} />
-              <span>
+
+        <fieldset class="analysis-quality-grid">
+          <legend class="visually-hidden">Orthophoto quality preset</legend>
+          {% for preset in orthophoto_presets %}
+          <label class="analysis-quality-card {% if preset.key == 'balanced' %}analysis-quality-card-recommended{% endif %}">
+            <input type="radio" name="orthophoto_preset" value="{{ preset.key }}" {% if preset.key == 'balanced' %}checked{% endif %} />
+            <span class="analysis-quality-copy">
+              <span class="analysis-quality-title-row">
                 <strong>{{ preset.label }}</strong>
-                <small>{{ preset.resolution_cm }} cm orthophoto</small>
-                <small>{{ preset.description }}</small>
+                {% if preset.key == 'balanced' %}
+                <small class="quality-recommended-badge">Recommended</small>
+                {% endif %}
               </span>
-            </label>
-            {% endfor %}
-          </div>
+              <span>{{ preset.description }}</span>
+              <small>{{ preset.resolution_cm }} cm output resolution</small>
+            </span>
+          </label>
+          {% endfor %}
         </fieldset>
-        <button type="submit">Process Missing Orthophotos</button>
+
+        <div class="quality-actions quality-actions-end">
+          <button class="app-button app-button-primary" type="submit">Process Missing Orthophotos</button>
+        </div>
       </form>
     </section>
   </div>
   {% endif %}
 
   <div class="workflow-tab-panel analysis-panel">
-    <form class="workflow-form" method="post" action="/ui/runs">
-      {% if validation_result %}
-      <div class="validation-panel validation-{{ 'ok' if validation_result.ok else 'error' }}">
-        {% if validation_result.blockers %}
-        <strong>Run cannot start yet</strong>
-        <ul>
-          {% for item in validation_result.blockers %}
-          <li>{{ item }}</li>
-          {% endfor %}
-        </ul>
-        {% else %}
-        <strong>Preflight passed</strong>
-        {% endif %}
-        {% if validation_result.warnings %}
-        <strong>Warnings</strong>
-        <ul>
-          {% for item in validation_result.warnings %}
-          <li>{{ item }}</li>
-          {% endfor %}
-        </ul>
-        {% endif %}
+    <section class="glass-panel analysis-stage-panel">
+      <div class="card-head">
+        <div>
+          <h2>Analyze Field</h2>
+          <p>Choose a completed orthophoto dataset and select the analysis services to run.</p>
+        </div>
       </div>
-      {% endif %}
 
-      <div class="form-grid">
-        <label>Orthophoto dataset
-          <select name="source_orthophoto_run_id" required {% if not orthophoto_uploads %}disabled{% endif %}>
-            {% if not orthophoto_uploads %}
-            <option>No orthophoto datasets yet</option>
-            {% endif %}
-            {% for upload in orthophoto_uploads %}
-            <option value="{{ upload.orthophoto_run_id | default(upload.run_id) }}" data-upload="{{ upload.upload_run_id | default(upload.run_id) }}" data-dataset="{{ upload.dataset_name }}" {% if (upload.upload_run_id | default(upload.run_id)) == selected_upload_run_id %}selected{% endif %}>
-              {{ upload.dataset_name }}{% if upload.created_at is defined %} - {{ upload.created_at | system_datetime }}{% endif %}
-            </option>
+      <form class="workflow-form analysis-run-form" method="post" action="/ui/runs">
+        {% if validation_result %}
+        <div class="validation-panel validation-{{ 'ok' if validation_result.ok else 'error' }}">
+          {% if validation_result.blockers %}
+          <strong>Run cannot start yet</strong>
+          <ul>
+            {% for item in validation_result.blockers %}
+            <li>{{ item }}</li>
             {% endfor %}
-          </select>
-        </label>
-        <label>Run name<input type="text" name="run_name" value="{{ form_values.get('run_name', '') }}" /></label>
-      </div>
+          </ul>
+          {% else %}
+          <strong>Preflight passed</strong>
+          {% endif %}
+          {% if validation_result.warnings %}
+          <strong>Warnings</strong>
+          <ul>
+            {% for item in validation_result.warnings %}
+            <li>{{ item }}</li>
+            {% endfor %}
+          </ul>
+          {% endif %}
+        </div>
+        {% endif %}
 
-      <fieldset>
-        <legend>Processing steps</legend>
-        <label><input type="checkbox" name="fetch_weather" value="true" {% if form_values.get('fetch_weather', True) %}checked{% endif %} /> Fetch weather</label>
-        <label><input type="checkbox" name="run_irrigation" value="true" {% if form_values.get('run_irrigation', True) %}checked{% endif %} /> Run Irrigation</label>
-        <label><input type="checkbox" name="run_pdm" value="true" {% if form_values.get('run_pdm', pdm_enabled_by_default) %}checked{% endif %} /> Run Pest &amp; Disease</label>
-        <label><input type="checkbox" name="generate_report" value="true" {% if form_values.get('generate_report', True) %}checked{% endif %} /> Generate report</label>
-      </fieldset>
-
-      <fieldset>
-        <legend>Pest &amp; Disease</legend>
-        <div class="form-grid">
-          <label>Crop
-            <select name="pdm_crop" id="pdm-crop-select">
-              <option value="grapevine" {% if form_values.get('pdm_crop', pdm_default_crop) == 'grapevine' %}selected{% endif %}>grapevine</option>
-              <option value="olive" {% if form_values.get('pdm_crop', pdm_default_crop) == 'olive' %}selected{% endif %}>olive</option>
-            </select>
-          </label>
-          <label>Predefined model
-            <select name="pdm_model_key" id="pdm-model-select">
-              {% for item in pdm_model_catalog %}
-              <option value="{{ item.key }}" data-crop="{{ item.crop }}" {% if item.key == form_values.get('pdm_model_key', pdm_default_model_key) %}selected{% endif %}>{{ item.crop }} - {{ item.label }}</option>
+        <div class="analysis-run-grid">
+          <label class="analysis-field">
+            <span>Orthophoto dataset</span>
+            <select name="source_orthophoto_run_id" required {% if not orthophoto_uploads %}disabled{% endif %}>
+              {% if not orthophoto_uploads %}
+              <option>No orthophoto datasets yet</option>
+              {% endif %}
+              {% for upload in orthophoto_uploads %}
+              <option value="{{ upload.orthophoto_run_id | default(upload.run_id) }}" data-upload="{{ upload.upload_run_id | default(upload.run_id) }}" data-dataset="{{ upload.dataset_name }}" {% if (upload.upload_run_id | default(upload.run_id)) == selected_upload_run_id %}selected{% endif %}>
+                {{ upload.dataset_name }}{% if upload.created_at is defined %} - {{ upload.created_at | system_datetime }}{% endif %}
+              </option>
               {% endfor %}
             </select>
           </label>
-        </div>
-      </fieldset>
 
-      <div class="preflight-results" id="preflight-results" aria-live="polite"></div>
-      <div class="button-row">
-        <button class="secondary-button" type="button" id="preflight-button" {% if not orthophoto_uploads %}disabled{% endif %}>Check run</button>
-        <button type="submit" {% if not orthophoto_uploads %}disabled{% endif %}>Launch analysis</button>
-      </div>
-    </form>
+          <label class="analysis-field">
+            <span>Run name</span>
+            <input type="text" name="run_name" value="{{ form_values.get('run_name', '') }}" placeholder="Optional run label" />
+          </label>
+        </div>
+
+        <fieldset class="analysis-toggle-group">
+          <legend>Processing steps</legend>
+          <div class="analysis-toggle-grid">
+            <label class="analysis-toggle-card">
+              <input type="checkbox" name="fetch_weather" value="true" {% if form_values.get('fetch_weather', True) %}checked{% endif %} />
+              <span><strong>Fetch weather</strong><small>Pull field weather for the selected imagery date.</small></span>
+            </label>
+            <label class="analysis-toggle-card">
+              <input type="checkbox" name="run_irrigation" value="true" {% if form_values.get('run_irrigation', True) %}checked{% endif %} />
+              <span><strong>Run irrigation</strong><small>Evaluate irrigation indicators when the service is available.</small></span>
+            </label>
+            <label class="analysis-toggle-card">
+              <input type="checkbox" name="run_pdm" value="true" {% if form_values.get('run_pdm', pdm_enabled_by_default) %}checked{% endif %} />
+              <span><strong>Run pest &amp; disease</strong><small>Call the connected PDM model for crop-specific risk output.</small></span>
+            </label>
+            <label class="analysis-toggle-card">
+              <input type="checkbox" name="generate_report" value="true" {% if form_values.get('generate_report', True) %}checked{% endif %} />
+              <span><strong>Generate report</strong><small>Build the final dashboard-ready report package.</small></span>
+            </label>
+          </div>
+        </fieldset>
+
+        <fieldset class="analysis-toggle-group">
+          <legend>Pest &amp; Disease</legend>
+          <div class="analysis-run-grid">
+            <label class="analysis-field">
+              <span>Crop</span>
+              <select name="pdm_crop" id="pdm-crop-select">
+                <option value="grapevine" {% if form_values.get('pdm_crop', pdm_default_crop) == 'grapevine' %}selected{% endif %}>grapevine</option>
+                <option value="olive" {% if form_values.get('pdm_crop', pdm_default_crop) == 'olive' %}selected{% endif %}>olive</option>
+              </select>
+            </label>
+            <label class="analysis-field">
+              <span>Predefined model</span>
+              <select name="pdm_model_key" id="pdm-model-select">
+                {% for item in pdm_model_catalog %}
+                <option value="{{ item.key }}" data-crop="{{ item.crop }}" {% if item.key == form_values.get('pdm_model_key', pdm_default_model_key) %}selected{% endif %}>{{ item.crop }} - {{ item.label }}</option>
+                {% endfor %}
+              </select>
+            </label>
+          </div>
+        </fieldset>
+
+        <div class="preflight-results" id="preflight-results" aria-live="polite"></div>
+        <div class="quality-actions quality-actions-end">
+          <button class="app-button app-button-secondary" type="button" id="preflight-button" {% if not orthophoto_uploads %}disabled{% endif %}>Check Run</button>
+          <button class="app-button app-button-primary" type="submit" {% if not orthophoto_uploads %}disabled{% endif %}>Launch Analysis</button>
+        </div>
+      </form>
+    </section>
   </div>
 </section>
+
+<script>
+  window.addEventListener('DOMContentLoaded', () => {
+    document.querySelectorAll('[data-camera-input]').forEach((card) => {
+      const rawPanel = card.querySelector('.source-panel-raw');
+      const orthoPanel = card.querySelector('.source-panel-ortho');
+      const syncPanels = () => {
+        const selected = card.querySelector('input[type="radio"]:checked')?.value || 'raw';
+        rawPanel.hidden = selected !== 'raw';
+        orthoPanel.hidden = selected !== 'ortho';
+      };
+      card.querySelectorAll('input[type="radio"]').forEach((input) => {
+        input.addEventListener('change', syncPanels);
+      });
+      syncPanels();
+    });
+
+    document.querySelectorAll('[data-async-orthophoto-form]').forEach((form) => {
+      form.addEventListener('submit', async (event) => {
+        if (!window.fetch || !window.FormData || !window.XMLHttpRequest) return;
+        event.preventDefault();
+        const submitButton = form.querySelector('button[type="submit"]');
+        const originalButtonText = submitButton ? submitButton.textContent : '';
+        const formData = new FormData(form);
+        const rawTargets = [];
+        const importTargets = [];
+        ['rgb', 'mapir', 'thermal'].forEach((camera) => {
+          const source = formData.get(`${camera}_source`) || 'raw';
+          const rawFiles = form.querySelector(`input[name="${camera}_files"]`)?.files || [];
+          const orthoFiles = form.querySelector(`input[name="${camera}_orthophoto"]`)?.files || [];
+          if (source === 'raw' && rawFiles.length > 0) rawTargets.push(camera);
+          if (source === 'ortho' && orthoFiles.length > 0) importTargets.push(camera);
+        });
+        if (rawTargets.length === 0 && importTargets.length === 0) {
+          window.alert('Choose images or a ready orthophoto for at least one camera.');
+          return;
+        }
+        if (submitButton) {
+          submitButton.disabled = true;
+          submitButton.textContent = 'Creating run...';
+        }
+        try {
+          const initResponse = await fetch(form.dataset.initUrl, {
+            method: 'POST',
+            headers: { 'content-type': 'application/json', 'accept': 'application/json' },
+            body: JSON.stringify({
+              dataset_name: formData.get('dataset_name') || '',
+              orthophoto_preset: formData.get('orthophoto_preset') || 'balanced',
+              raw_camera_targets: rawTargets,
+              import_camera_targets: importTargets
+            })
+          });
+          const initPayload = await initResponse.json();
+          if (!initResponse.ok) {
+            throw new Error(Array.isArray(initPayload.detail) ? initPayload.detail.join(', ') : initPayload.detail || 'Could not create run.');
+          }
+          if (submitButton) submitButton.textContent = 'Uploading files... 0%';
+          const xhr = new XMLHttpRequest();
+          xhr.open('POST', initPayload.upload_url);
+          xhr.setRequestHeader('accept', 'application/json');
+          xhr.upload.addEventListener('progress', (progressEvent) => {
+            if (!submitButton || !progressEvent.lengthComputable) return;
+            const percent = Math.max(1, Math.min(99, Math.round((progressEvent.loaded / progressEvent.total) * 100)));
+            submitButton.textContent = `Uploading files... ${percent}%`;
+          });
+          xhr.addEventListener('load', () => {
+            if (xhr.status >= 200 && xhr.status < 300) {
+              let uploadPayload = null;
+              try {
+                uploadPayload = xhr.responseText ? JSON.parse(xhr.responseText) : null;
+              } catch (parseError) {
+                uploadPayload = null;
+              }
+              window.location.href = uploadPayload?.redirect || initPayload.redirect;
+              return;
+            }
+            if (submitButton) {
+              submitButton.disabled = false;
+              submitButton.textContent = originalButtonText;
+            }
+            let detail = 'Upload failed before the dashboard received the files.';
+            try {
+              const payload = xhr.responseText ? JSON.parse(xhr.responseText) : null;
+              if (Array.isArray(payload?.detail)) {
+                detail = payload.detail.join(', ');
+              } else if (payload?.detail) {
+                detail = payload.detail;
+              }
+            } catch (parseError) {
+            }
+            window.alert(detail);
+          });
+          xhr.addEventListener('error', () => {
+            if (submitButton) {
+              submitButton.disabled = false;
+              submitButton.textContent = originalButtonText;
+            }
+            window.alert('Upload failed before it reached the dashboard.');
+          });
+          xhr.send(formData);
+        } catch (error) {
+          if (submitButton) {
+            submitButton.disabled = false;
+            submitButton.textContent = originalButtonText;
+          }
+          window.alert(error.message || 'Could not start upload.');
+        }
+      });
+    });
+  });
+</script>
 
 <script>
 (function() {
@@ -486,7 +653,7 @@
       if (response.ok) renderPreflight(await response.json());
     } finally {
       preflightButton.disabled = false;
-      preflightButton.textContent = 'Check run';
+      preflightButton.textContent = 'Check Run';
     }
   }
 
@@ -494,3 +661,4 @@
 })();
 </script>
 {% endblock %}
+

@@ -1,53 +1,107 @@
 {% extends 'base.html' %}
+{% block container_class %}container-wide{% endblock %}
 {% block content %}
-<section class="dashboard-hero">
+{% set completed_count = runs | selectattr('status', 'equalto', 'completed') | list | length %}
+{% set running_only_count = runs | selectattr('status', 'equalto', 'running') | list | length %}
+{% set queued_count = runs | selectattr('status', 'equalto', 'queued') | list | length %}
+{% set failed_count = runs | selectattr('status', 'equalto', 'failed') | list | length %}
+{% set cancelled_count = runs | selectattr('status', 'equalto', 'cancelled') | list | length %}
+{% set running_count = running_only_count + queued_count %}
+{% set attention_count = failed_count + cancelled_count %}
+
+<section class="page-topbar">
   <div>
-    <h2>Reports</h2>
-    <p class="muted">{{ filtered_count }} shown from {{ total_runs }} total runs</p>
+    <h1 class="page-title">Reports</h1>
+    <p class="page-subtitle">View, filter, and manage completed and in-progress analysis runs.</p>
   </div>
-  <div class="button-row">
-    <a class="button-link" href="/runs/new">New Analysis</a>
+  <div class="topbar-actions">
+    <a class="app-button app-button-primary" href="/runs/new">New Analysis</a>
     <form method="post" action="/ui/runs/clear-incomplete" onsubmit="return confirm('Delete failed, cancelled, and stale queued/running run records?');">
-      <button class="button-link secondary" type="submit">Clean run history</button>
+      <button class="app-button app-button-secondary" type="submit">Clean Run History</button>
     </form>
   </div>
 </section>
 
-<section class="panel">
-  <form class="history-filters" method="get" action="/runs">
+<section class="insight-grid report-insight-grid">
+  <article class="insight-card">
+    <div class="insight-icon insight-green">
+      <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 19h16"></path><path d="M6 16V9"></path><path d="M12 16V5"></path><path d="M18 16v-3"></path></svg>
+    </div>
+    <div class="insight-copy">
+      <span class="insight-label">Total Runs</span>
+      <strong>{{ total_runs }}</strong>
+      <small>All time</small>
+    </div>
+  </article>
+  <article class="insight-card">
+    <div class="insight-icon insight-mint">
+      <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M6 12l4 4 8-8"></path><path d="M12 21a9 9 0 1 0 0-18 9 9 0 0 0 0 18Z"></path></svg>
+    </div>
+    <div class="insight-copy">
+      <span class="insight-label">Completed</span>
+      <strong>{{ completed_count }}</strong>
+      <small>{{ filtered_count }} shown in this view</small>
+    </div>
+  </article>
+  <article class="insight-card">
+    <div class="insight-icon insight-blue">
+      <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 7v5l3 3"></path><path d="M12 21a9 9 0 1 0 0-18 9 9 0 0 0 0 18Z"></path></svg>
+    </div>
+    <div class="insight-copy">
+      <span class="insight-label">In Progress</span>
+      <strong>{{ running_count }}</strong>
+      <small>Queued and running jobs</small>
+    </div>
+  </article>
+  <article class="insight-card">
+    <div class="insight-icon insight-amber">
+      <svg viewBox="0 0 24 24" aria-hidden="true"><path d="m12 9 .01 4"></path><path d="M12 17h.01"></path><path d="M10.3 4.9 2.9 18a2 2 0 0 0 1.7 3h14.8a2 2 0 0 0 1.7-3L13.7 4.9a2 2 0 0 0-3.4 0Z"></path></svg>
+    </div>
+    <div class="insight-copy">
+      <span class="insight-label">Need Attention</span>
+      <strong>{{ attention_count }}</strong>
+      <small>Failed or cancelled runs</small>
+    </div>
+  </article>
+</section>
+
+<section class="glass-panel filters-panel">
+  <form class="report-filter-grid" method="get" action="/runs">
     <label>Status
       <select name="status">
         {% for item in ['all', 'queued', 'running', 'completed', 'failed', 'cancelled'] %}
-        <option value="{{ item }}" {% if status_filter == item %}selected{% endif %}>{{ item }}</option>
+        <option value="{{ item }}" {% if status_filter == item %}selected{% endif %}>{{ item|replace('_', ' ')|title }}</option>
         {% endfor %}
       </select>
     </label>
-    <label>Run mode
+    <label>Run Mode
       <select name="run_mode">
-        <option value="all" {% if run_mode_filter == 'all' %}selected{% endif %}>all</option>
+        <option value="all" {% if run_mode_filter == 'all' %}selected{% endif %}>All</option>
         <option value="full_odm" {% if run_mode_filter == 'full_odm' %}selected{% endif %}>Full ODM</option>
-        <option value="existing_orthos" {% if run_mode_filter == 'existing_orthos' %}selected{% endif %}>Existing orthos</option>
+        <option value="existing_orthos" {% if run_mode_filter == 'existing_orthos' %}selected{% endif %}>Existing Orthos</option>
       </select>
     </label>
     <label>Search
-      <input type="search" name="q" value="{{ query }}" placeholder="Run, dataset, message" />
+      <input type="search" name="q" value="{{ query }}" placeholder="Search by field, dataset, or message" />
     </label>
-    <button type="submit">Apply filters</button>
+    <div class="filter-actions">
+      <button class="app-button app-button-primary" type="submit">Apply Filters</button>
+      <a class="filter-reset-link" href="/runs">Reset</a>
+    </div>
   </form>
 </section>
 
-<section class="panel">
-  <div class="table-wrap">
-    <table>
+<section class="glass-panel report-table-panel">
+  <div class="analysis-table-wrap">
+    <table class="analysis-table report-table">
       <thead>
         <tr>
           <th>Created</th>
-          <th>Name</th>
-          <th>Dataset</th>
+          <th>Field / Dataset</th>
           <th>Status</th>
           <th>Mode</th>
           <th>Duration</th>
-          <th>Last message</th>
+          <th>Last Message</th>
           <th>Actions</th>
         </tr>
       </thead>
@@ -55,16 +109,20 @@
       {% for run in runs %}
         <tr>
           <td>{{ run.created_at | system_datetime }}</td>
-          <td>{{ run.run_name or '-' }}</td>
-          <td>{{ run.dataset_name }}</td>
+          <td>
+            <div class="table-dataset">
+              <strong>{{ run.run_name or run.dataset_name }}</strong>
+              <span>{{ run.dataset_name }}</span>
+            </div>
+          </td>
           <td><span class="status-badge status-{{ run.status }}">{{ run.status }}</span></td>
           <td>{{ run_mode_label(run) }}</td>
           <td>{{ run.started_at | duration(run.finished_at) }}</td>
           <td class="message-cell">{{ run.errors[-1] if run.errors else run.stage_message }}</td>
           <td class="table-actions">
-            <a class="action-chip" href="/runs/{{ run.run_id }}">View</a>
+            <a class="action-chip" href="/runs/{{ run.run_id }}">View Report</a>
             {% if run.status in ['completed', 'failed', 'cancelled'] %}
-            <a class="action-chip" href="/runs/{{ run.run_id }}/package">Package</a>
+            <a class="action-chip action-chip-highlight" href="/runs/{{ run.run_id }}/package">Package</a>
             {% endif %}
             {% if run.status in ['queued', 'running'] %}
             <form method="post" action="/ui/runs/{{ run.run_id }}/stop" onsubmit="return confirm('Stop this run?');">
@@ -74,14 +132,11 @@
             <form method="post" action="/ui/runs/{{ run.run_id }}/archive" onsubmit="return confirm('Archive this run record?');">
               <button class="action-chip" type="submit">Archive</button>
             </form>
-            <form method="post" action="/ui/runs/{{ run.run_id }}/delete" onsubmit="return confirm('Delete this run record from runtime/runs only?');">
-              <button class="action-chip danger-text" type="submit">Delete</button>
-            </form>
             {% endif %}
           </td>
         </tr>
       {% else %}
-        <tr><td colspan="8"><div class="empty-state">No runs match these filters.</div></td></tr>
+        <tr><td colspan="7"><div class="empty-state">No runs match these filters.</div></td></tr>
       {% endfor %}
       </tbody>
     </table>

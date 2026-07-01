@@ -34,8 +34,9 @@ class ReportService:
     def _to_report_item(self, run: RunRecord, *, generate_preview: bool = True) -> ReportItem:
         preview_path: str | None = None
         orthophoto_path = run.outputs.get('orthophoto_rgb') or run.outputs.get('orthophoto_mapir')
-        if orthophoto_path and generate_preview:
-            artifact = Path(orthophoto_path)
+        preview_source = run.outputs.get('ndvi_color_png') or orthophoto_path
+        if preview_source and generate_preview:
+            artifact = Path(preview_source)
             preview_file = Path(run.run_dir) / 'previews' / self.preview_service.preview_name_for(artifact)
             generated = self.preview_service.ensure_preview(artifact, preview_file)
             preview_path = str(generated) if generated else None
