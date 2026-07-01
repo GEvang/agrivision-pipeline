@@ -1,5 +1,5 @@
 {% extends 'base.html' %}
-{% block container_class %}container-wide{% endblock %}
+{% block container_class %}container-wide dashboard-page{% endblock %}
 {% block content %}
 {% set completed_count = status_summary.get('completed', 0) %}
 {% set queued_count = status_summary.get('queued', 0) %}
