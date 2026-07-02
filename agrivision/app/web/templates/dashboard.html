@@ -5,9 +5,10 @@
 {% set queued_count = status_summary.get('queued', 0) %}
 {% set running_count = status_summary.get('running', 0) %}
 {% set attention_count = status_summary.get('failed', 0) + status_summary.get('cancelled', 0) %}
-{% set latest_quality = latest_report.quality if latest_report and latest_report.quality else {} %}
-{% set quality_mean = latest_quality.get('mean') %}
-{% set crop_health_score = ((((quality_mean | float) + 1) * 50) | round(0, 'common') | int) if quality_mean is not none else none %}
+{% set latest_report = latest_card.report if latest_card else none %}
+{% set latest_quality = latest_card.quality if latest_card else {} %}
+{% set crop_health_score = latest_card.health_score if latest_card else none %}
+{% set weather = dashboard_weather or {} %}
 
 <section class="page-topbar">
   <div>
@@ -20,7 +21,10 @@
       <strong>{{ active_runs }} active jobs</strong>
       <small>{{ queued_count }} queued{% if running_count %} and {{ running_count }} running{% endif %}</small>
     </div>
-    <a class="app-button app-button-primary" href="/runs/new">Start New Analysis</a>
+    <a class="app-button app-button-primary" href="/runs/analyze">
+      <span class="button-plus-icon" aria-hidden="true">+</span>
+      <span>Start New Analysis</span>
+    </a>
   </div>
 </section>
 
@@ -88,41 +92,71 @@
         {% endif %}
       </div>
       {% if latest_report %}
-      <a class="app-button app-button-ghost" href="/reports/{{ latest_report.run_id }}/view">View Full Report</a>
+      <a class="app-button app-button-ghost" href="/runs/{{ latest_report.run_id }}">View Full Report</a>
       {% endif %}
     </div>
     {% if latest_report %}
     <div class="latest-analysis-body">
       <div class="analysis-preview-shell">
         {% if latest_report.preview_path %}
-        <img class="analysis-preview-image" src="/artifacts/{{ latest_report.run_id }}/preview" alt="Latest orthophoto preview" />
+        <img class="analysis-preview-image analysis-preview-image-contain" src="/artifacts/{{ latest_report.run_id }}/preview" alt="Latest field analysis preview" />
         {% else %}
         <div class="analysis-preview-placeholder">Preview unavailable</div>
         {% endif %}
       </div>
       <div class="analysis-metrics-grid">
-        <div class="metric-chip">
-          <span>Status</span>
+        <div class="metric-chip metric-chip-icon">
+          <div class="metric-chip-head">
+            <div class="metric-chip-icon-shell">
+              <img class="icon-art icon-art-xs" src="/static/icons/verified.png" alt="" />
+            </div>
+            <span>Status</span>
+          </div>
           <strong class="status-badge status-{{ latest_report.status }}">{{ latest_report.status }}</strong>
         </div>
-        <div class="metric-chip">
-          <span>Completed</span>
+        <div class="metric-chip metric-chip-icon">
+          <div class="metric-chip-head">
+            <div class="metric-chip-icon-shell">
+              <img class="icon-art icon-art-xs" src="/static/icons/report.png" alt="" />
+            </div>
+            <span>Completed</span>
+          </div>
           <strong>{{ latest_report.created_at | system_datetime }}</strong>
         </div>
-        <div class="metric-chip">
-          <span>Crop Health</span>
+        <div class="metric-chip metric-chip-icon">
+          <div class="metric-chip-head">
+            <div class="metric-chip-icon-shell">
+              <img class="icon-art icon-art-xs" src="/static/icons/olive-branch.png" alt="" />
+            </div>
+            <span>Crop Health</span>
+          </div>
           <strong>{% if crop_health_score is not none %}{{ crop_health_score }}/100{% else %}-{% endif %}</strong>
         </div>
-        <div class="metric-chip">
-          <span>Valid Pixels</span>
+        <div class="metric-chip metric-chip-icon">
+          <div class="metric-chip-head">
+            <div class="metric-chip-icon-shell">
+              <img class="icon-art icon-art-xs" src="/static/icons/pixel.png" alt="" />
+            </div>
+            <span>Valid Pixels</span>
+          </div>
           <strong>{% if latest_quality.get('valid_percent') is not none %}{{ '%.1f'|format(latest_quality.get('valid_percent')) }}%{% else %}-{% endif %}</strong>
         </div>
-        <div class="metric-chip metric-chip-wide">
-          <span>Classification</span>
-          <strong>{{ latest_quality.get('classification_mode') or 'Not available' }}</strong>
+        <div class="metric-chip metric-chip-wide metric-chip-icon">
+          <div class="metric-chip-head">
+            <div class="metric-chip-icon-shell">
+              <img class="icon-art icon-art-xs" src="/static/icons/{{ latest_card.crop.icon }}" alt="" />
+            </div>
+            <span>Crop</span>
+          </div>
+          <strong class="crop-chip-inline"><img class="crop-chip-icon" src="/static/icons/{{ latest_card.crop.icon }}" alt="" />{{ latest_card.crop.label }}</strong>
         </div>
-        <div class="metric-chip metric-chip-wide">
-          <span>Attention flags</span>
+        <div class="metric-chip metric-chip-wide metric-chip-icon">
+          <div class="metric-chip-head">
+            <div class="metric-chip-icon-shell">
+              <img class="icon-art icon-art-xs" src="/static/icons/warning.png" alt="" />
+            </div>
+            <span>Attention flags</span>
+          </div>
           <strong>{% if latest_quality.get('flags') %}{{ latest_quality.get('flags')[0] }}{% else %}No critical flags{% endif %}</strong>
         </div>
       </div>
@@ -136,33 +170,92 @@
     {% endif %}
   </article>
 
-  <div class="dashboard-side-column">
-    <article class="glass-panel system-status-card">
-      <div class="card-head">
+  <article class="glass-panel dashboard-weather-card">
+    <div class="card-head">
+      <div class="dashboard-weather-title">
         <div class="card-head-icon">
-          <img class="icon-art icon-art-sm" src="/static/icons/verified.png" alt="" />
+          <img class="icon-art icon-art-sm" src="/static/icons/{% if weather.get('icon') == 'rain' %}rainy.png{% elif weather.get('icon') == 'thunderstorm' %}thunderstorm.png{% elif weather.get('icon') == 'cloud' %}cloudy.png{% else %}sun.png{% endif %}" alt="" />
         </div>
         <div>
-          <h2>System Status</h2>
-          <p>Live readiness of the dashboard and optional services.</p>
+          <h2>Today's Weather</h2>
+          <p>{{ weather.get('location', 'Run an analysis first') }}</p>
         </div>
       </div>
-      <div class="status-list">
-        {% for service in service_health %}
-        <div class="status-list-item status-list-{{ service.state }}">
-          <div>
-            <strong>{{ service.name }}</strong>
-            <span>{{ service.detail }}</span>
-          </div>
-          <span class="health-dot"></span>
+    </div>
+    <div class="dashboard-weather-hero">
+      <div class="dashboard-weather-main">
+        <div class="dashboard-weather-temp">{{ weather.get('temperature', '--') }}</div>
+        <div class="dashboard-weather-summary">
+          <strong>{{ weather.get('description', 'Weather unavailable') }}</strong>
+          <span>{{ weather.get('feels_like', 'Run an analysis first to populate dashboard weather.') }}</span>
         </div>
-        {% endfor %}
       </div>
-      <div class="status-footer {% if attention_count %}status-footer-warn{% else %}status-footer-ok{% endif %}">
-        <strong>{% if attention_count %}{{ attention_count }} runs need attention{% else %}All systems healthy{% endif %}</strong>
+      <div class="dashboard-weather-art">
+        <img class="icon-art icon-art-lg" src="/static/icons/{% if weather.get('icon') == 'rain' %}rainy.png{% elif weather.get('icon') == 'thunderstorm' %}thunderstorm.png{% elif weather.get('icon') == 'cloud' %}cloudy.png{% else %}sun.png{% endif %}" alt="" />
       </div>
-    </article>
-  </div>
+    </div>
+    <div class="dashboard-weather-stats">
+      <div class="dashboard-weather-stat">
+        <img class="icon-art icon-art-xs" src="/static/icons/rainy.png" alt="" />
+        <strong>{{ weather.get('rain_chance', '--') }}</strong>
+        <span>Rain Chance</span>
+      </div>
+      <div class="dashboard-weather-stat">
+        <img class="icon-art icon-art-xs" src="/static/icons/wind.png" alt="" />
+        <strong>{{ weather.get('wind', '--') }}</strong>
+        <span>Wind</span>
+      </div>
+      <div class="dashboard-weather-stat">
+        <img class="icon-art icon-art-xs" src="/static/icons/thermometer.png" alt="" />
+        <strong>{{ weather.get('temperature', '--') }}</strong>
+        <span>Temperature</span>
+      </div>
+      <div class="dashboard-weather-stat">
+        <img class="icon-art icon-art-xs" src="/static/icons/humidity.png" alt="" />
+        <strong>{{ weather.get('humidity', '--') }}</strong>
+        <span>Humidity</span>
+      </div>
+    </div>
+    {% if weather.get('forecast') %}
+    <div class="dashboard-weather-forecast">
+      {% for forecast in weather.get('forecast', []) %}
+      <div class="dashboard-weather-day">
+        <span>{{ forecast.day }}</span>
+        <img class="icon-art icon-art-xs" src="/static/icons/{% if forecast.icon == 'rain' %}rainy.png{% elif forecast.icon == 'thunderstorm' %}thunderstorm.png{% elif forecast.icon == 'cloud' %}cloudy.png{% else %}sun.png{% endif %}" alt="" />
+        <strong>{% if forecast.high and forecast.low %}{{ forecast.high }}/{{ forecast.low }}{% elif forecast.high %}{{ forecast.high }}{% else %}--{% endif %}</strong>
+      </div>
+      {% endfor %}
+    </div>
+    {% else %}
+    <div class="dashboard-weather-empty">{{ weather.get('message', 'Run an analysis first to populate dashboard weather.') }}</div>
+    {% endif %}
+  </article>
+
+  <article class="glass-panel system-status-card">
+    <div class="card-head">
+      <div class="card-head-icon">
+        <img class="icon-art icon-art-sm" src="/static/icons/verified.png" alt="" />
+      </div>
+      <div>
+        <h2>System Status</h2>
+        <p>Live readiness of the dashboard and optional services.</p>
+      </div>
+    </div>
+    <div class="status-list">
+      {% for service in service_health %}
+      <div class="status-list-item status-list-{{ service.state }}">
+        <div>
+          <strong>{{ service.name }}</strong>
+          <span>{{ service.detail }}</span>
+        </div>
+        <span class="health-dot"></span>
+      </div>
+      {% endfor %}
+    </div>
+    <div class="status-footer {% if attention_count %}status-footer-warn{% else %}status-footer-ok{% endif %}">
+      <strong>{% if attention_count %}{{ attention_count }} runs need attention{% else %}All systems healthy{% endif %}</strong>
+    </div>
+  </article>
 </section>
 
 <section class="glass-panel analysis-table-panel">
@@ -184,19 +277,17 @@
         <tr>
           <th>Date &amp; Time</th>
           <th>Field / Dataset</th>
+          <th>Crop</th>
           <th>Status</th>
           <th>Health Score</th>
-          <th>Issue</th>
+          <th>Type</th>
           <th>Duration</th>
           <th>Actions</th>
         </tr>
       </thead>
       <tbody id="recent-runs-body">
-        {% for run in recent_runs %}
-        {% set run_report = latest_report if latest_report and latest_report.run_id == run.run_id else none %}
-        {% set run_quality = run_report.quality if run_report and run_report.quality else {} %}
-        {% set run_quality_mean = run_quality.get('mean') %}
-        {% set run_health = ((((run_quality_mean | float) + 1) * 50) | round(0, 'common') | int) if run_quality_mean is not none else none %}
+        {% for item in recent_run_cards %}
+        {% set run = item.run %}
         <tr data-status="{{ run.status }}">
           <td>{{ run.created_at | system_datetime }}</td>
           <td>
@@ -205,19 +296,35 @@
               <span>{{ run.dataset_name }}</span>
             </div>
           </td>
-          <td><span class="status-badge status-{{ run.status }}">{{ run.status }}</span></td>
-          <td>{% if run_health is not none %}{{ run_health }}/100{% else %}--{% endif %}</td>
-          <td class="message-cell">{{ run.errors[-1] if run.errors else run.stage_message }}</td>
+          <td>
+            <span class="crop-chip">
+              <img class="crop-chip-icon" src="/static/icons/{{ item.crop.icon }}" alt="" />
+              <span>{{ item.crop.label }}</span>
+            </span>
+          </td>
+          <td>
+            <span class="status-badge status-{{ run.status }}">
+              <span class="status-badge-icon status-icon-{{ item.status_icon }}" aria-hidden="true"></span>
+              <span>{{ run.status|replace('_', ' ')|title }}</span>
+            </span>
+          </td>
+          <td>
+            <span class="health-score health-score-{{ item.health_tone }}">
+              <span class="health-score-dot" aria-hidden="true"></span>
+              <span>{% if item.health_score is not none %}{{ item.health_score }}/100{% else %}--{% endif %}</span>
+            </span>
+          </td>
+          <td class="message-cell">{{ item.type_label }}</td>
           <td>{{ run.started_at | duration(run.finished_at) }}</td>
           <td class="table-actions">
             <a class="action-chip" href="/runs/{{ run.run_id }}">View</a>
             {% if run.status in ['completed', 'failed', 'cancelled'] %}
-            <a class="action-chip" href="/runs/{{ run.run_id }}/package">Package</a>
+            <a class="action-chip" href="/runs/{{ run.run_id }}/package">Export</a>
             {% endif %}
           </td>
         </tr>
         {% else %}
-        <tr><td colspan="7"><div class="empty-state">No analyses yet.</div></td></tr>
+        <tr><td colspan="8"><div class="empty-state">No analyses yet.</div></td></tr>
         {% endfor %}
       </tbody>
     </table>

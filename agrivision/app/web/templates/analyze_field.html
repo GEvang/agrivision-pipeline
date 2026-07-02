@@ -1,0 +1,332 @@
+{% extends 'base.html' %}
+{% block container_class %}container-wide{% endblock %}
+{% block content %}
+<section class="page-topbar">
+  <div>
+    <h1 class="page-title">Analyze Field</h1>
+    <p class="page-subtitle">Select an orthophoto dataset, choose analysis services, and launch a field run.</p>
+  </div>
+  <div class="topbar-actions">
+    <a class="app-button app-button-secondary" href="/runs/orthophotos">
+      <img class="icon-art icon-art-xs" src="/static/icons/save.png" alt="" />
+      <span>Build Orthophotos</span>
+    </a>
+  </div>
+</section>
+
+<form class="analyze-layout" method="post" action="/ui/runs">
+  <section class="glass-panel analyze-main-panel">
+    {% if validation_result %}
+    <div class="validation-panel validation-{{ 'ok' if validation_result.ok else 'error' }}">
+      {% if validation_result.blockers %}
+      <strong>Run cannot start yet</strong>
+      <ul>
+        {% for item in validation_result.blockers %}
+        <li>{{ item }}</li>
+        {% endfor %}
+      </ul>
+      {% else %}
+      <strong>Preflight passed</strong>
+      {% endif %}
+      {% if validation_result.warnings %}
+      <strong>Warnings</strong>
+      <ul>
+        {% for item in validation_result.warnings %}
+        <li>{{ item }}</li>
+        {% endfor %}
+      </ul>
+      {% endif %}
+    </div>
+    {% endif %}
+
+    <section class="analyze-step-panel">
+      <div class="analyze-step-head">
+        <span class="analyze-step-number">1</span>
+        <div>
+          <h2>Select Dataset</h2>
+          <p>Choose an orthophoto dataset and name this analysis run.</p>
+        </div>
+      </div>
+      <div class="analysis-run-grid">
+        <label class="analysis-field">
+          <span>Orthophoto dataset</span>
+          <select name="source_orthophoto_run_id" required {% if not orthophoto_uploads %}disabled{% endif %}>
+            {% if not orthophoto_uploads %}
+            <option>No orthophoto datasets yet</option>
+            {% endif %}
+            {% for upload in orthophoto_uploads %}
+            <option value="{{ upload.orthophoto_run_id | default(upload.run_id) }}" data-upload="{{ upload.upload_run_id | default(upload.run_id) }}" data-dataset="{{ upload.dataset_name }}" {% if (upload.upload_run_id | default(upload.run_id)) == selected_upload_run_id %}selected{% endif %}>
+              {{ upload.dataset_name }}{% if upload.created_at is defined %} - {{ upload.created_at | system_datetime }}{% endif %}
+            </option>
+            {% endfor %}
+          </select>
+        </label>
+
+        <label class="analysis-field">
+          <span>Run name (optional)</span>
+          <input type="text" name="run_name" value="{{ form_values.get('run_name', '') }}" placeholder="North Field Analysis - July 2026" />
+        </label>
+      </div>
+    </section>
+
+    <section class="analyze-step-panel">
+      <div class="analyze-step-head">
+        <span class="analyze-step-number">2</span>
+        <div>
+          <h2>Choose Services</h2>
+          <p>Select the analysis services to include in this run.</p>
+        </div>
+      </div>
+      <div class="analyze-service-grid">
+        <label class="analyze-service-card">
+          <input type="checkbox" name="fetch_weather" value="true" {% if form_values.get('fetch_weather', True) %}checked{% endif %} />
+          <span class="analyze-service-copy">
+            <span class="analyze-service-icon"><img class="icon-art icon-art-sm" src="/static/icons/cloudy.png" alt="" /></span>
+            <span>
+              <strong>Weather</strong>
+              <small>Pull field weather for the selected imagery date.</small>
+            </span>
+          </span>
+          <span class="service-toggle-ui" aria-hidden="true"></span>
+        </label>
+
+        <label class="analyze-service-card">
+          <input type="checkbox" name="run_irrigation" value="true" {% if form_values.get('run_irrigation', True) %}checked{% endif %} />
+          <span class="analyze-service-copy">
+            <span class="analyze-service-icon"><img class="icon-art icon-art-sm" src="/static/icons/thermometer.png" alt="" /></span>
+            <span>
+              <strong>Irrigation</strong>
+              <small>Evaluate irrigation indicators when the service is available.</small>
+            </span>
+          </span>
+          <span class="service-toggle-ui" aria-hidden="true"></span>
+        </label>
+
+        <label class="analyze-service-card">
+          <input type="checkbox" name="run_pdm" value="true" {% if form_values.get('run_pdm', pdm_enabled_by_default) %}checked{% endif %} />
+          <span class="analyze-service-copy">
+            <span class="analyze-service-icon"><img class="icon-art icon-art-sm" src="/static/icons/warning.png" alt="" /></span>
+            <span>
+              <strong>Pest &amp; Disease</strong>
+              <small>Run connected PDM model for crop-specific risk.</small>
+            </span>
+          </span>
+          <span class="service-toggle-ui" aria-hidden="true"></span>
+        </label>
+
+        <label class="analyze-service-card">
+          <input type="checkbox" name="generate_report" value="true" {% if form_values.get('generate_report', True) %}checked{% endif %} />
+          <span class="analyze-service-copy">
+            <span class="analyze-service-icon"><img class="icon-art icon-art-sm" src="/static/icons/report.png" alt="" /></span>
+            <span>
+              <strong>Generate Report</strong>
+              <small>Build the final dashboard-ready report package.</small>
+            </span>
+          </span>
+          <span class="service-toggle-ui" aria-hidden="true"></span>
+        </label>
+      </div>
+    </section>
+
+    <section class="analyze-step-panel">
+      <div class="analyze-step-head">
+        <span class="analyze-step-number">3</span>
+        <div>
+          <h2>Configure Crop Model</h2>
+          <p>Set the crop and predefined model for pest and disease analysis.</p>
+        </div>
+      </div>
+      <div class="analysis-run-grid">
+        <label class="analysis-field">
+          <span>Crop</span>
+          <select name="pdm_crop" id="pdm-crop-select">
+            <option value="grapevine" {% if form_values.get('pdm_crop', pdm_default_crop) == 'grapevine' %}selected{% endif %}>Grapevine</option>
+            <option value="olive" {% if form_values.get('pdm_crop', pdm_default_crop) == 'olive' %}selected{% endif %}>Olive</option>
+          </select>
+        </label>
+        <label class="analysis-field">
+          <span>Predefined model</span>
+          <select name="pdm_model_key" id="pdm-model-select">
+            {% for item in pdm_model_catalog %}
+            <option value="{{ item.key }}" data-crop="{{ item.crop }}" {% if item.key == form_values.get('pdm_model_key', pdm_default_model_key) %}selected{% endif %}>{{ item.label }}</option>
+            {% endfor %}
+          </select>
+        </label>
+      </div>
+      <div class="analyze-info-banner">
+        <span class="analyze-info-symbol">i</span>
+        <span>Model outputs are driven by the selected crop and enabled services.</span>
+      </div>
+    </section>
+
+    <div class="preflight-results" id="preflight-results" aria-live="polite"></div>
+    <div class="quality-actions quality-actions-end">
+      <button class="app-button app-button-secondary" type="button" id="preflight-button" {% if not orthophoto_uploads %}disabled{% endif %}>Check Run</button>
+      <button class="app-button app-button-primary" type="submit" {% if not orthophoto_uploads %}disabled{% endif %}>
+        <img class="icon-art icon-art-xs" src="/static/icons/rocket.png" alt="" />
+        <span>Launch Analysis</span>
+      </button>
+    </div>
+  </section>
+
+  <aside class="glass-panel analyze-summary-panel">
+    <div class="card-head">
+      <div>
+        <h2>Run Summary</h2>
+        <p>Review your selections before launching.</p>
+      </div>
+    </div>
+
+    <div class="analyze-summary-section">
+      <strong>Dataset</strong>
+      <div class="summary-row">
+        <img class="icon-art icon-art-sm" src="/static/icons/report.png" alt="" />
+        <div>
+          <span id="summary-dataset-name">{{ orthophoto_uploads[0].dataset_name if orthophoto_uploads else 'No dataset selected' }}</span>
+          <small id="summary-run-name">{{ form_values.get('run_name', 'Run name will appear here') or 'Run name will appear here' }}</small>
+        </div>
+      </div>
+    </div>
+
+    <div class="analyze-summary-section">
+      <strong>Selected Services</strong>
+      <div class="summary-service-list">
+        <div class="summary-service-item"><img class="icon-art icon-art-xs" src="/static/icons/cloudy.png" alt="" /><span>Weather</span></div>
+        <div class="summary-service-item"><img class="icon-art icon-art-xs" src="/static/icons/thermometer.png" alt="" /><span>Irrigation</span></div>
+        <div class="summary-service-item"><img class="icon-art icon-art-xs" src="/static/icons/warning.png" alt="" /><span>Pest &amp; Disease</span></div>
+        <div class="summary-service-item"><img class="icon-art icon-art-xs" src="/static/icons/report.png" alt="" /><span>Generate Report</span></div>
+      </div>
+    </div>
+
+    <div class="analyze-summary-section">
+      <strong>Crop &amp; Model</strong>
+      <div class="summary-service-list">
+        <div class="summary-service-item"><img class="icon-art icon-art-xs" src="/static/icons/grape.png" alt="" /><span id="summary-crop-name">{{ 'Olive' if form_values.get('pdm_crop', pdm_default_crop) == 'olive' else 'Grapevine' }}</span></div>
+        <div class="summary-service-item"><img class="icon-art icon-art-xs" src="/static/icons/verified.png" alt="" /><span id="summary-model-name">Model will update from the selected catalog.</span></div>
+      </div>
+    </div>
+
+    <div class="analyze-runtime-box">
+      <img class="icon-art icon-art-sm" src="/static/icons/save.png" alt="" />
+      <div>
+        <strong>Estimated runtime</strong>
+        <span>~30-60 min</span>
+        <small>Runtime may vary based on data size and selected services.</small>
+      </div>
+    </div>
+  </aside>
+</form>
+
+<script>
+(function() {
+  const cropSelect = document.getElementById('pdm-crop-select');
+  const modelSelect = document.getElementById('pdm-model-select');
+  const datasetSelect = document.querySelector('select[name="source_orthophoto_run_id"]');
+  const runNameInput = document.querySelector('input[name="run_name"]');
+  const summaryDataset = document.getElementById('summary-dataset-name');
+  const summaryRunName = document.getElementById('summary-run-name');
+  const summaryCrop = document.getElementById('summary-crop-name');
+  const summaryModel = document.getElementById('summary-model-name');
+
+  function filterModels() {
+    if (!cropSelect || !modelSelect) return;
+    const crop = cropSelect.value;
+    let firstVisible = null;
+    Array.from(modelSelect.options).forEach((option) => {
+      const visible = option.dataset.crop === crop;
+      option.hidden = !visible;
+      if (visible && !firstVisible) firstVisible = option;
+    });
+    const selected = modelSelect.options[modelSelect.selectedIndex];
+    if (!selected || selected.hidden) {
+      if (firstVisible) firstVisible.selected = true;
+    }
+    if (summaryCrop) summaryCrop.textContent = crop === 'olive' ? 'Olive' : 'Grapevine';
+    if (summaryModel) summaryModel.textContent = modelSelect.options[modelSelect.selectedIndex]?.textContent || 'Model not selected';
+  }
+
+  function syncSummary() {
+    if (datasetSelect && summaryDataset) {
+      summaryDataset.textContent = datasetSelect.options[datasetSelect.selectedIndex]?.textContent || 'No dataset selected';
+    }
+    if (runNameInput && summaryRunName) {
+      const value = runNameInput.value.trim();
+      summaryRunName.textContent = value || 'Run name will appear here';
+    }
+    filterModels();
+  }
+
+  if (cropSelect) cropSelect.addEventListener('change', filterModels);
+  if (modelSelect) modelSelect.addEventListener('change', syncSummary);
+  if (datasetSelect) datasetSelect.addEventListener('change', syncSummary);
+  if (runNameInput) runNameInput.addEventListener('input', syncSummary);
+  syncSummary();
+})();
+
+(function() {
+  const form = document.querySelector('form[action="/ui/runs"]');
+  const preflightButton = document.getElementById('preflight-button');
+  const results = document.getElementById('preflight-results');
+  if (!form || !preflightButton || !results) return;
+
+  function payloadFromForm() {
+    const data = new FormData(form);
+    const selectedOption = form.querySelector('select[name="source_orthophoto_run_id"] option:checked');
+    return {
+      run_name: data.get('run_name') || null,
+      dataset_name: selectedOption?.dataset?.dataset || 'Dataset',
+      upload_run_id: selectedOption?.dataset?.upload || '',
+      selected_steps: {
+        resize_images: false,
+        run_odm: false,
+        fetch_weather: data.has('fetch_weather'),
+        run_irrigation: data.has('run_irrigation'),
+        run_pdm: data.has('run_pdm'),
+        generate_report: data.has('generate_report')
+      },
+      parameters: {
+        pdm_crop: data.get('pdm_crop'),
+        pdm_model_key: data.get('pdm_model_key'),
+        source_orthophoto_run_id: data.get('source_orthophoto_run_id')
+      }
+    };
+  }
+
+  function renderPreflight(payload) {
+    const rows = (payload.checks || []).map((item) => (
+      `<li class="preflight-${item.state}"><strong>${item.name}</strong><span>${item.detail}</span></li>`
+    )).join('');
+    const blockers = (payload.blockers || []).map((item) => `<li>${item}</li>`).join('');
+    const warnings = (payload.warnings || []).map((item) => `<li>${item}</li>`).join('');
+    results.innerHTML = `
+      <div class="validation-panel validation-${payload.ok ? 'ok' : 'error'}">
+        <strong>${payload.ok ? 'Preflight passed' : 'Run cannot start yet'}</strong>
+        ${blockers ? `<ul>${blockers}</ul>` : ''}
+        ${warnings ? `<strong>Warnings</strong><ul>${warnings}</ul>` : ''}
+        <ul class="preflight-checks">${rows}</ul>
+      </div>
+    `;
+  }
+
+  preflightButton.addEventListener('click', async () => {
+    preflightButton.disabled = true;
+    preflightButton.textContent = 'Checking...';
+    results.innerHTML = '';
+    try {
+      const response = await fetch('/runs/validate', {
+        method: 'POST',
+        headers: { 'content-type': 'application/json', 'accept': 'application/json' },
+        body: JSON.stringify(payloadFromForm())
+      });
+      const payload = await response.json();
+      renderPreflight(payload);
+    } catch (error) {
+      results.innerHTML = '<div class="validation-panel validation-error"><strong>Preflight failed</strong><ul><li>Could not validate this run right now.</li></ul></div>';
+    } finally {
+      preflightButton.disabled = false;
+      preflightButton.textContent = 'Check Run';
+    }
+  });
+})();
+</script>
+{% endblock %}

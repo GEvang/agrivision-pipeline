@@ -12,30 +12,31 @@
 <section class="page-topbar">
   <div>
     <h1 class="page-title">Reports</h1>
-    <p class="page-subtitle">View, filter, and manage completed and in-progress analysis runs.</p>
+    <p class="page-subtitle">Browse completed analyses, monitor active runs, and export report packages.</p>
   </div>
   <div class="topbar-actions">
-    <a class="app-button app-button-primary" href="/runs/new">New Analysis</a>
-    <form method="post" action="/ui/runs/clear-incomplete" onsubmit="return confirm('Delete failed, cancelled, and stale queued/running run records?');">
-      <button class="app-button app-button-secondary" type="submit">Clean Run History</button>
-    </form>
+    <a class="app-button app-button-secondary" href="/runs/orthophotos">Build Orthophotos</a>
+    <a class="app-button app-button-primary" href="/runs/analyze">
+      <span class="button-plus-icon" aria-hidden="true">+</span>
+      <span>Analyze Field</span>
+    </a>
   </div>
 </section>
 
 <section class="insight-grid report-insight-grid">
   <article class="insight-card">
     <div class="insight-icon insight-green">
-      <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 19h16"></path><path d="M6 16V9"></path><path d="M12 16V5"></path><path d="M18 16v-3"></path></svg>
+      <img class="icon-art icon-art-sm" src="/static/icons/tractor.png" alt="" />
     </div>
     <div class="insight-copy">
       <span class="insight-label">Total Runs</span>
       <strong>{{ total_runs }}</strong>
-      <small>All time</small>
+      <small>All recorded analyses</small>
     </div>
   </article>
   <article class="insight-card">
     <div class="insight-icon insight-mint">
-      <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M6 12l4 4 8-8"></path><path d="M12 21a9 9 0 1 0 0-18 9 9 0 0 0 0 18Z"></path></svg>
+      <img class="icon-art icon-art-sm" src="/static/icons/verified.png" alt="" />
     </div>
     <div class="insight-copy">
       <span class="insight-label">Completed</span>
@@ -45,7 +46,7 @@
   </article>
   <article class="insight-card">
     <div class="insight-icon insight-blue">
-      <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 7v5l3 3"></path><path d="M12 21a9 9 0 1 0 0-18 9 9 0 0 0 0 18Z"></path></svg>
+      <img class="icon-art icon-art-sm" src="/static/icons/save.png" alt="" />
     </div>
     <div class="insight-copy">
       <span class="insight-label">In Progress</span>
@@ -55,7 +56,7 @@
   </article>
   <article class="insight-card">
     <div class="insight-icon insight-amber">
-      <svg viewBox="0 0 24 24" aria-hidden="true"><path d="m12 9 .01 4"></path><path d="M12 17h.01"></path><path d="M10.3 4.9 2.9 18a2 2 0 0 0 1.7 3h14.8a2 2 0 0 0 1.7-3L13.7 4.9a2 2 0 0 0-3.4 0Z"></path></svg>
+      <img class="icon-art icon-art-sm" src="/static/icons/warning.png" alt="" />
     </div>
     <div class="insight-copy">
       <span class="insight-label">Need Attention</span>
@@ -74,11 +75,11 @@
         {% endfor %}
       </select>
     </label>
-    <label>Run Mode
+    <label>Run Type
       <select name="run_mode">
         <option value="all" {% if run_mode_filter == 'all' %}selected{% endif %}>All</option>
-        <option value="full_odm" {% if run_mode_filter == 'full_odm' %}selected{% endif %}>Full ODM</option>
-        <option value="existing_orthos" {% if run_mode_filter == 'existing_orthos' %}selected{% endif %}>Existing Orthos</option>
+        <option value="full_odm" {% if run_mode_filter == 'full_odm' %}selected{% endif %}>Orthophoto Build</option>
+        <option value="existing_orthos" {% if run_mode_filter == 'existing_orthos' %}selected{% endif %}>Field Analysis</option>
       </select>
     </label>
     <label>Search
@@ -91,22 +92,30 @@
   </form>
 </section>
 
-<section class="glass-panel report-table-panel">
+<section class="glass-panel analysis-table-panel report-list-panel">
+  <div class="card-head card-head-spread">
+    <div>
+      <h2>Run History</h2>
+      <p>Every orthophoto build and field analysis in one timeline.</p>
+    </div>
+  </div>
   <div class="analysis-table-wrap">
-    <table class="analysis-table report-table">
+    <table class="analysis-table report-list-table">
       <thead>
         <tr>
-          <th>Created</th>
+          <th>Date &amp; Time</th>
           <th>Field / Dataset</th>
+          <th>Crop</th>
           <th>Status</th>
-          <th>Mode</th>
+          <th>Health Score</th>
+          <th>Type</th>
           <th>Duration</th>
-          <th>Last Message</th>
           <th>Actions</th>
         </tr>
       </thead>
       <tbody>
-      {% for run in runs %}
+        {% for item in report_cards %}
+        {% set run = item.run %}
         <tr>
           <td>{{ run.created_at | system_datetime }}</td>
           <td>
@@ -115,14 +124,30 @@
               <span>{{ run.dataset_name }}</span>
             </div>
           </td>
-          <td><span class="status-badge status-{{ run.status }}">{{ run.status }}</span></td>
-          <td>{{ run_mode_label(run) }}</td>
+          <td>
+            <span class="crop-chip">
+              <img class="crop-chip-icon" src="/static/icons/{{ item.crop.icon }}" alt="" />
+              <span>{{ item.crop.label }}</span>
+            </span>
+          </td>
+          <td>
+            <span class="status-badge status-{{ run.status }}">
+              <span class="status-badge-icon status-icon-{{ item.status_icon }}" aria-hidden="true"></span>
+              <span>{{ run.status|replace('_', ' ')|title }}</span>
+            </span>
+          </td>
+          <td>
+            <span class="health-score health-score-{{ item.health_tone }}">
+              <span class="health-score-dot" aria-hidden="true"></span>
+              <span>{% if item.health_score is not none %}{{ item.health_score }}/100{% else %}--{% endif %}</span>
+            </span>
+          </td>
+          <td>{{ item.type_label }}</td>
           <td>{{ run.started_at | duration(run.finished_at) }}</td>
-          <td class="message-cell">{{ run.errors[-1] if run.errors else run.stage_message }}</td>
           <td class="table-actions">
-            <a class="action-chip" href="/runs/{{ run.run_id }}">View Report</a>
+            <a class="action-chip" href="/runs/{{ run.run_id }}">View</a>
             {% if run.status in ['completed', 'failed', 'cancelled'] %}
-            <a class="action-chip action-chip-highlight" href="/runs/{{ run.run_id }}/package">Package</a>
+            <a class="action-chip action-chip-highlight" href="/runs/{{ run.run_id }}/package">Export</a>
             {% endif %}
             {% if run.status in ['queued', 'running'] %}
             <form method="post" action="/ui/runs/{{ run.run_id }}/stop" onsubmit="return confirm('Stop this run?');">
@@ -135,9 +160,9 @@
             {% endif %}
           </td>
         </tr>
-      {% else %}
-        <tr><td colspan="7"><div class="empty-state">No runs match these filters.</div></td></tr>
-      {% endfor %}
+        {% else %}
+        <tr><td colspan="8"><div class="empty-state">No runs match these filters.</div></td></tr>
+        {% endfor %}
       </tbody>
     </table>
   </div>

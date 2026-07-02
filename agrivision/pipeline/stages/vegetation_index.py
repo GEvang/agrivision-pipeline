@@ -287,11 +287,10 @@ def save_png(arr: np.ndarray, out_path: Path, title: str, out_dir: Path) -> None
     print(f"[VI] Rendering PNG with vmin={vmin:.3f}, vmax={vmax:.3f}")
 
     plt.figure(figsize=(10, 8))
-    im = plt.imshow(arr, cmap="RdYlGn", vmin=vmin, vmax=vmax)
-    plt.colorbar(im, label="Index value")
-    plt.title(title)
-    plt.tight_layout()
-    plt.savefig(out_path, dpi=200)
+    plt.imshow(arr, cmap="RdYlGn", vmin=vmin, vmax=vmax)
+    plt.axis("off")
+    plt.tight_layout(pad=0)
+    plt.savefig(out_path, dpi=200, bbox_inches="tight", pad_inches=0)
     plt.close()
 
     print(f"[VI] PNG saved: {out_path}")

@@ -94,6 +94,10 @@
                   <span class="browse-files-button">Browse Files</span>
                   <input type="file" name="{{ camera.raw_name }}" multiple />
                 </label>
+                <div class="upload-selection" data-upload-selection>
+                  <strong>No files selected</strong>
+                  <span>Add one or more {{ camera.label }} source images to continue.</span>
+                </div>
                 <div class="upload-meta">
                   <small>{{ camera.recommended }}</small>
                   <small>{{ camera.supported_raw }}</small>
@@ -107,6 +111,10 @@
                   <span class="browse-files-button">Choose Orthophoto</span>
                   <input type="file" name="{{ camera.ortho_name }}" accept=".tif,.tiff" />
                 </label>
+                <div class="upload-selection" data-upload-selection>
+                  <strong>No orthophoto selected</strong>
+                  <span>Choose an existing {{ camera.label }} GeoTIFF if you already built one.</span>
+                </div>
                 <div class="upload-meta">
                   <small>{{ camera.supported_ortho }}</small>
                 </div>
@@ -316,6 +324,10 @@
                 <span class="browse-files-button">Browse Files</span>
                 <input type="file" name="{{ camera.key }}_files" multiple />
               </label>
+              <div class="upload-selection" data-upload-selection>
+                <strong>No files selected</strong>
+                <span>Add one or more {{ camera.label }} source images to continue.</span>
+              </div>
             </div>
             <div class="source-panel source-panel-ortho" hidden>
               <label class="upload-dropzone upload-dropzone-compact">
@@ -324,6 +336,10 @@
                 <span class="browse-files-button">Choose Orthophoto</span>
                 <input type="file" name="{{ camera.key }}_orthophoto" accept=".tif,.tiff" />
               </label>
+              <div class="upload-selection" data-upload-selection>
+                <strong>No orthophoto selected</strong>
+                <span>Choose an existing {{ camera.label }} GeoTIFF if you already built one.</span>
+              </div>
             </div>
           </section>
           {% endfor %}
@@ -465,6 +481,49 @@
 
 <script>
   window.addEventListener('DOMContentLoaded', () => {
+    const describeFiles = (files, mode) => {
+      if (!files || files.length === 0) {
+        return mode === 'ortho'
+          ? {
+              title: 'No orthophoto selected',
+              detail: 'Choose an existing GeoTIFF if you already built one.'
+            }
+          : {
+              title: 'No files selected',
+              detail: 'Add one or more source images to continue.'
+            };
+      }
+      if (mode === 'ortho') {
+        return {
+          title: files[0].name,
+          detail: 'Orthophoto selected and ready for upload.'
+        };
+      }
+      const names = Array.from(files).slice(0, 3).map((file) => file.name);
+      const remaining = files.length - names.length;
+      return {
+        title: `${files.length} file${files.length === 1 ? '' : 's'} selected`,
+        detail: remaining > 0 ? `${names.join(', ')} + ${remaining} more` : names.join(', ')
+      };
+    };
+
+    const updateSelectionState = (input) => {
+      const zone = input.closest('.upload-dropzone');
+      const selection = input.closest('.source-panel')?.querySelector('[data-upload-selection]');
+      const mode = input.multiple ? 'raw' : 'ortho';
+      const state = describeFiles(input.files, mode);
+      if (zone) {
+        zone.classList.toggle('has-selection', Boolean(input.files && input.files.length));
+      }
+      if (selection) {
+        selection.classList.toggle('has-selection', Boolean(input.files && input.files.length));
+        const title = selection.querySelector('strong');
+        const detail = selection.querySelector('span');
+        if (title) title.textContent = state.title;
+        if (detail) detail.textContent = state.detail;
+      }
+    };
+
     document.querySelectorAll('[data-camera-input]').forEach((card) => {
       const rawPanel = card.querySelector('.source-panel-raw');
       const orthoPanel = card.querySelector('.source-panel-ortho');
@@ -475,6 +534,10 @@
       };
       card.querySelectorAll('input[type="radio"]').forEach((input) => {
         input.addEventListener('change', syncPanels);
+      });
+      card.querySelectorAll('input[type="file"]').forEach((input) => {
+        input.addEventListener('change', () => updateSelectionState(input));
+        updateSelectionState(input);
       });
       syncPanels();
     });

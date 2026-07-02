@@ -397,7 +397,7 @@ async def upload_images_ui(
         rgb_files=rgb_files,
         thermal_files=thermal_files,
     )
-    return RedirectResponse(url=f"/runs/new?upload_run_id={manifest['run_id']}", status_code=303)
+    return RedirectResponse(url=f"/runs/orthophotos?upload_run_id={manifest['run_id']}", status_code=303)
 
 
 @router.post('/ui/orthophotos/init')

@@ -94,6 +94,7 @@ def build_report_html(
     methodology_html: str,
     artifacts_list_html: str,
     visible_image_html: str,
+    mapir_image_html: str,
     ndvi_color_html: str,
     thermal_image_html: str,
     grid_meta_html: str,
@@ -271,7 +272,7 @@ def build_report_html(
       margin-top: 14px;
       align-items: stretch;
     }}
-    .side-stack, .right-stack {{
+    .side-stack, .analysis-stack, .right-stack {{
       display: grid;
       gap: 14px;
       align-content: start;
@@ -332,14 +333,20 @@ def build_report_html(
     .side-stack .image-block img {{
       max-height: 260px;
     }}
+    .analysis-stack .image-block img {{
+      max-height: 300px;
+    }}
     .risk-panel .image-block img {{
-      max-height: 620px;
+      max-height: 460px;
     }}
     body.report-embedded .side-stack .image-block img {{
       max-height: 260px;
     }}
+    body.report-embedded .analysis-stack .image-block img {{
+      max-height: 300px;
+    }}
     body.report-embedded .risk-panel .image-block img {{
-      max-height: 620px;
+      max-height: 460px;
     }}
     .image-note {{
       margin-top: 8px;
@@ -398,56 +405,6 @@ def build_report_html(
       font-size: 12px;
       margin-top: 5px;
     }}
-    .alert-panel {{ margin-top: 14px; }}
-    .alert-title {{
-      display: flex;
-      align-items: center;
-      gap: 13px;
-      margin-bottom: 12px;
-    }}
-    .alert-icon {{
-      width: 46px;
-      height: 46px;
-      border-radius: 999px;
-      display: grid;
-      place-items: center;
-      background: var(--red);
-      color: white;
-      padding: 10px;
-      flex: 0 0 auto;
-    }}
-    .alert-title h2 {{
-      margin: 0;
-      font-size: 20px;
-    }}
-    .alert-list {{
-      border: 1px solid #ffaaa4;
-      background: #fff8f7;
-      border-radius: 12px;
-      padding: 13px 15px;
-      display: grid;
-      grid-template-columns: repeat(2, minmax(0, 1fr));
-      gap: 11px 14px;
-    }}
-    .alert-item {{
-      display: grid;
-      grid-template-columns: 42px minmax(0, 1fr);
-      align-items: center;
-      gap: 14px;
-      color: #13204a;
-      font-size: 13px;
-    }}
-    .alert-symbol {{
-      width: 42px;
-      height: 42px;
-      border-radius: 999px;
-      display: grid;
-      place-items: center;
-      border: 1px solid #ffaaa4;
-      background: white;
-      color: var(--red);
-      padding: 9px;
-    }}
     .info-grid {{
       display: grid;
       grid-template-columns: 1fr;
@@ -459,54 +416,57 @@ def build_report_html(
     .info-grid h3 {{
       font-size: 16px;
     }}
-    .target-list {{ display: grid; gap: 8px; }}
-    .target {{
+    .signal-grid {{
       display: grid;
-      grid-template-columns: 32px 1fr auto auto;
-      align-items: center;
-      gap: 8px;
-      padding: 7px 8px;
-      border-bottom: 1px solid #e7eaf1;
-      font-size: 13px;
-      font-weight: 800;
+      grid-template-columns: repeat(2, minmax(0, 1fr));
+      gap: 10px;
     }}
-    .target.selected {{
-      border: 1px solid #ffaaa4;
-      background: #fff1f0;
-      border-radius: 10px;
-      border-bottom-color: #ffaaa4;
-    }}
-    .target-badge {{
-      width: 30px;
-      height: 30px;
+    .signal-card {{
+      border: 1px solid var(--line);
+      border-radius: 12px;
+      background: #fbfdff;
+      padding: 12px 13px;
       display: grid;
-      place-items: center;
-      border-radius: 999px;
-      color: white;
-      padding: 8px;
+      gap: 5px;
+      min-height: 74px;
     }}
-    .risk-score {{
-      font-size: 12px;
+    .signal-card span {{
       color: var(--muted);
-      font-weight: 900;
-    }}
-    .conditions {{
-      display: grid;
-      grid-template-columns: 24px minmax(0, 1fr) auto;
-      gap: 9px 9px;
-      align-items: center;
       font-size: 12px;
+      text-transform: uppercase;
+      letter-spacing: 0.04em;
     }}
-    .condition-icon {{
-      display: inline-grid;
-      place-items: center;
-      width: 22px;
-      height: 22px;
+    .signal-card strong {{
+      font-size: 14px;
       color: var(--navy);
+      line-height: 1.35;
     }}
-    .condition-icon .svg-icon {{
-      width: 20px;
-      height: 20px;
+    .context-list {{
+      display: grid;
+      gap: 9px;
+    }}
+    .context-row {{
+      display: grid;
+      grid-template-columns: minmax(120px, 0.8fr) minmax(0, 1.4fr);
+      gap: 14px;
+      align-items: start;
+      padding: 10px 0;
+      border-bottom: 1px solid #e7eef7;
+    }}
+    .context-row:last-child {{
+      border-bottom: 0;
+      padding-bottom: 0;
+    }}
+    .context-row span {{
+      color: var(--muted);
+      font-size: 12px;
+      text-transform: uppercase;
+      letter-spacing: 0.04em;
+    }}
+    .context-row strong {{
+      font-size: 13px;
+      color: var(--navy);
+      line-height: 1.45;
     }}
     .bottom-grid {{
       display: grid;
@@ -679,15 +639,14 @@ def build_report_html(
   <section class="report-grid">
     <aside class="side-stack">
       <section class="panel">
-        <h2><span class="icon">{camera_icon}</span>Visible Orthomosaic</h2>
+        <h2><span class="icon">{camera_icon}</span>RGB</h2>
         <div class="image-block">{visible_image_html}</div>
         <div class="image-note">High-resolution true-color image</div>
       </section>
       <section class="panel">
-        <h2><span class="icon green">{vegetation_icon}</span>{safe_html(index_title)}</h2>
-        <div class="image-block">{ndvi_color_html}</div>
-        <div class="bar"></div>
-        <div class="bar-labels"><span>Low Vigor</span><span>High Vigor</span></div>
+        <h2><span class="icon">{camera_icon}</span>MAPIR</h2>
+        <div class="image-block">{mapir_image_html}</div>
+        <div class="image-note">Multispectral orthomosaic used for vegetation analysis when available</div>
       </section>
       <section class="panel">
         <h2><span class="icon red">{thermal_icon}</span>Thermal</h2>
@@ -698,25 +657,25 @@ def build_report_html(
       </section>
     </aside>
 
-    <section class="panel risk-panel">
-      <h2><span class="icon">{risk_icon}</span>{safe_html(risk_title)}</h2>
-      <p class="risk-copy">
-        {safe_html(risk_copy)}
-      </p>
-      <div class="image-block">{grid_overlay_html}</div>
-      <div class="legend">
-        <span><i class="dot blue"></i>Blue = Very Low</span>
-        <span><i class="dot green"></i>Green = Low</span>
-        <span><i class="dot yellow"></i>Yellow = Medium</span>
-        <span><i class="dot red"></i>Red = High</span>
-      </div>
-      <section class="panel alert-panel">
-        <div class="alert-title">
-          <div class="alert-icon">{alert_icon}</div>
-          <h2>Alert Summary</h2>
-        </div>
-        <div class="alert-list">
-          {risk_alert_html}
+    <section class="analysis-stack">
+      <section class="panel">
+        <h2><span class="icon green">{vegetation_icon}</span>{safe_html(index_title)}</h2>
+        <div class="image-block">{ndvi_color_html}</div>
+        <div class="bar"></div>
+        <div class="bar-labels"><span>Low Vigor</span><span>High Vigor</span></div>
+      </section>
+
+      <section class="panel risk-panel">
+        <h2><span class="icon">{risk_icon}</span>{safe_html(risk_title)}</h2>
+        <p class="risk-copy">
+          {safe_html(risk_copy)}
+        </p>
+        <div class="image-block">{grid_overlay_html}</div>
+        <div class="legend">
+          <span><i class="dot blue"></i>Blue = Very Low</span>
+          <span><i class="dot green"></i>Green = Low</span>
+          <span><i class="dot yellow"></i>Yellow = Medium</span>
+          <span><i class="dot red"></i>Red = High</span>
         </div>
       </section>
     </section>
@@ -724,22 +683,26 @@ def build_report_html(
     <aside class="right-stack">
       <section class="info-grid">
         <section class="panel">
-          <h3><span class="icon">{layers_icon}</span>Available Analysis Layers / Targets</h3>
-          <p class="image-note">AgriVision ADS can generate disease or pest-specific layers to support decision-making and risk management.</p>
-          <div class="target-list">
-            {risk_layers_html}
+          <h3><span class="icon">{layers_icon}</span>Dataset Signals</h3>
+          <div class="signal-grid">
+            <div class="signal-card"><span>Source Dataset</span><strong>{safe_html(dataset_label)}</strong></div>
+            <div class="signal-card"><span>Result Quality</span><strong>{safe_html(quality_state)}</strong></div>
+            <div class="signal-card"><span>Valid Pixels</span><strong>{safe_html(valid_pixels)}</strong></div>
+            <div class="signal-card"><span>Classification</span><strong>{safe_html(classification)}</strong></div>
+            <div class="signal-card"><span>Mean / Median</span><strong>{safe_html(mean_median)}</strong></div>
+            <div class="signal-card"><span>Thresholds</span><strong>{safe_html(thresholds)}</strong></div>
           </div>
         </section>
 
         <section class="panel">
           <h3><span class="icon">{key_conditions_icon}</span>Key Conditions</h3>
-          <div class="conditions">
-            <span class="condition-icon">{sprout_icon}</span><strong>Seasonal Stage</strong><span>Shoot Growth</span>
-            <span class="condition-icon">{calendar_icon}</span><strong>Date of Capture</strong><span>{generated_at}</span>
-            <span class="condition-icon">{vigor_icon}</span><strong>Vigor Status</strong><span>Moderate-High</span>
-            <span class="condition-icon">{condition_thermal_icon}</span><strong>Canopy Temperature</strong><span>Variable</span>
-            <span class="condition-icon">{weather_icon}</span><strong>Weather Window</strong><span>Favorable</span>
-            <span class="condition-icon">{review_icon}</span><strong>Next Review</strong><span>After scouting</span>
+          <div class="context-list">
+            <div class="context-row"><span>Generated</span><strong>{generated_at}</strong></div>
+            <div class="context-row"><span>Location</span><strong>{safe_html(location_label)}</strong></div>
+            <div class="context-row"><span>Index</span><strong>{safe_html(index_title)}</strong></div>
+            <div class="context-row"><span>Source / Mode</span><strong>{safe_html(source_label)}</strong></div>
+            <div class="context-row"><span>Risk Layer</span><strong>{safe_html(risk_title)}</strong></div>
+            <div class="context-row"><span>Interpretation</span><strong>{safe_html(risk_copy)}</strong></div>
           </div>
         </section>
       </section>

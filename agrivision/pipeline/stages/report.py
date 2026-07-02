@@ -10,7 +10,6 @@ from typing import Any, Dict, Optional, cast
 from agrivision.config.settings import get_project_root
 from agrivision.pipeline.report.assets import (
     ensure_report_preview,
-    get_index_title,
     get_report_settings,
     load_grid_cells,
     load_json,
@@ -250,8 +249,10 @@ def run_report(
     ndvi_meta_path = cast(Path, resolved["ndvi_meta_path"])
     grid_meta_path = cast(Path, resolved["grid_meta_path"])
     orthophoto_rgb = cast(Path, resolved["orthophoto_rgb"])
+    orthophoto_mapir = cast(Path, resolved["orthophoto_mapir"])
     orthophoto_thermal = cast(Path, resolved["orthophoto_thermal"])
     orthophoto_rgb_preview = cast(Path, resolved["orthophoto_rgb_preview"])
+    orthophoto_mapir_preview = cast(Path, resolved["orthophoto_mapir_preview"])
     orthophoto_thermal_preview = cast(Path, resolved["orthophoto_thermal_preview"])
     ndvi_tif = cast(Path, resolved["ndvi_tif"])
     ndvi_color_png = cast(Path, resolved["ndvi_color_png"])
@@ -266,9 +267,10 @@ def run_report(
     ndvi_meta = load_json(ndvi_meta_path)
     grid_meta = load_json(grid_meta_path)
     visible_preview = ensure_report_preview(orthophoto_rgb, orthophoto_rgb_preview)
+    mapir_preview = ensure_report_preview(orthophoto_mapir, orthophoto_mapir_preview)
     thermal_preview = ensure_report_preview(orthophoto_thermal, orthophoto_thermal_preview)
 
-    index_title = get_index_title(ndvi_meta, grid_meta)
+    index_title = "Vegetation Index"
     weather_html = render_weather_section(weather_summary, output_dir)
     methodology_html = render_methodology_section(ndvi_meta)
     grid_meta_html = render_grid_metadata_section(grid_meta)
@@ -308,7 +310,12 @@ def run_report(
         weather_html=weather_html,
         methodology_html=methodology_html,
         artifacts_list_html=artifacts_list_html,
-        visible_image_html=render_image_if_exists("Visible Orthomosaic", visible_preview or orthophoto_rgb_preview, output_dir),
+        visible_image_html=render_image_if_exists("RGB", visible_preview or orthophoto_rgb_preview, output_dir),
+        mapir_image_html=(
+            render_image_if_exists("MAPIR", mapir_preview or orthophoto_mapir_preview, output_dir)
+            if mapir_preview
+            else render_pending_image("MAPIR orthomosaic")
+        ),
         ndvi_color_html=render_image_if_exists(index_title + " Map", ndvi_color_png, output_dir),
         thermal_image_html=(
             render_image_if_exists("Thermal Orthomosaic", thermal_preview or orthophoto_thermal_preview, output_dir)

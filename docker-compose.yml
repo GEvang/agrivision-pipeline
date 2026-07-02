@@ -16,7 +16,7 @@ services:
       APP_CONTAINER_PROJECT_ROOT: /app
       AGRIVISION_APP_CONTAINER_NAME: agrivision-pipeline
     volumes:
-      - ./agrivision/app/web:/app/agrivision/app/web
+      - ./agrivision:/app/agrivision
       - ./data:/app/data
       - ./output:/app/output
       - ./runtime:/app/runtime

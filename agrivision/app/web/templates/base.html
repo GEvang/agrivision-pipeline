@@ -4,7 +4,7 @@
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>{% block title %}AgriVision Dashboard{% endblock %}</title>
-  <link rel="stylesheet" href="/static/styles.css?v=dashboard-layout-3" />
+  <link rel="stylesheet" href="/static/styles.css?v=dashboard-layout-8" />
 </head>
 <body>
   <div class="app-shell">
@@ -26,9 +26,13 @@
         <span class="nav-icon-wrap"><svg class="nav-icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M3 11.5 12 4l9 7.5"></path><path d="M5 10.5V20h5v-5h4v5h5v-9.5"></path></svg></span>
         <span>Dashboard</span>
       </a>
-      <a class="nav-link" href="/runs/new">
+      <a class="nav-link" href="/runs/orthophotos">
         <span class="nav-icon-wrap"><svg class="nav-icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M8 4h8l3 3v13H5V4Z"></path><path d="M15 4v4h4"></path><path d="M9 13h6"></path><path d="M12 10v6"></path></svg></span>
-        <span>Start New Analysis</span>
+        <span>Build Orthophotos</span>
+      </a>
+      <a class="nav-link" href="/runs/analyze">
+        <span class="nav-icon-wrap"><svg class="nav-icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M4 19h16"></path><path d="M6 16V9"></path><path d="M12 16V5"></path><path d="M18 16v-3"></path></svg></span>
+        <span>Analyze Field</span>
       </a>
       <a class="nav-link" href="/runs">
         <span class="nav-icon-wrap"><svg class="nav-icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M6 3h9l3 3v15H6Z"></path><path d="M15 3v5h5"></path><path d="M9 13h6"></path><path d="M9 17h6"></path></svg></span>
@@ -74,10 +78,21 @@
     document.querySelectorAll('.nav-link').forEach((link) => {
       const href = link.getAttribute('href');
       const exact = link.dataset.navMatch === 'exact';
-      const isReportsLink = href === '/runs';
-      const isActive = exact
-        ? currentPath === href
-        : currentPath === href || (currentPath.startsWith(`${href}/`) && !(isReportsLink && currentPath === '/runs/new'));
+      let isActive = false;
+      if (exact) {
+        isActive = currentPath === href;
+      } else if (href === '/runs') {
+        isActive =
+          currentPath === '/runs' ||
+          (
+            currentPath.startsWith('/runs/')
+            && !currentPath.startsWith('/runs/orthophotos')
+            && !currentPath.startsWith('/runs/analyze')
+            && !currentPath.startsWith('/runs/new')
+          );
+      } else {
+        isActive = currentPath === href;
+      }
       if (isActive) {
         link.classList.add('active');
         link.setAttribute('aria-current', 'page');

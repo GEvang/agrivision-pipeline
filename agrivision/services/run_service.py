@@ -467,7 +467,7 @@ class RunService:
         workspace = self.workspace_for_record(record)
         target_rgb = workspace.images_full_rgb
         target_mapir = workspace.images_full_mapir
-        camera_targets = set(record.parameters.get('camera_targets') or ['rgb', 'mapir'])
+        camera_targets = self._camera_targets_for_record(record)
         target_thermal = workspace.images_full_thermal
 
         def _reset_target(target_dir: Path) -> None:
@@ -492,6 +492,26 @@ class RunService:
             _copy_inputs(upload_dir / 'mapir', target_mapir)
         if 'thermal' in camera_targets:
             _copy_inputs(upload_dir / 'thermal', target_thermal)
+
+    def _camera_targets_for_record(self, record: RunRecord) -> set[str]:
+        configured = {
+            str(item).strip().lower()
+            for item in (record.parameters.get('camera_targets') or [])
+            if str(item).strip()
+        }
+        if configured:
+            return configured
+        source_run_id = record.parameters.get('source_orthophoto_run_id')
+        if source_run_id and not record.selected_steps.run_odm:
+            source = self.load_run(str(source_run_id))
+            restored = {
+                key.replace('orthophoto_', '')
+                for key in ('orthophoto_rgb', 'orthophoto_mapir', 'orthophoto_thermal')
+                if source.outputs.get(key)
+            }
+            if restored:
+                return restored
+        return {'rgb', 'mapir'}
 
     def stage_saved_orthophotos_for_run(self, run_id: str, source_run_id: str) -> None:
         source = self.load_run(source_run_id)
@@ -815,7 +835,7 @@ class RunService:
         record = RunRecord.model_validate(self.storage.read_json(run_dir / 'status.json'))
         workspace = self.workspace_for_record(record)
         selected = record.selected_steps
-        camera_targets = set(record.parameters.get('camera_targets') or ['rgb', 'mapir'])
+        camera_targets = self._camera_targets_for_record(record)
         report_candidates = [
             workspace.report_path,
             workspace.output_root / 'report' / 'index.html',

@@ -14,7 +14,8 @@ def format_system_datetime(value):
         localized = value.astimezone() if getattr(value, 'tzinfo', None) is not None else value
     except Exception:
         localized = value
-    return localized.strftime('%Y-%m-%d %H:%M:%S')
+    month = localized.strftime('%B')
+    return f'{month} {localized.day}, {localized.year} {localized:%H:%M}'
 
 
 def format_duration(started_at, finished_at):
