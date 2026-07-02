@@ -173,7 +173,7 @@
   <article class="glass-panel dashboard-weather-card">
     <div class="card-head">
       <div class="dashboard-weather-title">
-        <div class="card-head-icon">
+        <div class="card-head-icon weather-icon-shell weather-icon-{{ weather.get('icon', 'cloud') }}">
           <img class="icon-art icon-art-sm" src="/static/icons/{% if weather.get('icon') == 'rain' %}rainy.png{% elif weather.get('icon') == 'thunderstorm' %}thunderstorm.png{% elif weather.get('icon') == 'cloud' %}cloudy.png{% else %}sun.png{% endif %}" alt="" />
         </div>
         <div>
@@ -190,28 +190,28 @@
           <span>{{ weather.get('feels_like', 'Run an analysis first to populate dashboard weather.') }}</span>
         </div>
       </div>
-      <div class="dashboard-weather-art">
+      <div class="dashboard-weather-art weather-icon-shell weather-icon-{{ weather.get('icon', 'cloud') }}">
         <img class="icon-art icon-art-lg" src="/static/icons/{% if weather.get('icon') == 'rain' %}rainy.png{% elif weather.get('icon') == 'thunderstorm' %}thunderstorm.png{% elif weather.get('icon') == 'cloud' %}cloudy.png{% else %}sun.png{% endif %}" alt="" />
       </div>
     </div>
     <div class="dashboard-weather-stats">
       <div class="dashboard-weather-stat">
-        <img class="icon-art icon-art-xs" src="/static/icons/rainy.png" alt="" />
+        <span class="weather-mini-icon weather-icon-rain"><img class="icon-art icon-art-xs" src="/static/icons/rainy.png" alt="" /></span>
         <strong>{{ weather.get('rain_chance', '--') }}</strong>
         <span>Rain Chance</span>
       </div>
       <div class="dashboard-weather-stat">
-        <img class="icon-art icon-art-xs" src="/static/icons/wind.png" alt="" />
+        <span class="weather-mini-icon weather-icon-wind"><img class="icon-art icon-art-xs" src="/static/icons/wind.png" alt="" /></span>
         <strong>{{ weather.get('wind', '--') }}</strong>
         <span>Wind</span>
       </div>
       <div class="dashboard-weather-stat">
-        <img class="icon-art icon-art-xs" src="/static/icons/thermometer.png" alt="" />
+        <span class="weather-mini-icon weather-icon-temp"><img class="icon-art icon-art-xs" src="/static/icons/thermometer.png" alt="" /></span>
         <strong>{{ weather.get('temperature', '--') }}</strong>
         <span>Temperature</span>
       </div>
       <div class="dashboard-weather-stat">
-        <img class="icon-art icon-art-xs" src="/static/icons/humidity.png" alt="" />
+        <span class="weather-mini-icon weather-icon-humidity"><img class="icon-art icon-art-xs" src="/static/icons/humidity.png" alt="" /></span>
         <strong>{{ weather.get('humidity', '--') }}</strong>
         <span>Humidity</span>
       </div>
@@ -221,7 +221,7 @@
       {% for forecast in weather.get('forecast', []) %}
       <div class="dashboard-weather-day">
         <span>{{ forecast.day }}</span>
-        <img class="icon-art icon-art-xs" src="/static/icons/{% if forecast.icon == 'rain' %}rainy.png{% elif forecast.icon == 'thunderstorm' %}thunderstorm.png{% elif forecast.icon == 'cloud' %}cloudy.png{% else %}sun.png{% endif %}" alt="" />
+        <span class="weather-mini-icon weather-icon-{% if forecast.icon == 'rain' %}rain{% elif forecast.icon == 'thunderstorm' %}thunderstorm{% elif forecast.icon == 'cloud' %}cloud{% else %}sun{% endif %}"><img class="icon-art icon-art-xs" src="/static/icons/{% if forecast.icon == 'rain' %}rainy.png{% elif forecast.icon == 'thunderstorm' %}thunderstorm.png{% elif forecast.icon == 'cloud' %}cloudy.png{% else %}sun.png{% endif %}" alt="" /></span>
         <strong>{% if forecast.high and forecast.low %}{{ forecast.high }}/{{ forecast.low }}{% elif forecast.high %}{{ forecast.high }}{% else %}--{% endif %}</strong>
       </div>
       {% endfor %}
