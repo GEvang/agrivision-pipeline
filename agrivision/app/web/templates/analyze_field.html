@@ -190,11 +190,12 @@
 
     <div class="analyze-summary-section">
       <strong>Selected Services</strong>
-      <div class="summary-service-list">
-        <div class="summary-service-item"><img class="icon-art icon-art-xs" src="/static/icons/cloudy.png" alt="" /><span>Weather</span></div>
-        <div class="summary-service-item"><img class="icon-art icon-art-xs" src="/static/icons/thermometer.png" alt="" /><span>Irrigation</span></div>
-        <div class="summary-service-item"><img class="icon-art icon-art-xs" src="/static/icons/warning.png" alt="" /><span>Pest &amp; Disease</span></div>
-        <div class="summary-service-item"><img class="icon-art icon-art-xs" src="/static/icons/report.png" alt="" /><span>Generate Report</span></div>
+      <div class="summary-service-list" id="summary-service-list">
+        <div class="summary-service-item" data-summary-service="fetch_weather"><img class="icon-art icon-art-xs" src="/static/icons/cloudy.png" alt="" /><span>Weather</span></div>
+        <div class="summary-service-item" data-summary-service="run_irrigation"><img class="icon-art icon-art-xs" src="/static/icons/thermometer.png" alt="" /><span>Irrigation</span></div>
+        <div class="summary-service-item" data-summary-service="run_pdm"><img class="icon-art icon-art-xs" src="/static/icons/warning.png" alt="" /><span>Pest &amp; Disease</span></div>
+        <div class="summary-service-item" data-summary-service="generate_report"><img class="icon-art icon-art-xs" src="/static/icons/report.png" alt="" /><span>Generate Report</span></div>
+        <div class="summary-service-empty" id="summary-service-empty" hidden>No services selected.</div>
       </div>
     </div>
 
@@ -207,11 +208,11 @@
     </div>
 
     <div class="analyze-runtime-box">
-      <img class="icon-art icon-art-sm" src="/static/icons/save.png" alt="" />
+      <img class="icon-art icon-art-sm" src="/static/icons/timer.png" alt="" />
       <div>
         <strong>Estimated runtime</strong>
-        <span>~30-60 min</span>
-        <small>Runtime may vary based on data size and selected services.</small>
+        <span>~10-20 min</span>
+        <small>Typical dashboard report generation time. Runtime may vary based on data size and enabled services.</small>
       </div>
     </div>
   </aside>
@@ -219,6 +220,7 @@
 
 <script>
 (function() {
+  const form = document.querySelector('form[action="/ui/runs"]');
   const cropSelect = document.getElementById('pdm-crop-select');
   const modelSelect = document.getElementById('pdm-model-select');
   const datasetSelect = document.querySelector('select[name="source_orthophoto_run_id"]');
@@ -227,6 +229,8 @@
   const summaryRunName = document.getElementById('summary-run-name');
   const summaryCrop = document.getElementById('summary-crop-name');
   const summaryModel = document.getElementById('summary-model-name');
+  const summaryServiceEmpty = document.getElementById('summary-service-empty');
+  const serviceNames = ['fetch_weather', 'run_irrigation', 'run_pdm', 'generate_report'];
 
   function filterModels() {
     if (!cropSelect || !modelSelect) return;
@@ -241,7 +245,7 @@
     if (!selected || selected.hidden) {
       if (firstVisible) firstVisible.selected = true;
     }
-    if (summaryCrop) summaryCrop.textContent = crop === 'olive' ? 'Olive' : 'Grapevine';
+    if (summaryCrop) summaryCrop.textContent = crop === 'olive' ? 'Olive' : 'Grape';
     if (summaryModel) summaryModel.textContent = modelSelect.options[modelSelect.selectedIndex]?.textContent || 'Model not selected';
   }
 
@@ -253,6 +257,16 @@
       const value = runNameInput.value.trim();
       summaryRunName.textContent = value || 'Run name will appear here';
     }
+    const enabledCount = serviceNames.reduce((count, name) => {
+      const input = form.querySelector(`[name="${name}"]`);
+      const row = document.querySelector(`[data-summary-service="${name}"]`);
+      const enabled = Boolean(input && input.checked);
+      if (row) row.hidden = !enabled;
+      return count + (enabled ? 1 : 0);
+    }, 0);
+    if (summaryServiceEmpty) {
+      summaryServiceEmpty.hidden = enabledCount > 0;
+    }
     filterModels();
   }
 
@@ -260,6 +274,10 @@
   if (modelSelect) modelSelect.addEventListener('change', syncSummary);
   if (datasetSelect) datasetSelect.addEventListener('change', syncSummary);
   if (runNameInput) runNameInput.addEventListener('input', syncSummary);
+  serviceNames.forEach((name) => {
+    const input = document.querySelector(`[name="${name}"]`);
+    if (input) input.addEventListener('change', syncSummary);
+  });
   syncSummary();
 })();
 

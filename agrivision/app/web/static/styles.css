@@ -227,10 +227,10 @@ button {
 }
 
 .dashboard-page {
-  width: calc(100vw - 292px - 44px);
+  width: calc(100vw - 292px - 72px);
   min-width: 0;
   max-width: none;
-  margin: 26px 16px 40px 28px;
+  margin: 26px 30px 40px 28px;
 }
 
 .page-topbar {
@@ -2904,6 +2904,18 @@ textarea {
   line-height: 1;
 }
 
+.page-title-with-icon {
+  display: inline-flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.title-leaf-icon {
+  width: 34px;
+  height: 34px;
+  object-fit: contain;
+}
+
 .icon-art-lg {
   width: 64px;
   height: 64px;
@@ -3332,6 +3344,11 @@ textarea {
 .summary-service-list {
   display: grid;
   gap: 12px;
+}
+
+.summary-service-empty {
+  color: var(--text-soft);
+  font-weight: 600;
 }
 
 .analyze-runtime-box {

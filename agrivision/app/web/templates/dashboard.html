@@ -12,7 +12,7 @@
 
 <section class="page-topbar">
   <div>
-    <h1 class="page-title">Good morning</h1>
+    <h1 class="page-title page-title-with-icon">Good morning <img class="title-leaf-icon" src="/static/icons/leaves.png" alt="" /></h1>
     <p class="page-subtitle">Here's what's happening across your analysis workspace today.</p>
   </div>
   <div class="topbar-actions">
@@ -148,7 +148,7 @@
             </div>
             <span>Crop</span>
           </div>
-          <strong class="crop-chip-inline"><img class="crop-chip-icon" src="/static/icons/{{ latest_card.crop.icon }}" alt="" />{{ latest_card.crop.label }}</strong>
+          <strong class="crop-chip-inline"><img class="crop-chip-icon" src="/static/icons/{{ latest_card['crop']['icon'] }}" alt="" />{{ latest_card['crop']['label'] }}</strong>
         </div>
         <div class="metric-chip metric-chip-wide metric-chip-icon">
           <div class="metric-chip-head">
@@ -298,23 +298,23 @@
           </td>
           <td>
             <span class="crop-chip">
-              <img class="crop-chip-icon" src="/static/icons/{{ item.crop.icon }}" alt="" />
-              <span>{{ item.crop.label }}</span>
+              <img class="crop-chip-icon" src="/static/icons/{{ item['crop']['icon'] }}" alt="" />
+              <span>{{ item['crop']['label'] }}</span>
             </span>
           </td>
           <td>
             <span class="status-badge status-{{ run.status }}">
-              <span class="status-badge-icon status-icon-{{ item.status_icon }}" aria-hidden="true"></span>
+              <span class="status-badge-icon status-icon-{{ item['status_icon'] }}" aria-hidden="true"></span>
               <span>{{ run.status|replace('_', ' ')|title }}</span>
             </span>
           </td>
           <td>
-            <span class="health-score health-score-{{ item.health_tone }}">
+            <span class="health-score health-score-{{ item['health_tone'] }}">
               <span class="health-score-dot" aria-hidden="true"></span>
-              <span>{% if item.health_score is not none %}{{ item.health_score }}/100{% else %}--{% endif %}</span>
+              <span>{% if item['health_score'] is not none %}{{ item['health_score'] }}/100{% else %}--{% endif %}</span>
             </span>
           </td>
-          <td class="message-cell">{{ item.type_label }}</td>
+          <td class="message-cell">{{ item['type_label'] }}</td>
           <td>{{ run.started_at | duration(run.finished_at) }}</td>
           <td class="table-actions">
             <a class="action-chip" href="/runs/{{ run.run_id }}">View</a>

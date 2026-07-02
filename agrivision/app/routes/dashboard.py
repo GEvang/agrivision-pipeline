@@ -101,8 +101,8 @@ def _forecast_rows_from_series(series: list[dict[str, Any]]) -> list[dict[str, s
         rows.append(
             {
                 "day": dt.strftime("%a"),
-                "high": f"{round(max(temps))}°C" if temps else None,
-                "low": f"{round(min(temps))}°C" if temps else None,
+                "high": f"{round(max(temps))}\u2103" if temps else None,
+                "low": f"{round(min(temps))}\u2103" if temps else None,
                 "icon": _weather_icon_key(None, max(precipitation) if precipitation else None),
                 "humidity": f"{round(sum(humidity) / len(humidity))}%" if humidity else None,
             }
@@ -264,9 +264,9 @@ def _load_dashboard_weather() -> dict[str, object]:
     return {
         "available": True,
         "location": location_name,
-        "temperature": f"{round(temp)}°C" if temp is not None else "--",
+        "temperature": f"{round(temp)}\u2103" if temp is not None else "--",
         "description": _title_case_description((current_payload or {}).get("description")),
-        "feels_like": f"Feels like {round(feels_like if feels_like is not None else temp)}°C" if temp is not None else "Weather unavailable",
+        "feels_like": f"Feels like {round(feels_like if feels_like is not None else temp)}\u2103" if temp is not None else "Weather unavailable",
         "rain_chance": f"{rain_chance}%" if rain_chance is not None else "--",
         "wind": f"{round(wind_speed * 3.6)} km/h" if wind_speed is not None else "--",
         "humidity": f"{round(humidity)}%" if humidity is not None else "--",
