@@ -8,10 +8,11 @@ from json import JSONDecodeError
 from pathlib import Path
 from typing import Any, Dict, List
 
-from agrivision.pipeline.io.paths import resolve_pipeline_paths
 import numpy as np
 import rasterio
 from PIL import Image, UnidentifiedImageError
+
+from agrivision.pipeline.io.paths import resolve_pipeline_paths
 
 
 def get_report_settings(
@@ -47,16 +48,12 @@ def get_report_settings(
         "disease_risk_summary": ndvi_dir / "disease_risk" / "summary.json",
     }
 
-
-
 def rel_to_report(abs_path: Path, output_dir: Path) -> str:
     try:
         rel = abs_path.relative_to(output_dir)
         return rel.as_posix()
     except ValueError:
         return abs_path.name
-
-
 
 def load_json(path: Path) -> dict:
     if not path.exists():

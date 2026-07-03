@@ -2,7 +2,11 @@ from __future__ import annotations
 
 from typing import Any
 
-from agrivision.config.settings import get_project_root, get_runtime_settings_path, get_settings
+from agrivision.config.settings import (
+    get_project_root,
+    get_runtime_settings_path,
+    get_settings,
+)
 
 
 def get_runtime_config() -> dict[str, Any]:

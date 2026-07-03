@@ -8,8 +8,8 @@ from agrivision.app.schemas.settings import (
     CredentialsUpdateRequest,
     SettingsUpdateRequest,
 )
-from agrivision.services.settings_service import SettingsService
 from agrivision.config import settings as config_settings
+from agrivision.services.settings_service import SettingsService
 
 
 def test_settings_masking_and_updates(tmp_path: Path) -> None:

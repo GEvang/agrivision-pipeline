@@ -9,12 +9,18 @@ import threading
 from datetime import datetime, timezone
 from pathlib import Path
 
-from agrivision.app.schemas.runs import ArtifactRecord, RunCreateRequest, RunRecord, StageStatus, StepSelection
+from agrivision.app.schemas.runs import (
+    ArtifactRecord,
+    RunCreateRequest,
+    RunRecord,
+    StageStatus,
+    StepSelection,
+)
 from agrivision.config import load_config
 from agrivision.pipeline.orchestrator import run_full_pipeline
 from agrivision.services.failure_diagnostics import summarize_failure
-from agrivision.services.storage_service import StorageService
 from agrivision.services.run_workspace import RunWorkspace
+from agrivision.services.storage_service import StorageService
 
 
 def _slugify_report_name(value: str) -> str:

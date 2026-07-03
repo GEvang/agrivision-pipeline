@@ -19,6 +19,7 @@ from agrivision.app.routes import (
     uploads,
 )
 
+
 @asynccontextmanager
 async def lifespan(_: FastAPI):
     deps.settings_service.ensure_runtime_settings_file()

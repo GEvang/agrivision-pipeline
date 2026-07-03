@@ -1,9 +1,9 @@
 from __future__ import annotations
 
 import shutil
+import threading
 import time
 import warnings
-import threading
 from datetime import datetime, timezone
 from pathlib import Path
 

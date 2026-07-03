@@ -7,6 +7,7 @@ from fastapi import APIRouter, HTTPException
 from fastapi.responses import FileResponse, HTMLResponse
 
 from agrivision.app import dependencies as deps
+from agrivision.config.settings import get_project_root
 
 router = APIRouter()
 NO_CACHE_HEADERS = {"Cache-Control": "no-store, max-age=0"}

@@ -9,8 +9,9 @@ from typing import Callable
 
 from agrivision.config.settings import get_settings
 from agrivision.services.host_service_helper import (
-    helper_state as host_helper_state,
     installed_service_state,
+)
+from agrivision.services.host_service_helper import (
     submit_command as submit_host_helper_command,
 )
 from agrivision.services.irrigation import runtime as irrigation_runtime
