@@ -75,6 +75,12 @@ def test_load_config_returns_defaults_when_config_file_missing(monkeypatch, tmp_
     missing_config_path = tmp_path / "does_not_exist.yaml"
     monkeypatch.setattr(settings, "_CONFIG_PATH", missing_config_path)
     monkeypatch.setattr(settings, "_RUNTIME_SETTINGS_PATH", tmp_path / "runtime" / "settings.json")
+    monkeypatch.delenv("WEATHER_USERNAME", raising=False)
+    monkeypatch.delenv("WEATHER_PASSWORD", raising=False)
+    monkeypatch.delenv("IRRIGATION_EMAIL", raising=False)
+    monkeypatch.delenv("IRRIGATION_PASSWORD", raising=False)
+    monkeypatch.delenv("PDM_USERNAME", raising=False)
+    monkeypatch.delenv("PDM_PASSWORD", raising=False)
 
     cfg = settings.load_config()
 

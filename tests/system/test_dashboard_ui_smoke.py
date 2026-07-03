@@ -123,27 +123,28 @@ def test_dashboard_pages_render(tmp_path: Path, monkeypatch) -> None:
     new_run = client.get('/runs/new', headers={'accept': 'text/html'})
     assert new_run.status_code == 200
     assert 'Orthophoto Intake' in new_run.text
-    assert 'Save / Generate Orthophotos' in new_run.text
+    assert 'Generate Orthophotos' in new_run.text
     assert 'Balanced (recommended)' in new_run.text
-    assert 'Orthophoto Library' in new_run.text
+    assert 'Saved Orthophotos' in new_run.text
     assert 'Complete Orthophoto' not in new_run.text
     assert 'complete_run_id=' in new_run.text
     assert 'camera_kind=mapir' in new_run.text
     complete_page = client.get('/runs/new?complete_run_id=ortho-run&camera_kind=mapir', headers={'accept': 'text/html'})
     assert complete_page.status_code == 200
-    assert 'Complete dataset' in complete_page.text
+    assert 'Complete Dataset' in complete_page.text
     assert 'Orthophoto Creation' not in complete_page.text
     assert 'Perform Parcel Analysis' not in complete_page.text
-    assert 'Missing orthophotos' in complete_page.text
+    assert 'Add the missing orthophotos for' in complete_page.text
     assert 'Process Missing Orthophotos' in complete_page.text
-    assert 'MAPIR drone images' in complete_page.text
-    assert 'THERMAL drone images' in complete_page.text
-    assert 'Build from images' in complete_page.text
-    assert 'Use ready orthophoto' in complete_page.text
+    assert 'MAPIR' in complete_page.text
+    assert 'Thermal' in complete_page.text
+    assert 'Build Orthophotos' in complete_page.text
+    assert 'Analyze Field' in complete_page.text
     runs_page = client.get('/runs', headers={'accept': 'text/html'})
     assert runs_page.status_code == 200
     assert 'Reports' in runs_page.text
-    assert 'Clear incomplete' in runs_page.text
+    assert 'Build Orthophotos' in runs_page.text
+    assert 'Analyze Field' in runs_page.text
     run_detail = client.get('/runs/run-1', headers={'accept': 'text/html'})
     assert run_detail.status_code == 200
     assert 'Result Quality' not in run_detail.text
@@ -158,12 +159,11 @@ def test_dashboard_pages_render(tmp_path: Path, monkeypatch) -> None:
     assert client.get('/services', headers={'accept': 'text/html'}, follow_redirects=False).status_code == 303
     settings_page = client.get('/settings', headers={'accept': 'text/html'})
     assert settings_page.status_code == 200
-    assert 'Deployment' in settings_page.text
-    assert 'Host readiness' in settings_page.text
-    assert 'Cloudflare Tunnel checklist' in settings_page.text
-    assert 'Cloudflare setup helper' in settings_page.text
-    assert 'Cloudflare Access or equivalent external login is enabled' in settings_page.text
-    assert 'Save deployment settings' in settings_page.text
+    assert 'Settings' in settings_page.text
+    assert 'Connected Services' in settings_page.text
+    assert 'System &amp; Access' in settings_page.text
+    assert 'Remote Access Checklist' in settings_page.text
+    assert 'Save Access Settings' in settings_page.text
 
 
 def test_merged_orthophoto_form_imports_ready_geotiff(tmp_path: Path, monkeypatch) -> None:

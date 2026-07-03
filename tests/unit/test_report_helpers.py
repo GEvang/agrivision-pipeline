@@ -83,6 +83,7 @@ def test_build_report_html_uses_risk_mapping_layout() -> None:
         methodology_html="<section>Method</section>",
         artifacts_list_html="<li>Artifact</li>",
         visible_image_html='<img src="visible.png" alt="Visible" />',
+        mapir_image_html='<img src="mapir.png" alt="MAPIR" />',
         ndvi_color_html='<img src="ndvi.png" alt="NDVI" />',
         thermal_image_html='<img src="mapir.png" alt="MAPIR placeholder" />',
         grid_meta_html="<table><tr><td>Grid</td></tr></table>",
@@ -93,7 +94,9 @@ def test_build_report_html_uses_risk_mapping_layout() -> None:
     )
 
     assert "Field Analysis and Risk Mapping" in html
-    assert "Visible Orthomosaic" in html
+    assert "<h2><span class=\"icon\">" in html
+    assert ">RGB</h2>" in html
+    assert ">MAPIR</h2>" in html
     assert "Thermal" in html
     assert "Thermal layer will appear after thermal imagery is uploaded and processed" in html
     assert "Risk Index" in html

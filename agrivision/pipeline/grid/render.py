@@ -5,6 +5,9 @@ from __future__ import annotations
 from pathlib import Path
 from typing import Dict, List, Tuple
 
+import matplotlib
+
+matplotlib.use("Agg", force=True)
 import matplotlib.patheffects as path_effects
 import matplotlib.pyplot as plt
 import numpy as np
@@ -82,8 +85,6 @@ def _index_background(arr: np.ndarray) -> Tuple[np.ndarray, float]:
     arr_display = arr[np.ix_(row_idx, col_idx)]
     arr_norm = (arr_display + 1.0) / 2.0
     return np.clip(arr_norm, 0.0, 1.0), scale
-
-
 
 def save_grid_overlay(
     arr: np.ndarray,

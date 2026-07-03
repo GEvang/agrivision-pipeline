@@ -94,6 +94,7 @@ def test_service_status_hides_container_only_repo_from_user(tmp_path: Path, monk
     monkeypatch.setattr(service_control, 'get_settings', lambda: Settings())
     monkeypatch.setattr(service_control, 'project_service_dir', lambda name: tmp_path / name)
     monkeypatch.setattr(service_control, 'check_first_reachable_url', lambda urls: False)
+    monkeypatch.setattr(service_control, 'installed_service_state', lambda service_key: {})
     monkeypatch.setenv('APP_CONTAINER_PROJECT_ROOT', '/app')
 
     statuses = service_control.service_statuses()
