@@ -4,7 +4,7 @@
 from __future__ import annotations
 
 from pathlib import Path
-from typing import Optional, cast
+from typing import Any, Optional, cast
 
 import numpy as np
 import rasterio
@@ -106,9 +106,12 @@ def _analysis_mask_from_rgb(rgb_path: Path, shape: tuple[int, int], out_png: Pat
     return mask
 
 
-def run_grid_report() -> None:
+def run_grid_report(
+    workspace_root: Path | None = None,
+    config: dict[str, Any] | None = None,
+) -> None:
     """Load the index raster, compute the grid, and write all grid artifacts."""
-    resolved = get_grid_settings()
+    resolved = get_grid_settings(workspace_root=workspace_root, config=config)
     ndvi_tif = cast(Path, resolved["ndvi_tif"])
     ndvi_meta_json = cast(Path, resolved["ndvi_meta_json"])
     ortho_rgb = cast(Path, resolved["ortho_rgb"])

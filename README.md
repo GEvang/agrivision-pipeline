@@ -1,231 +1,143 @@
-# AgriVision Pipeline
+# AgriVision
 
-AgriVision Pipeline is a Python/FastAPI drone-imagery processing application for OpenAgri-aligned agricultural workflows. It can run as a CLI pipeline or as an operator dashboard over the same processing core.
+AgriVision is a dashboard-first crop risk assessment tool for orthophotos, vegetation analysis, disease-risk scoring, farmer-facing reports, and optional OpenAgri service integrations.
 
-The pipeline processes RGB, MAPIR/multispectral, and thermal imagery where available; creates or reuses OpenDroneMap orthophotos; computes vegetation-index and grid products; enriches runs with OpenAgri Weather, Irrigation, and Pest & Disease data when configured; and writes farmer-ready HTML reports plus export packages.
-
-## Key Features
-
-- CLI entrypoint through `python run.py` or the installed `agrivision` console script.
-- FastAPI dashboard for uploads, run tracking, orthophoto workflows, reports, settings, service control, and artifact downloads.
-- OpenDroneMap integration through Docker for RGB, MAPIR, and thermal orthophoto generation.
-- Vegetation-index raster generation, grid classification, disease-risk scoring, and HTML reporting.
-- Optional OpenAgri service enrichment for Weather, Irrigation Management, and Pest & Disease Management.
-- Runtime persistence under `runtime/runs/` and generated outputs under `output/`.
-- Docker Compose deployment surface for local/self-hosted dashboard operation.
-
-## Requirements
-
-- Python 3.11 or 3.12. The package metadata requires `>=3.11`; CI validates both 3.11 and 3.12.
-- `pip`, `venv`, and a working C/C++/geospatial dependency environment for `rasterio`.
-- GDAL command-line tools such as `gdalinfo` for raster/orthophoto workflows.
-- Docker with Compose support for ODM stages and the containerized dashboard flow.
-- Git when using the installer or service bootstrap helpers.
-
-The root `Dockerfile` uses `python:3.12-slim` and installs GDAL, Git, Docker CLI, and Docker Compose plugin inside the image.
-
-## Installation
-
-Canonical Linux/macOS operator setup:
+The simplest way to start it is:
 
 ```bash
 git clone https://github.com/GEvang/agrivision-pipeline.git
 cd agrivision-pipeline
-chmod +x install_agrivision.sh
-./install_agrivision.sh
-source .venv/bin/activate
-python run.py --doctor
+docker compose up --build -d
 ```
 
-Manual development setup:
+Then open [http://127.0.0.1:8008](http://127.0.0.1:8008).
+
+The dashboard starts even if `.env` is missing and even if optional services are not installed yet.
+
+## Quick Start
+
+### Windows
+
+1. Install Docker Desktop.
+2. Clone or download AgriVision.
+3. Double-click `Start AgriVision Windows.bat`.
+4. Your browser opens at [http://127.0.0.1:8008](http://127.0.0.1:8008).
+
+### Linux
+
+1. Install Docker.
+2. Clone AgriVision.
+3. Run:
 
 ```bash
-python -m venv .venv
-source .venv/bin/activate
-python -m pip install --upgrade pip
-python -m pip install -r requirements.txt
-python -m pip install -e ".[dev]"
-cp .env.example .env
-python run.py --doctor
+chmod +x "Start AgriVision Linux.sh"
+./"Start AgriVision Linux.sh"
 ```
 
-On Windows PowerShell, create/activate the virtual environment with:
+4. Open [http://127.0.0.1:8008](http://127.0.0.1:8008).
 
-```powershell
-py -3.11 -m venv .venv
-.\.venv\Scripts\Activate.ps1
-python -m pip install --upgrade pip
-python -m pip install -r requirements.txt
-python -m pip install -e ".[dev]"
-Copy-Item .env.example .env
-python run.py --doctor
-```
+### macOS
 
-## Configuration
-
-AgriVision loads defaults from `agrivision/config/settings.py`, merges non-secret values from `config.yaml`, then applies `.env` or process environment overrides.
-
-- Keep non-secret settings in `config.yaml`.
-- Keep credentials and tokens in `.env` or exported environment variables.
-- Use `config/config.example.yaml`, `config/config.dev.yaml`, or `config/config.edge.yaml` as references for local variants.
-- Override the active config file with `AGRIVISION_CONFIG_PATH=/path/to/config.yaml`.
-- In containers, `APP_CONTAINER_PROJECT_ROOT` enables loopback service URL rewriting from `127.0.0.1`/`localhost` to `host.docker.internal` unless `AGRIVISION_REWRITE_LOOPBACK_URLS=0`.
-
-Supported secret/environment overrides from `.env.example`:
-
-```env
-WEATHER_USERNAME=
-WEATHER_PASSWORD=
-OPENWEATHER_API_KEY=
-IRRIGATION_EMAIL=
-IRRIGATION_PASSWORD=
-IRRIGATION_TOKEN=
-PDM_USERNAME=
-PDM_PASSWORD=
-PDM_TOKEN=
-AGRIVISION_DEPLOYMENT_MODE=local
-AGRIVISION_PUBLIC_URL=
-AGRIVISION_MIN_FREE_DISK_GB=50
-AGRIVISION_MAX_ACTIVE_ODM_RUNS=1
-AGRIVISION_EXTERNAL_ACCESS_PROTECTION_CONFIRMED=false
-```
-
-The dashboard masks secrets and does not return full credential values in responses.
-
-## Local Usage
-
-Diagnostics:
+1. Install Docker Desktop.
+2. Clone or download AgriVision.
+3. Run once:
 
 ```bash
-python run.py --doctor
+chmod +x "Start AgriVision macOS.command"
 ```
 
-Run the CLI pipeline:
+4. Double-click `Start AgriVision macOS.command`.
+5. Your browser opens at [http://127.0.0.1:8008](http://127.0.0.1:8008).
 
-```bash
-python run.py
-```
+## What Works On First Launch
 
-Start the dashboard:
+- the dashboard and API
+- uploads
+- run tracking
+- orthophoto import/reuse flows
+- reports and exported run packages
+- runtime folder creation
+- default dashboard-managed settings in `runtime/settings.json`
 
-```bash
-python run.py --serve-dashboard --host 127.0.0.1 --port 8008
-```
+These do not need to exist before the dashboard opens:
 
-Open `http://127.0.0.1:8008`.
+- `.env`
+- OpenAgri Weather Service
+- OpenAgri Irrigation Management
+- OpenAgri Pest & Disease Management
+- API keys
+- drone images
+- Docker socket access inside the dashboard container
 
-FastAPI documentation is available from the running dashboard:
+## Optional Services
 
-- OpenAPI JSON: `http://127.0.0.1:8008/openapi.json`
-- Swagger UI: `http://127.0.0.1:8008/docs`
-- ReDoc: `http://127.0.0.1:8008/redoc`
+The Settings page shows whether optional services are:
 
-Useful CLI flags:
+- Installed or Not installed
+- Connected or Not connected
+- Available or Not tested for OpenDroneMap
 
-```bash
-python run.py --skip-odm
-python run.py --skip-ndvi
-python run.py --skip-weather
-python run.py --skip-report
-python run.py --setup-services
-python run.py --cleanup
-```
+Missing optional services are shown as dashboard warnings, not startup errors.
 
-## Build, Test, and Lint
+## Persistent Folders
 
-Common commands are defined in the `Makefile`:
+The base Docker setup keeps data in these local folders:
 
-```bash
-make install-dev
-make lint
-make test
-make smoke-config
-make verify-phase5
-make serve-dashboard
-```
+- `./data`
+- `./output`
+- `./runtime`
 
-Equivalent direct commands:
+Important runtime locations:
 
-```bash
-python -m ruff check .
-python -m pytest tests
-python -m pytest tests --cov=agrivision --cov-report=term-missing
-python -c "from agrivision.config.settings import load_config; load_config(); print('config smoke check passed')"
-```
-
-CI runs linting, tests with coverage, config loading, Docker Compose validation, and Dockerfile build validation on Python 3.11 and 3.12.
-
-## Docker
-
-Root-level Docker assets are the supported container deployment surface:
-
-```bash
-docker compose config
-docker compose build
-docker compose up
-```
-
-The Compose service publishes the dashboard on port `8008`, mounts the repository at `/workspace`, mounts `/var/run/docker.sock`, and starts:
-
-```bash
-python run.py --serve-dashboard --host 0.0.0.0 --port 8008
-```
-
-ODM stages require Docker socket access so the application can launch OpenDroneMap containers. If `/var/run/docker.sock` is not mounted, the dashboard can start but ODM stages will fail.
-
-For a Windows workstation exposed through Cloudflare Tunnel, see `docs/operator/windows-self-hosting.md`.
+- uploaded datasets: `data/uploads/<upload_id>/`
+- run metadata and logs: `runtime/runs/<run_id>/`
+- dashboard settings: `runtime/settings.json`
+- saved reports and orthophotos: `output/runs/<run_id>/`
+- exported run packages: `runtime/exports/`
 
 ## Project Structure
 
 ```text
 agrivision/
-  app/                 FastAPI app, routes, schemas, CLI, templates, static assets
+  app/                 FastAPI app, routes, schemas, templates, static assets, CLI
   config/              Config loading, runtime config, typed settings
-  domain/              Core contracts, enums, and domain models
-  integrations/        Provider adapters and payload mapping
-  pipeline/            Orchestration, stages, grid, risk, report, and artifact I/O
-  runtime/             Docker/runtime/bootstrap helpers
-  services/            Runtime services for runs, reports, settings, previews, exports, and provider control
-config/                Example/dev/edge YAML configs
-data/                  Local input imagery, uploads, ODM project folders
+  domain/              Core contracts and domain models
+  integrations/        External service adapters and payload mapping
+  pipeline/            Orchestration, stages, grid, risk, report, artifact I/O
+  services/            Runs, settings, exports, previews, preflight, service control
+config/                Example and environment-specific YAML configs
+data/                  Uploaded imagery and local datasets
 docs/                  API, architecture, developer, and operator documentation
-output/                Generated rasters, reports, run artifacts, enrichment outputs
-runtime/runs/          Dashboard run records, logs, status, previews, packages
+output/                Generated rasters, reports, run artifacts
+runtime/               Run state, logs, previews, exports, settings
 tests/                 Unit, integration, and system tests
 ```
 
-## Runtime Storage
+## Advanced / Developer Usage
 
-- `data/uploads/<upload_id>/`: uploaded image datasets and manifests.
-- `runtime/runs/<run_id>/params.json`: submitted run parameters.
-- `runtime/runs/<run_id>/status.json`: current run status, timestamps, errors, and progress.
-- `runtime/runs/<run_id>/outputs.json`: discovered report, orthophoto, preview, and related artifact paths.
-- `runtime/runs/<run_id>/run.log`: captured pipeline log.
-- `runtime/runs/<run_id>/previews/`: derived preview images.
-- `output/`: generated NDVI products, grids, reports, weather/irrigation/PDM outputs, and run artifacts.
+Python virtualenv setup is still supported for developers and advanced operators, but it is not required just to open the dashboard.
 
-## Troubleshooting
+Useful references:
 
-- If `python run.py --doctor` fails, confirm the virtual environment is active and dependencies were installed with `python -m pip install -e ".[dev]"`.
-- If raster or ODM steps fail early, confirm GDAL tools are installed and Docker is running.
-- If ODM fails inside Docker Compose, confirm `/var/run/docker.sock` is mounted and accessible.
-- If Weather, Irrigation, or PDM enrichment fails, verify service URLs in `config.yaml` and credentials in `.env`. Enrichment failures are designed to degrade reports rather than stop the whole pipeline where possible.
-- If the dashboard is exposed publicly, set `AGRIVISION_DEPLOYMENT_MODE`, `AGRIVISION_PUBLIC_URL`, and `AGRIVISION_EXTERNAL_ACCESS_PROTECTION_CONFIRMED` only after external access protection is configured.
+- `docs/operator/install.md`
+- `docs/operator/run.md`
+- `docs/operator/windows-self-hosting.md`
+- `docs/developer/local-dev.md`
+- `docs/developer/testing.md`
+- `docs/developer/config.md`
 
-## Documentation
+## API Docs
 
-- `docs/api/README.md`: dashboard and API contract.
-- `docs/operator/install.md`: operator installation.
-- `docs/operator/run.md`: operator run commands and outputs.
-- `docs/operator/windows-self-hosting.md`: Windows Docker Desktop and Cloudflare Tunnel setup.
-- `docs/operator/offline-edge.md`: constrained/offline operating notes.
-- `docs/developer/local-dev.md`: editable install and raw FastAPI development server.
-- `docs/developer/testing.md`: test and CI commands.
-- `docs/developer/config.md`: configuration and secret handling.
-- `docs/architecture/`: module boundaries, data flow, deployment view, and interoperability notes.
+When the dashboard is running:
 
-## License and Contributions
+- OpenAPI JSON: [http://127.0.0.1:8008/openapi.json](http://127.0.0.1:8008/openapi.json)
+- Swagger UI: [http://127.0.0.1:8008/docs](http://127.0.0.1:8008/docs)
+- ReDoc: [http://127.0.0.1:8008/redoc](http://127.0.0.1:8008/redoc)
 
-This repository is licensed under the European Union Public Licence (EUPL) v1.2; see `LICENSE`.
+## OpenAgri Alignment
 
-No dedicated contribution guide is currently present. For changes, follow the existing style, keep secrets out of config and commits, run `make lint` and `make test`, and update documentation when behavior or commands change. See `docs/developer/release.md` for release and license review notes.
+AgriVision can integrate with OpenAgri Weather, Irrigation, and Pest & Disease services when they are installed and configured, but the dashboard can start independently with safe defaults.
+
+## License
+
+This repository is licensed under the European Union Public Licence (EUPL) v1.2. See `LICENSE`.

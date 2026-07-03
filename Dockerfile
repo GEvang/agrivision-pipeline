@@ -2,8 +2,9 @@ FROM python:3.12-slim
 
 ENV PYTHONDONTWRITEBYTECODE=1 \
     PYTHONUNBUFFERED=1 \
-    AGRIVISION_CONFIG_PATH=/workspace/config.yaml \
-    APP_CONTAINER_PROJECT_ROOT=/workspace
+    AGRIVISION_CONFIG_PATH=/app/config.yaml \
+    AGRIVISION_RUNTIME_SETTINGS_PATH=/app/runtime/settings.json \
+    APP_CONTAINER_PROJECT_ROOT=/app
 
 WORKDIR /app
 
@@ -39,7 +40,7 @@ COPY docker-entrypoint.sh ./docker-entrypoint.sh
 
 RUN sed -i 's/\r$//' /app/docker-entrypoint.sh \
     && chmod +x /app/docker-entrypoint.sh \
-    && mkdir -p /workspace/data /workspace/output
+    && mkdir -p /app/data /app/output /app/runtime /app/runtime/runs /app/runtime/exports
 
 ENTRYPOINT ["/app/docker-entrypoint.sh"]
 CMD ["python", "run.py"]

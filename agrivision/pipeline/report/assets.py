@@ -6,34 +6,34 @@ import csv
 import json
 from json import JSONDecodeError
 from pathlib import Path
-from typing import Dict, List
+from typing import Any, Dict, List
 
+from agrivision.pipeline.io.paths import resolve_pipeline_paths
 import numpy as np
 import rasterio
 from PIL import Image, UnidentifiedImageError
 
-from agrivision.config.settings import get_project_root, load_config
 
-
-def get_report_settings() -> dict[str, Path]:
-    config = load_config()
-    project_root = get_project_root()
-
-    output_dir = project_root / config["paths"]["output_root"]
-    report_path = output_dir / "report_latest.html"
-
-    ndvi_dir = project_root / config["paths"]["ndvi_output"]
+def get_report_settings(
+    workspace_root: Path | None = None,
+    config: dict[str, Any] | None = None,
+) -> dict[str, Any]:
+    resolved = resolve_pipeline_paths(workspace_root=workspace_root, config=config)
+    output_dir = resolved["output_root"]
+    report_path = resolved["report_path"]
+    ndvi_dir = resolved["ndvi_output"]
     weather_dir = output_dir / "weather"
     report_assets_dir = output_dir / "report_assets"
     return {
+        "config": resolved["config"],
         "output_dir": output_dir,
         "report_path": report_path,
         "report_assets_dir": report_assets_dir,
         "ndvi_dir": ndvi_dir,
         "weather_dir": weather_dir,
-        "orthophoto_rgb": project_root / config["paths"]["odm_project_root_rgb"] / "project" / "odm_orthophoto" / "odm_orthophoto.tif",
-        "orthophoto_mapir": project_root / config["paths"]["odm_project_root_mapir"] / "project" / "odm_orthophoto" / "odm_orthophoto.tif",
-        "orthophoto_thermal": project_root / config["paths"]["odm_project_root_thermal"] / "project" / "odm_orthophoto" / "odm_orthophoto.tif",
+        "orthophoto_rgb": resolved["ortho_rgb"],
+        "orthophoto_mapir": resolved["ortho_mapir"],
+        "orthophoto_thermal": resolved["ortho_thermal"],
         "orthophoto_rgb_preview": report_assets_dir / "visible_orthomosaic.png",
         "orthophoto_mapir_preview": report_assets_dir / "mapir_placeholder.png",
         "orthophoto_thermal_preview": report_assets_dir / "thermal_orthomosaic.png",

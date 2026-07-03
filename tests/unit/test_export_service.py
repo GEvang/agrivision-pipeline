@@ -10,7 +10,7 @@ from agrivision.services.run_service import RunService
 from agrivision.services.storage_service import StorageService
 
 
-def test_build_package_includes_run_and_quality_artifacts(tmp_path: Path, monkeypatch) -> None:
+def test_build_package_includes_run_and_quality_artifacts(tmp_path: Path) -> None:
     storage = StorageService(project_root=tmp_path)
     upload_dir = storage.upload_dir('upload-seed')
     (upload_dir / 'rgb').mkdir(parents=True)
@@ -27,18 +27,17 @@ def test_build_package_includes_run_and_quality_artifacts(tmp_path: Path, monkey
             }
         )
     )
-    report = tmp_path / 'report.html'
-    report.write_text('<html>report</html>', encoding='utf-8')
-    ndvi_dir = tmp_path / 'output' / 'ndvi'
+    workspace = service.workspace_for_record(record)
+    report = workspace.output_root / 'report_latest.html'
+    report.parent.mkdir(parents=True, exist_ok=True)
+    report.write_text('<html><head></head><body><img src="ndvi/ndvi_color.png" /></body></html>', encoding='utf-8')
+    ndvi_dir = workspace.ndvi_output
     ndvi_dir.mkdir(parents=True)
     (ndvi_dir / 'metadata.json').write_text(json.dumps({'quality': 'ok'}), encoding='utf-8')
     (ndvi_dir / 'grid_metadata.json').write_text(json.dumps({'grid': {}}), encoding='utf-8')
     (ndvi_dir / 'ndvi_grid_cells.csv').write_text('cell,value\nA1,1\n', encoding='utf-8')
     (ndvi_dir / 'ndvi_grid_overlay.png').write_bytes(b'png')
-    monkeypatch.setattr(
-        'agrivision.services.export_service.load_config',
-        lambda: {'paths': {'ndvi_output': 'output/ndvi'}},
-    )
+    (ndvi_dir / 'ndvi_color.png').write_bytes(b'png')
     service.update_status(
         record.run_id,
         status='completed',
@@ -53,11 +52,16 @@ def test_build_package_includes_run_and_quality_artifacts(tmp_path: Path, monkey
         assert 'metadata/run_metadata.jsonld' in names
         assert 'run/status.json' in names
         assert 'run/params.json' in names
+        assert 'run/artifacts.json' in names
         assert 'report/report.html' in names
+        assert 'report-assets/report_latest.html' in names
+        assert 'report-assets/ndvi/ndvi_color.png' in names
         assert 'quality/metadata.json' in names
         assert 'quality/grid_metadata.json' in names
         assert 'quality/grid_cells.csv' in names
         assert 'quality/grid_overlay.png' in names
+        report_html = archive.read('report/report.html').decode('utf-8')
+        assert '<base href="../report-assets/">' in report_html
         metadata = json.loads(archive.read('metadata/run_metadata.jsonld'))
         assert metadata['@id'] == f'urn:openagri:agrivision:run:{record.run_id}'
         assert metadata['dataset']['@type'] == 'AgriculturalDataset'

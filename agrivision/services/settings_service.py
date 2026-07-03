@@ -1,9 +1,8 @@
 from __future__ import annotations
 
+import json
 from pathlib import Path
 from typing import Any
-
-import yaml
 
 from agrivision.app.schemas.settings import (
     CredentialsUpdateRequest,
@@ -12,13 +11,21 @@ from agrivision.app.schemas.settings import (
 from agrivision.config.runtime import get_runtime_config
 from agrivision.config.settings import (
     DEFAULT_CONFIG,
+    _apply_local_service_defaults,
     _deep_merge,
     _remove_yaml_secrets,
     get_config_path,
+    get_runtime_env_path,
+    get_runtime_settings_path,
     load_local_env,
     load_raw_config,
+    load_runtime_settings,
 )
+from agrivision.services import service_control
+from agrivision.services.irrigation import runtime as irrigation_runtime
+from agrivision.services.pdm import runtime as pdm_runtime
 from agrivision.services.runtime import mask_env_value, update_env_file
+from agrivision.services.weather import client as weather_client
 
 
 class SettingsService:
@@ -30,9 +37,22 @@ class SettingsService:
         'pdm_token': ('PDM_TOKEN',),
     }
 
-    def __init__(self, config_path: Path | None = None, env_path: Path | None = None) -> None:
+    def __init__(
+        self,
+        config_path: Path | None = None,
+        env_path: Path | None = None,
+        runtime_settings_path: Path | None = None,
+    ) -> None:
         self.config_path = config_path or get_config_path()
-        self.env_path = env_path or self.config_path.parent / '.env'
+        self.runtime_settings_path = runtime_settings_path or get_runtime_settings_path()
+        self.env_path = env_path or self.runtime_settings_path.with_name('app-secrets.env')
+        self.ensure_runtime_settings_file()
+
+    def ensure_runtime_settings_file(self) -> None:
+        payload = load_runtime_settings(self.runtime_settings_path)
+        merged = _remove_yaml_secrets(_deep_merge(DEFAULT_CONFIG, payload or {}))
+        self.runtime_settings_path.parent.mkdir(parents=True, exist_ok=True)
+        self.runtime_settings_path.write_text(json.dumps(merged, indent=2), encoding='utf-8')
 
     def _env_values(self) -> dict[str, str]:
         if not self.env_path.exists():
@@ -48,8 +68,10 @@ class SettingsService:
 
     def _load_config(self) -> dict[str, Any]:
         load_local_env(self.env_path)
-        payload = load_raw_config(self.config_path)
-        config = _remove_yaml_secrets(_deep_merge(DEFAULT_CONFIG, payload or {}))
+        file_payload = load_raw_config(self.config_path)
+        runtime_payload = load_runtime_settings(self.runtime_settings_path)
+        config = _deep_merge(DEFAULT_CONFIG, file_payload or {})
+        config = _remove_yaml_secrets(_deep_merge(config, runtime_payload or {}))
         env_values = self._env_values()
         mapping = {
             'WEATHER_USERNAME': ('weather', 'username'),
@@ -70,7 +92,7 @@ class SettingsService:
             for key in path[:-1]:
                 current = current.setdefault(key, {})
             current[path[-1]] = value
-        return config
+        return _apply_local_service_defaults(config)
 
     def get_settings_view(self) -> dict[str, Any]:
         config = self._load_config()
@@ -87,6 +109,7 @@ class SettingsService:
                 'pdm_default_model_key': config.get('pdm', {}).get('default_model_key', 'grapevine_powdery_mildew_risk_v1'),
                 'resize_max_long_edge': config.get('resize', {}).get('max_long_edge', ''),
                 'orthophoto_resolution_cm': config.get('orthophoto', {}).get('orthophoto_resolution_cm', ''),
+                'settings_file': str(self.runtime_settings_path),
                 'deployment_mode': config.get('app', {}).get('deployment_mode', 'local'),
                 'public_url': config.get('app', {}).get('public_url', ''),
                 'min_free_disk_gb': config.get('app', {}).get('min_free_disk_gb', 50),
@@ -123,9 +146,9 @@ class SettingsService:
         return {key: mask_env_value(str(value or '')) for key, value in values.items()}
 
     def update_non_secret_settings(self, request: SettingsUpdateRequest) -> dict[str, Any]:
-        payload = _deep_merge(DEFAULT_CONFIG, load_raw_config(self.config_path) or {})
+        payload = _deep_merge(DEFAULT_CONFIG, load_runtime_settings(self.runtime_settings_path) or {})
 
-        # do not persist secrets back into config.yaml from the settings UI
+        # do not persist secrets back into runtime settings from the settings UI
         payload.setdefault('weather', {}).pop('username', None)
         payload.setdefault('weather', {}).pop('password', None)
         payload.setdefault('weather', {}).pop('openweather_api_key', None)
@@ -169,7 +192,8 @@ class SettingsService:
         if request.external_access_protection_confirmed is not None:
             payload.setdefault('app', {})['external_access_protection_confirmed'] = request.external_access_protection_confirmed
 
-        self.config_path.write_text(yaml.safe_dump(payload, sort_keys=False), encoding='utf-8')
+        self.runtime_settings_path.parent.mkdir(parents=True, exist_ok=True)
+        self.runtime_settings_path.write_text(json.dumps(payload, indent=2), encoding='utf-8')
         return self.get_settings_view()
 
     def update_credentials(self, request: CredentialsUpdateRequest) -> dict[str, Any]:
@@ -203,4 +227,39 @@ class SettingsService:
             update_env_file(self.env_path, values)
             for env_name, value in values.items():
                 __import__('os').environ[env_name] = value
+            self._sync_changed_service_credentials(values)
         return self.get_settings_view()
+
+    def _sync_changed_service_credentials(self, values: dict[str, str]) -> None:
+        service_keys: list[str] = []
+        if any(
+            env_name in values
+            for env_name in ('WEATHER_USERNAME', 'WEATHER_PASSWORD', 'OPENWEATHER_API_KEY')
+        ):
+            weather_client.prepare_weather_repo_and_env()
+            service_keys.append('weather')
+        if any(
+            env_name in values
+            for env_name in ('IRRIGATION_EMAIL', 'IRRIGATION_PASSWORD', 'IRRIGATION_TOKEN')
+        ):
+            irrigation_runtime.prepare_repo_and_env()
+            service_keys.append('irrigation')
+        if any(
+            env_name in values
+            for env_name in ('PDM_USERNAME', 'PDM_PASSWORD', 'PDM_TOKEN')
+        ):
+            pdm_runtime.prepare_repo_and_env()
+            service_keys.append('pdm')
+
+        controls = service_control.service_controls()
+        if not controls.get('available'):
+            return
+
+        for service_key in service_keys:
+            try:
+                service_control.restart_service(service_key, timeout_seconds=240)
+            except Exception:
+                # Persisting credentials should still succeed even if the companion service
+                # cannot be restarted immediately. The next explicit start/restart will
+                # pick up the synchronized .env file.
+                continue

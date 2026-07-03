@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import json
 import os
 import warnings
 from dataclasses import dataclass
@@ -11,10 +12,18 @@ import yaml
 
 _PROJECT_ROOT = Path(__file__).resolve().parents[2]
 _CONFIG_PATH = Path(os.getenv("AGRIVISION_CONFIG_PATH", str(_PROJECT_ROOT / "config.yaml")))
+_RUNTIME_SETTINGS_PATH = Path(
+    os.getenv("AGRIVISION_RUNTIME_SETTINGS_PATH", str(_PROJECT_ROOT / "runtime" / "settings.json"))
+)
+DEFAULT_SERVICE_USERNAME = "dummy@email.com"
+DEFAULT_SERVICE_PASSWORD = "StrongPass1@"
 
 
-def load_local_env(env_path: Path | None = None) -> None:
-    resolved = env_path or (get_config_path().parent / ".env")
+def get_runtime_env_path() -> Path:
+    return get_runtime_settings_path().with_name("app-secrets.env")
+
+
+def _load_env_file(resolved: Path) -> None:
     if not resolved.exists():
         return
     for raw_line in resolved.read_text(encoding="utf-8").splitlines():
@@ -26,6 +35,16 @@ def load_local_env(env_path: Path | None = None) -> None:
         value = value.strip().strip('"').strip("'")
         if key and key not in os.environ:
             os.environ[key] = value
+
+
+def load_local_env(env_path: Path | None = None) -> None:
+    if env_path is not None:
+        _load_env_file(env_path)
+        return
+    runtime_env_path = get_runtime_env_path()
+    config_env_path = get_config_path().parent / ".env"
+    for candidate in (runtime_env_path, config_env_path):
+        _load_env_file(candidate)
 
 
 def _remove_yaml_secrets(config: dict[str, Any]) -> dict[str, Any]:
@@ -43,6 +62,29 @@ def _remove_yaml_secrets(config: dict[str, Any]) -> dict[str, Any]:
     pdm_auth["username"] = ""
     pdm_auth["password"] = ""
     pdm["token"] = ""
+    return config
+
+
+def _apply_local_service_defaults(config: dict[str, Any]) -> dict[str, Any]:
+    weather = config.setdefault("weather", {})
+    if not weather.get("username"):
+        weather["username"] = DEFAULT_SERVICE_USERNAME
+    if not weather.get("password"):
+        weather["password"] = DEFAULT_SERVICE_PASSWORD
+
+    irrigation = config.setdefault("irrigation", {})
+    irrigation_auth = irrigation.setdefault("auth", {})
+    if not irrigation_auth.get("email"):
+        irrigation_auth["email"] = DEFAULT_SERVICE_USERNAME
+    if not irrigation_auth.get("password"):
+        irrigation_auth["password"] = DEFAULT_SERVICE_PASSWORD
+
+    pdm = config.setdefault("pdm", {})
+    pdm_auth = pdm.setdefault("auth", {})
+    if not pdm_auth.get("username"):
+        pdm_auth["username"] = DEFAULT_SERVICE_USERNAME
+    if not pdm_auth.get("password"):
+        pdm_auth["password"] = DEFAULT_SERVICE_PASSWORD
     return config
 
 
@@ -290,11 +332,18 @@ class AppSettings:
 def get_project_root() -> Path:
     """Return the active project root.
 
+    AGRIVISION_PROJECT_ROOT always wins when explicitly set. This is used by
+    the host-side service helper to operate on the real checkout through a bind
+    mount while reusing the packaged AgriVision Python code.
+
     When AGRIVISION_CONFIG_PATH points at a config file inside a bind-mounted
     workspace (for example /workspace/config.yaml in Docker), the config file's
     parent directory becomes the runtime project root. Otherwise we fall back to
     the repository root resolved from this module.
     """
+    overridden_root = os.getenv("AGRIVISION_PROJECT_ROOT", "").strip()
+    if overridden_root:
+        return Path(overridden_root).resolve()
     if _CONFIG_PATH.name == "config.yaml":
         return _CONFIG_PATH.resolve().parent
     return _PROJECT_ROOT
@@ -303,6 +352,11 @@ def get_project_root() -> Path:
 def get_config_path() -> Path:
     """Return the active config path, allowing AGRIVISION_CONFIG_PATH overrides."""
     return _CONFIG_PATH
+
+
+def get_runtime_settings_path() -> Path:
+    """Return the dashboard-managed runtime settings file path."""
+    return _RUNTIME_SETTINGS_PATH
 
 
 def _deep_copy(value: Any) -> Any:
@@ -405,12 +459,28 @@ def load_raw_config(config_path: Path | None = None) -> dict[str, Any]:
     return loaded
 
 
+def load_runtime_settings(runtime_settings_path: Path | None = None) -> dict[str, Any]:
+    """Load dashboard-managed runtime settings as a dict. Missing files return an empty mapping."""
+    resolved = runtime_settings_path or get_runtime_settings_path()
+    if not resolved.exists():
+        return {}
+
+    loaded = json.loads(resolved.read_text(encoding="utf-8") or "{}")
+
+    if not isinstance(loaded, dict):
+        raise ValueError(f"Runtime settings file must contain a top-level mapping: {resolved}")
+
+    return loaded
+
+
 def load_config() -> dict:
-    """Return config dict with explicit precedence: defaults < YAML(non-secret) < .env/environment."""
+    """Return config dict with explicit precedence: defaults < config.yaml < runtime/settings.json < .env/environment."""
     load_local_env()
     config = _deep_merge(DEFAULT_CONFIG, load_raw_config())
+    config = _deep_merge(config, load_runtime_settings())
     config = _remove_yaml_secrets(config)
     config = _apply_env_overrides(config)
+    config = _apply_local_service_defaults(config)
     config = _rewrite_loopback_urls_for_container(config)
     return config
 

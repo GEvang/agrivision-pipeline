@@ -1,6 +1,8 @@
 from __future__ import annotations
 
 import shutil
+import time
+import warnings
 import threading
 from datetime import datetime, timezone
 from pathlib import Path
@@ -18,6 +20,11 @@ from agrivision.services.run_service import RunStartBlocked
 
 router = APIRouter()
 
+UPLOAD_STREAM_CHUNK_SIZE = 1024 * 1024
+MAX_FILES_PER_GROUP = 1000
+MAX_DATASET_BYTES = 2 * 1024 * 1024 * 1024
+MAX_IMAGE_PIXELS = 100_000_000
+
 ORTHOPHOTO_PRESET_VALUES = {
     'preview': {'resolution_cm': 8, 'reduce_images': False},
     'balanced': {'resolution_cm': 3, 'reduce_images': False},
@@ -32,6 +39,7 @@ ORTHOPHOTO_OUTPUT_KEYS = {
     'thermal': 'orthophoto_thermal',
 }
 UPLOAD_VALIDATE_STAGE = 'upload_validate'
+PENDING_UPLOAD_TIMEOUT_SECONDS = 300
 
 
 def _selected_uploads(uploads: list[UploadFile]) -> list[UploadFile]:
@@ -123,6 +131,41 @@ def _pending_upload_response(record) -> dict[str, str]:
         'redirect': f'/runs/{record.run_id}',
         'upload_url': f'/ui/orthophotos/{record.run_id}/files',
     }
+
+
+def _has_pending_upload_content(upload_dir: Path, run_id: str) -> bool:
+    pending_root = upload_dir / '.pending' / 'orthophotos' / run_id
+    if pending_root.exists():
+        return any(path.is_file() for path in pending_root.rglob('*'))
+    return any(path.is_file() for path in upload_dir.rglob('*') if path.name != 'manifest.json')
+
+
+def _expire_pending_upload_if_idle(run_id: str, *, timeout_seconds: int = PENDING_UPLOAD_TIMEOUT_SECONDS) -> None:
+    time.sleep(max(timeout_seconds, 1))
+    try:
+        record = deps.run_service.load_run(run_id)
+    except FileNotFoundError:
+        return
+    if record.status != 'running':
+        return
+    if record.current_stage != UPLOAD_VALIDATE_STAGE or record.stage_message != 'Waiting for upload':
+        return
+    upload_dir = Path(record.input_path)
+    if _has_pending_upload_content(upload_dir, run_id):
+        return
+    message = f'Upload did not start within {timeout_seconds} seconds.'
+    _log_run_event(run_id, message)
+    _fail_pending_orthophoto_run(run_id, [message], 'Upload timed out before files reached the dashboard.')
+
+
+def _schedule_pending_upload_timeout(run_id: str, *, timeout_seconds: int = PENDING_UPLOAD_TIMEOUT_SECONDS) -> None:
+    thread = threading.Thread(
+        target=_expire_pending_upload_if_idle,
+        kwargs={'run_id': run_id, 'timeout_seconds': timeout_seconds},
+        daemon=True,
+        name=f'agrivision-upload-timeout-{run_id}',
+    )
+    thread.start()
 
 
 async def _store_images(kind: str, uploads: list[UploadFile], target_dir: Path) -> tuple[list[str], list[str]]:
@@ -254,19 +297,91 @@ async def upload_images(
 ) -> dict[str, object]:
     upload_run_id = deps.storage_service.new_run_id()
     upload_dir = deps.storage_service.upload_dir(upload_run_id)
+    mapir_dir = upload_dir / 'mapir'
+    rgb_dir = upload_dir / 'rgb'
+    thermal_dir = upload_dir / 'thermal'
+    mapir_dir.mkdir(parents=True, exist_ok=True)
+    rgb_dir.mkdir(parents=True, exist_ok=True)
+    thermal_dir.mkdir(parents=True, exist_ok=True)
+    total_bytes = 0
+    seen_names: set[str] = set()
 
-    rgb_stored_files, rgb_errors = await _store_images('RGB', rgb_files, upload_dir / 'rgb')
-    mapir_stored_files, mapir_errors = await _store_images('MAPIR', mapir_files, upload_dir / 'mapir')
-    thermal_stored_files, thermal_errors = await _store_images('Thermal', thermal_files, upload_dir / 'thermal')
-    stored = {'rgb': rgb_stored_files, 'mapir': mapir_stored_files, 'thermal': thermal_stored_files}
-    errors = [*rgb_errors, *mapir_errors, *thermal_errors, *_validate_uploaded_categories(stored)]
+    async def _store_images(kind: str, uploads: list[UploadFile], target_dir: Path) -> tuple[list[str], list[str]]:
+        stored_files: list[str] = []
+        validation_errors: list[str] = []
+        nonlocal total_bytes
+        if len(uploads) > MAX_FILES_PER_GROUP:
+            validation_errors.append(f'{kind}: no more than {MAX_FILES_PER_GROUP} files are allowed.')
+            return stored_files, validation_errors
+        for upload in uploads:
+            try:
+                suffix = Path(upload.filename or '').suffix.lower()
+                name = Path(upload.filename or '').name
+                if suffix not in deps.ALLOWED_EXTENSIONS:
+                    validation_errors.append(f'{kind} - {name}: unsupported file type')
+                    continue
+                if not name or name in seen_names:
+                    validation_errors.append(f'{kind} - {name or "<unnamed>"}: duplicate or invalid name')
+                    continue
+                seen_names.add(name)
+                target = target_dir / name
+                temp_target = target_dir / f'{name}.tmp'
+                file_size = 0
+                while True:
+                    chunk = await upload.read(UPLOAD_STREAM_CHUNK_SIZE)
+                    if not chunk:
+                        break
+                    file_size += len(chunk)
+                    total_bytes += len(chunk)
+                    if total_bytes > MAX_DATASET_BYTES:
+                        raise ValueError(f'dataset exceeds the {MAX_DATASET_BYTES} byte limit')
+                    with temp_target.open('ab') as handle:
+                        handle.write(chunk)
+                if file_size == 0:
+                    validation_errors.append(f'{kind} - {name}: empty file')
+                    continue
+                original_max_pixels = Image.MAX_IMAGE_PIXELS
+                try:
+                    Image.MAX_IMAGE_PIXELS = MAX_IMAGE_PIXELS
+                    with warnings.catch_warnings():
+                        warnings.simplefilter('error', Image.DecompressionBombWarning)
+                        with Image.open(temp_target) as image:
+                            image.verify()
+                finally:
+                    Image.MAX_IMAGE_PIXELS = original_max_pixels
+                temp_target.replace(target)
+            except ValueError as exc:
+                temp_target.unlink(missing_ok=True)
+                validation_errors.append(f'{kind} - {name}: {exc}')
+                break
+            except (UnidentifiedImageError, OSError, Image.DecompressionBombWarning):
+                temp_target.unlink(missing_ok=True)
+                validation_errors.append(f'{kind} - {name}: unreadable, corrupt, or unsafe image')
+                continue
+            finally:
+                await upload.close()
+            stored_files.append(name)
+        return stored_files, validation_errors
 
-    if errors:
-        raise HTTPException(status_code=400, detail=errors)
+    try:
+        mapir_stored_files, mapir_errors = await _store_images('MAPIR', mapir_files, mapir_dir)
+        rgb_stored_files, rgb_errors = await _store_images('RGB', rgb_files, rgb_dir)
+        thermal_stored_files, thermal_errors = await _store_images('THERMAL', thermal_files, thermal_dir)
+        stored = {
+            'rgb': rgb_stored_files,
+            'mapir': mapir_stored_files,
+            'thermal': thermal_stored_files,
+        }
+        errors = [*mapir_errors, *rgb_errors, *thermal_errors, *_validate_uploaded_categories(stored)]
+        if errors:
+            raise HTTPException(status_code=400, detail=errors)
 
-    manifest = _manifest_payload(upload_run_id, dataset_name, upload_dir, stored)
-    deps.storage_service.write_json(upload_dir / 'manifest.json', manifest.model_dump(mode='json'))
-    return manifest.model_dump(mode='json')
+        manifest = _manifest_payload(upload_run_id, dataset_name, upload_dir, stored)
+        deps.storage_service.write_json(upload_dir / 'manifest.json', manifest.model_dump(mode='json'))
+        return manifest.model_dump(mode='json')
+    except Exception:
+        shutil.rmtree(upload_dir, ignore_errors=True)
+        raise
 
 
 @router.post('/ui/uploads')
@@ -282,7 +397,7 @@ async def upload_images_ui(
         rgb_files=rgb_files,
         thermal_files=thermal_files,
     )
-    return RedirectResponse(url=f"/runs/new?upload_run_id={manifest['run_id']}", status_code=303)
+    return RedirectResponse(url=f"/runs/orthophotos?upload_run_id={manifest['run_id']}", status_code=303)
 
 
 @router.post('/ui/orthophotos/init')
@@ -304,6 +419,7 @@ async def init_orthophotos_ui(payload: dict = Body(...)) -> dict[str, str]:
         import_camera_targets=import_camera_targets,
         notes='Mixed ODM/import orthophoto intake' if raw_camera_targets and import_camera_targets else None,
     )
+    _schedule_pending_upload_timeout(record.run_id)
     return _pending_upload_response(record)
 
 
@@ -326,6 +442,7 @@ async def init_complete_orthophoto_dataset_ui(run_id: str, payload: dict = Body(
         source_orthophoto_run_id=run_id,
         notes='Completed missing orthophotos',
     )
+    _schedule_pending_upload_timeout(record.run_id)
     return _pending_upload_response(record)
 
 

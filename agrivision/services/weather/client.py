@@ -9,6 +9,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 from datetime import UTC, datetime, timedelta
+import os
 from pathlib import Path
 from typing import Any
 
@@ -16,15 +17,22 @@ import requests
 
 from agrivision.config.settings import get_settings, load_config
 from agrivision.services.runtime import (
+    EnvSyncResult,
     ServiceBootstrapError,
     ServiceRuntimeState,
     base_env_values,
+    clone_repo_if_missing,
+    ensure_env_file,
+    inspect_external_service_runtime,
     project_service_dir,
     reconcile_service_runtime,
     summarize_env_changes,
+    update_env_file,
 )
 
 WEATHER_REPO_URL = "https://github.com/agstack/OpenAgri-WeatherService.git"
+DEFAULT_SERVICE_USERNAME = "dummy@email.com"
+DEFAULT_SERVICE_PASSWORD = "StrongPass1@"
 
 
 def _get_weather_settings() -> dict[str, Any]:
@@ -107,10 +115,10 @@ def _weather_env_values() -> dict[str, str]:
             "WEATHER_SRV_MONGO_INITDB_ROOT_PASSWORD": "root",
             "WEATHER_SRV_MONGO_INITDB_DATABASE": "openagridb",
             "WEATHER_SRV_OPENWEATHERMAP_API_KEY": settings.weather.openweather_api_key or "",
-            "GATEKEEPER_SUPERUSER_USERNAME": settings.weather.username or "root",
-            "GATEKEEPER_SUPERUSER_PASSWORD": settings.weather.password or "root",
-            "WEATHER_SRV_GATEKEEPER_USER": settings.weather.username or "root",
-            "WEATHER_SRV_GATEKEEPER_PASSWORD": settings.weather.password or "root",
+            "GATEKEEPER_SUPERUSER_USERNAME": settings.weather.username or DEFAULT_SERVICE_USERNAME,
+            "GATEKEEPER_SUPERUSER_PASSWORD": settings.weather.password or DEFAULT_SERVICE_PASSWORD,
+            "WEATHER_SRV_GATEKEEPER_USER": settings.weather.username or DEFAULT_SERVICE_USERNAME,
+            "WEATHER_SRV_GATEKEEPER_PASSWORD": settings.weather.password or DEFAULT_SERVICE_PASSWORD,
         }
     )
     return values
@@ -119,6 +127,12 @@ def _weather_env_values() -> dict[str, str]:
 def ensure_weather_repo_and_env(timeout_seconds: int = 90) -> ServiceRuntimeState:
     base_url = _get_weather_settings()["base_url"].rstrip("/")
     health_urls = [f"{base_url}/docs", f"{base_url}/openapi.json", f"{base_url}/"]
+    if os.getenv("APP_CONTAINER_PROJECT_ROOT", "").strip():
+        return inspect_external_service_runtime(
+            repo_dir=_service_dir(),
+            readiness_urls=health_urls,
+            timeout_seconds=timeout_seconds,
+        )
     return reconcile_service_runtime(
         repo_dir=_service_dir(),
         repo_url=WEATHER_REPO_URL,
@@ -132,6 +146,13 @@ def ensure_weather_repo_and_env(timeout_seconds: int = 90) -> ServiceRuntimeStat
         readiness_urls=health_urls,
         timeout_seconds=timeout_seconds,
     )
+
+
+def prepare_weather_repo_and_env() -> EnvSyncResult:
+    repo_dir = _service_dir()
+    clone_repo_if_missing(repo_dir, WEATHER_REPO_URL)
+    env_path = ensure_env_file(repo_dir)
+    return update_env_file(env_path, _weather_env_values())
 
 
 def _validate_weather_runtime(token: str) -> None:
@@ -497,6 +518,7 @@ def collect_weather_summary(
     }
 
     try:
+        _require_openweather_key()
         token = get_token()
         _validate_weather_runtime(token)
     except Exception as exc:

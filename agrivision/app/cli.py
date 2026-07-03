@@ -14,6 +14,10 @@ from agrivision.app.commands.cleanup import cleanup_outputs
 from agrivision.app.commands.doctor import doctor
 from agrivision.app.commands.run_pipeline import run_full_pipeline
 from agrivision.app.commands.setup_services import setup_services
+from agrivision.services import service_control
+from agrivision.services.irrigation import runtime as irrigation_runtime
+from agrivision.services.pdm import runtime as pdm_runtime
+from agrivision.services.weather import client as weather_client
 
 
 def load_local_env() -> None:
@@ -38,6 +42,9 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument('--skip-ndvi', action='store_true', help='Skip NDVI computation and reuse existing NDVI outputs.')
     parser.add_argument('--doctor', action='store_true', help='Print runtime diagnostics and exit.')
     parser.add_argument('--setup-services', action='store_true', help='Prepare sibling OpenAgri services and exit.')
+    parser.add_argument('--service-control', action='store_true', help='Run a single companion service management action and exit.')
+    parser.add_argument('--service-key', choices=['weather', 'irrigation', 'pdm'], help='Service key for --service-control.')
+    parser.add_argument('--service-action', choices=['prepare', 'ensure', 'stop', 'restart'], help='Action for --service-control.')
     parser.add_argument('--cleanup', action='store_true', help='Remove generated outputs and exit.')
     parser.add_argument('--skip-weather', action='store_true', help='Skip weather enrichment during the run.')
     parser.add_argument('--skip-report', action='store_true', help='Skip report generation during the run.')
@@ -62,12 +69,45 @@ def main() -> None:
         setup_services()
         print('Services prepared.')
         return
+    if args.service_control:
+        if not args.service_key or not args.service_action:
+            raise SystemExit('--service-control requires --service-key and --service-action.')
+        if args.service_action == 'prepare':
+            sync = _prepare_service(args.service_key)
+            print(json.dumps({'changed': sync.changed, 'changed_keys': list(sync.changed_keys)}, indent=2))
+            return
+        if args.service_action == 'ensure':
+            service_control.ensure_service(args.service_key, timeout_seconds=120)
+            print(json.dumps({'status': 'ok', 'service': args.service_key, 'action': 'ensure'}, indent=2))
+            return
+        if args.service_action == 'stop':
+            service_control.stop_service(args.service_key)
+            print(json.dumps({'status': 'ok', 'service': args.service_key, 'action': 'stop'}, indent=2))
+            return
+        if args.service_action == 'restart':
+            service_control.restart_service(args.service_key, timeout_seconds=120)
+            print(json.dumps({'status': 'ok', 'service': args.service_key, 'action': 'restart'}, indent=2))
+            return
     if args.cleanup:
         removed = cleanup_outputs()
         print(json.dumps({'removed': removed}, indent=2))
         return
     if args.serve_dashboard:
-        subprocess.run([sys.executable, '-m', 'uvicorn', 'agrivision.app.api:app', '--host', args.host, '--port', str(args.port)], check=False)
+        result = subprocess.run(
+            [
+                sys.executable,
+                '-m',
+                'uvicorn',
+                'agrivision.app.api:app',
+                '--host',
+                args.host,
+                '--port',
+                str(args.port),
+            ],
+            check=False,
+        )
+        if result.returncode != 0:
+            raise SystemExit(result.returncode)
         return
 
     run_full_pipeline(
@@ -77,6 +117,16 @@ def main() -> None:
         skip_weather=args.skip_weather,
         skip_report=args.skip_report,
     )
+
+
+def _prepare_service(service_key: str):
+    if service_key == 'weather':
+        return weather_client.prepare_weather_repo_and_env()
+    if service_key == 'irrigation':
+        return irrigation_runtime.prepare_repo_and_env()
+    if service_key == 'pdm':
+        return pdm_runtime.prepare_repo_and_env()
+    raise ValueError(f'Unknown service key: {service_key}')
 
 
 if __name__ == '__main__':

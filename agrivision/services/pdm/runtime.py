@@ -1,18 +1,26 @@
 from __future__ import annotations
 
+import os
 from pathlib import Path
 
 from agrivision.config.settings import get_settings
 from agrivision.services.runtime import (
+    EnvSyncResult,
     ServiceBootstrapError,
     ServiceRuntimeState,
     base_env_values,
+    clone_repo_if_missing,
+    ensure_env_file,
+    inspect_external_service_runtime,
     project_service_dir,
     reconcile_service_runtime,
     summarize_env_changes,
+    update_env_file,
 )
 
 PDM_REPO_URL = "https://github.com/openagri-eu/OpenAgri-PestAndDiseaseManagement.git"
+DEFAULT_SERVICE_USERNAME = "dummy@email.com"
+DEFAULT_SERVICE_PASSWORD = "StrongPass1@"
 
 
 def _service_dir() -> Path:
@@ -43,8 +51,8 @@ def _env_values() -> dict[str, str]:
             'CORS_ORIGINS': '["*"]',
             'LOGGING': 'DEBUG',
             'GATEKEEPER_BASE_URL': 'http://127.0.0.1:8001',
-            'GATEKEEPER_USERNAME': settings.pdm.auth.username or 'admin',
-            'GATEKEEPER_PASSWORD': settings.pdm.auth.password or 'admin',
+            'GATEKEEPER_USERNAME': settings.pdm.auth.username or DEFAULT_SERVICE_USERNAME,
+            'GATEKEEPER_PASSWORD': settings.pdm.auth.password or DEFAULT_SERVICE_PASSWORD,
         }
     )
     return values
@@ -58,6 +66,12 @@ def ensure_repo_and_env(timeout_seconds: int = 120) -> ServiceRuntimeState:
         f"{settings.pdm.base_url}/health",
         f"{settings.pdm.base_url}/api/v1/openapi.json",
     ]
+    if os.getenv("APP_CONTAINER_PROJECT_ROOT", "").strip():
+        return inspect_external_service_runtime(
+            repo_dir=_service_dir(),
+            readiness_urls=health_urls,
+            timeout_seconds=timeout_seconds,
+        )
     return reconcile_service_runtime(
         repo_dir=_service_dir(),
         repo_url=PDM_REPO_URL,
@@ -67,6 +81,13 @@ def ensure_repo_and_env(timeout_seconds: int = 120) -> ServiceRuntimeState:
         timeout_seconds=timeout_seconds,
         build_on_recreate=False,
     )
+
+
+def prepare_repo_and_env() -> EnvSyncResult:
+    repo_dir = _service_dir()
+    clone_repo_if_missing(repo_dir, PDM_REPO_URL)
+    env_path = ensure_env_file(repo_dir)
+    return update_env_file(env_path, _env_values())
 
 
 def ensure_service_available(timeout_seconds: int = 120, verbose: bool = True) -> ServiceRuntimeState:

@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import contextlib
+import json
 import re
 import shutil
 import subprocess
@@ -8,11 +9,12 @@ import threading
 from datetime import datetime, timezone
 from pathlib import Path
 
-from agrivision.app.schemas.runs import RunCreateRequest, RunRecord, StageStatus
-from agrivision.config import get_project_root, load_config
+from agrivision.app.schemas.runs import ArtifactRecord, RunCreateRequest, RunRecord, StageStatus, StepSelection
+from agrivision.config import load_config
 from agrivision.pipeline.orchestrator import run_full_pipeline
 from agrivision.services.failure_diagnostics import summarize_failure
 from agrivision.services.storage_service import StorageService
+from agrivision.services.run_workspace import RunWorkspace
 
 
 def _slugify_report_name(value: str) -> str:
@@ -33,6 +35,9 @@ class RunStartBlocked(RuntimeError):
 
 
 class RunService:
+    RESTART_RECONCILIATION_MESSAGE = 'Interrupted because the dashboard process restarted before the run completed.'
+    CORRUPTED_RUN_MESSAGE = 'Run record is corrupted and requires manual cleanup.'
+
     def __init__(self, storage: StorageService | None = None) -> None:
         self.storage = storage or StorageService()
         self._lock = threading.Lock()
@@ -128,21 +133,64 @@ class RunService:
         })
         self.storage.write_json(run_dir / 'status.json', record.model_dump(mode='json'))
         self.storage.write_json(run_dir / 'outputs.json', record.outputs)
+        self.storage.write_json(run_dir / 'artifacts.json', record.artifacts)
         Path(record.logs_path).touch(exist_ok=True)
 
+    def workspace_for_run(self, run_id: str) -> RunWorkspace:
+        return self.workspace_for_record(self.load_run(run_id))
+
+    def workspace_for_record(self, record: RunRecord) -> RunWorkspace:
+        return RunWorkspace.from_run_record(record, self.storage)
+
     def load_run(self, run_id: str) -> RunRecord:
-        path = self.storage.run_dir(run_id) / 'status.json'
-        return RunRecord.model_validate(self.storage.read_json(path))
+        path = self.storage.layout.runs_root / run_id / 'status.json'
+        if not path.exists():
+            raise FileNotFoundError(f'Run not found: {run_id}')
+        return self._load_run_record(path)
 
     def list_runs(self) -> list[RunRecord]:
         runs: list[RunRecord] = []
         for status_path in sorted(self.storage.layout.runs_root.glob('*/status.json'), reverse=True):
-            try:
-                runs.append(RunRecord.model_validate(self.storage.read_json(status_path)))
-            except Exception:
-                continue
+            runs.append(self._load_run_record(status_path))
         runs.sort(key=lambda item: item.created_at, reverse=True)
         return runs
+
+    def _load_run_record(self, status_path: Path) -> RunRecord:
+        try:
+            return RunRecord.model_validate(self.storage.read_json(status_path))
+        except Exception as exc:
+            return self._corrupted_run_record(status_path, exc)
+
+    def _corrupted_run_record(self, status_path: Path, exc: Exception) -> RunRecord:
+        run_dir = status_path.parent
+        payload: dict[str, object] = {}
+        with contextlib.suppress(OSError, json.JSONDecodeError):
+            loaded = json.loads(status_path.read_text(encoding='utf-8'))
+            if isinstance(loaded, dict):
+                payload = loaded
+        now = datetime.now(timezone.utc)
+        return RunRecord(
+            run_id=str(payload.get('run_id') or run_dir.name),
+            created_at=now,
+            updated_at=now,
+            started_at=None,
+            finished_at=now,
+            dataset_name=str(payload.get('dataset_name') or run_dir.name),
+            input_path=str(payload.get('input_path') or ''),
+            status='failed',
+            progress_percent=0,
+            current_stage='corrupted',
+            stage_message=self.CORRUPTED_RUN_MESSAGE,
+            selected_steps=StepSelection.model_validate(payload.get('selected_steps') or {}),
+            parameters={},
+            outputs={},
+            errors=[f'{self.CORRUPTED_RUN_MESSAGE} ({exc})'],
+            stages=[],
+            logs_path=str(payload.get('logs_path') or (run_dir / 'run.log')),
+            run_name=str(payload.get('run_name')) if payload.get('run_name') else None,
+            field_name=str(payload.get('field_name')) if payload.get('field_name') else None,
+            run_dir=str(payload.get('run_dir') or run_dir),
+        )
 
     def _existing_run_dir(self, run_id: str) -> Path:
         candidate = (self.storage.layout.runs_root / run_id).resolve()
@@ -151,14 +199,23 @@ class RunService:
             raise FileNotFoundError(f'Run not found: {run_id}')
         return candidate
 
+    def _runs_output_root(self) -> Path:
+        relative_root = load_config()['paths'].get('runs_output', 'output/runs')
+        return self.storage.layout.project_root / relative_root
+
+    def _run_output_dir(self, run_id: str) -> Path:
+        return self._runs_output_root() / run_id
+
+    def _run_orthophoto_output_dir(self, run_id: str) -> Path:
+        return self._run_output_dir(run_id) / 'orthophotos'
+
     def delete_run(self, run_id: str) -> None:
         run_dir = self._existing_run_dir(run_id)
         record = RunRecord.model_validate(self.storage.read_json(run_dir / 'status.json'))
         if record.status in {'queued', 'running'}:
             raise ValueError('Active runs must be stopped before deletion.')
         shutil.rmtree(run_dir)
-        runs_output_root = self.storage.layout.project_root / load_config()['paths'].get('runs_output', 'output/runs')
-        run_output_dir = runs_output_root / run_id
+        run_output_dir = self._run_output_dir(run_id)
         if run_output_dir.exists():
             shutil.rmtree(run_output_dir)
 
@@ -184,17 +241,35 @@ class RunService:
             if thread is not None and thread.is_alive():
                 continue
             cleared.append(
-                self.update_status(
+                self.finalize_run_status(
                     record.run_id,
                     status='cancelled',
                     current_stage='cancelled',
                     stage_message='Cleared stale active run.',
-                    errors=self._append_unique_error(record.errors, 'Cleared stale active run.'),
-                    finished_at=datetime.now(timezone.utc),
-                    stages=self._cancel_stages(record.stages),
+                    error_message='Cleared stale active run.',
+                    running_stage_state='cancelled',
+                    running_stage_message='Cleared stale active run.',
                 )
             )
         return cleared
+
+    def reconcile_orphaned_runs(self) -> list[RunRecord]:
+        reconciled: list[RunRecord] = []
+        for record in self.list_runs():
+            if record.status not in {'queued', 'running'}:
+                continue
+            reconciled.append(
+                self.finalize_run_status(
+                    record.run_id,
+                    status='cancelled',
+                    current_stage='cancelled',
+                    stage_message=self.RESTART_RECONCILIATION_MESSAGE,
+                    error_message=self.RESTART_RECONCILIATION_MESSAGE,
+                    running_stage_state='cancelled',
+                    running_stage_message=self.RESTART_RECONCILIATION_MESSAGE,
+                )
+            )
+        return reconciled
 
     def clear_incomplete_runs(self) -> int:
         cleared = 0
@@ -208,14 +283,14 @@ class RunService:
             thread = self._threads.get(record.run_id)
             if thread is not None and thread.is_alive():
                 continue
-            self.update_status(
+            self.finalize_run_status(
                 record.run_id,
                 status='cancelled',
                 current_stage='cancelled',
                 stage_message='Cleared incomplete run.',
-                errors=self._append_unique_error(record.errors, 'Cleared incomplete run.'),
-                finished_at=datetime.now(timezone.utc),
-                stages=self._cancel_stages(record.stages),
+                error_message='Cleared incomplete run.',
+                running_stage_state='cancelled',
+                running_stage_message='Cleared incomplete run.',
             )
             self.delete_run(record.run_id)
             cleared += 1
@@ -227,6 +302,7 @@ class RunService:
         *,
         status: str | None = None,
         outputs: dict[str, str] | None = None,
+        artifacts: dict[str, ArtifactRecord] | None = None,
         errors: list[str] | None = None,
         progress_percent: int | None = None,
         current_stage: str | None = None,
@@ -244,6 +320,9 @@ class RunService:
             if outputs is not None:
                 record.outputs = outputs
                 self.storage.write_json(run_dir / 'outputs.json', outputs)
+            if artifacts is not None:
+                record.artifacts = artifacts
+                self.storage.write_json(run_dir / 'artifacts.json', {key: value.model_dump(mode='json') for key, value in artifacts.items()})
             if errors is not None:
                 record.errors = errors
             if progress_percent is not None:
@@ -300,39 +379,96 @@ class RunService:
         )
 
     def _cancel_stages(self, stages: list[StageStatus]) -> list[StageStatus]:
-        cancelled_stages = [StageStatus.model_validate(stage.model_dump()) for stage in stages]
-        for stage in cancelled_stages:
+        return self._finalize_stages(
+            stages,
+            running_state='cancelled',
+            running_message='Stopped by operator.',
+        )
+
+    def _finalize_stages(
+        self,
+        stages: list[StageStatus],
+        *,
+        running_state: str,
+        running_message: str | None,
+        pending_state: str = 'skipped',
+    ) -> list[StageStatus]:
+        finalized_stages = [StageStatus.model_validate(stage.model_dump()) for stage in stages]
+        for stage in finalized_stages:
             if stage.state == 'running':
-                stage.state = 'cancelled'
-                stage.message = 'Stopped by operator'
+                stage.state = running_state  # type: ignore[misc]
+                stage.message = running_message
             elif stage.state == 'pending':
-                stage.state = 'skipped'
-        return cancelled_stages
+                stage.state = pending_state  # type: ignore[misc]
+        return finalized_stages
 
     def _append_unique_error(self, errors: list[str], message: str) -> list[str]:
         return errors if message in errors else [*errors, message]
 
-    def mark_start_blocked(self, run_id: str, message: str) -> RunRecord:
+    def finalize_run_status(
+        self,
+        run_id: str,
+        *,
+        status: str,
+        current_stage: str,
+        stage_message: str,
+        outputs: dict[str, str] | None = None,
+        errors: list[str] | None = None,
+        error_message: str | None = None,
+        running_stage_state: str | None = None,
+        running_stage_message: str | None = None,
+        progress_percent: int | None = None,
+    ) -> RunRecord:
         record = self.load_run(run_id)
+        final_errors = errors
+        if final_errors is None:
+            final_errors = record.errors if error_message is None else self._append_unique_error(record.errors, error_message)
+        stages = record.stages
+        if running_stage_state is not None:
+            stages = self._finalize_stages(
+                record.stages,
+                running_state=running_stage_state,
+                running_message=running_stage_message,
+            )
         return self.update_status(
+            run_id,
+            status=status,
+            outputs=outputs,
+            errors=final_errors,
+            progress_percent=progress_percent,
+            current_stage=current_stage,
+            stage_message=stage_message,
+            finished_at=record.finished_at or datetime.now(timezone.utc),
+            stages=stages,
+        )
+
+    def _active_run_blocker(self, run_id: str) -> RunRecord | None:
+        for candidate in self.list_runs():
+            if candidate.run_id == run_id:
+                continue
+            if candidate.status in {'queued', 'running'}:
+                return candidate
+        return None
+
+    def mark_start_blocked(self, run_id: str, message: str) -> RunRecord:
+        return self.finalize_run_status(
             run_id,
             status='cancelled',
             current_stage='blocked',
             stage_message=message,
-            errors=self._append_unique_error(record.errors, message),
-            finished_at=datetime.now(timezone.utc),
-            stages=self._cancel_stages(record.stages),
+            error_message=message,
+            running_stage_state='cancelled',
+            running_stage_message=message,
         )
 
     def stage_inputs_for_run(self, run_id: str) -> None:
         record = self.load_run(run_id)
-        config = load_config()
-        project_root = get_project_root()
         upload_dir = Path(record.input_path)
-        target_rgb = project_root / config['paths']['images_full']
-        target_mapir = project_root / config['paths']['images_full_mapir']
-        target_thermal = project_root / config['paths'].get('images_full_thermal', 'data/images_full/thermal')
-        camera_targets = set(record.parameters.get('camera_targets') or ['rgb', 'mapir'])
+        workspace = self.workspace_for_record(record)
+        target_rgb = workspace.images_full_rgb
+        target_mapir = workspace.images_full_mapir
+        camera_targets = self._camera_targets_for_record(record)
+        target_thermal = workspace.images_full_thermal
 
         def _reset_target(target_dir: Path) -> None:
             target_dir.mkdir(parents=True, exist_ok=True)
@@ -357,27 +493,36 @@ class RunService:
         if 'thermal' in camera_targets:
             _copy_inputs(upload_dir / 'thermal', target_thermal)
 
-    def stage_saved_orthophotos_for_run(self, source_run_id: str) -> None:
-        source = self.load_run(source_run_id)
-        source_upload_id = Path(source.input_path).name
-        config = load_config()
-        project_root = get_project_root()
-        paths = config['paths']
-        targets = {
-            'orthophoto_rgb': project_root / config['paths']['odm_project_root_rgb'] / 'project' / 'odm_orthophoto' / 'odm_orthophoto.tif',
-            'orthophoto_mapir': project_root / config['paths']['odm_project_root_mapir'] / 'project' / 'odm_orthophoto' / 'odm_orthophoto.tif',
+    def _camera_targets_for_record(self, record: RunRecord) -> set[str]:
+        configured = {
+            str(item).strip().lower()
+            for item in (record.parameters.get('camera_targets') or [])
+            if str(item).strip()
         }
-        if paths.get('odm_project_root_thermal'):
-            targets['orthophoto_thermal'] = project_root / paths['odm_project_root_thermal'] / 'project' / 'odm_orthophoto' / 'odm_orthophoto.tif'
-        outputs_by_key: dict[str, str] = {}
-        for run in self.list_runs():
-            if Path(run.input_path).name != source_upload_id or run.status != 'completed':
-                continue
-            for key in targets:
-                if key in run.outputs and key not in outputs_by_key:
-                    outputs_by_key[key] = run.outputs[key]
+        if configured:
+            return configured
+        source_run_id = record.parameters.get('source_orthophoto_run_id')
+        if source_run_id and not record.selected_steps.run_odm:
+            source = self.load_run(str(source_run_id))
+            restored = {
+                key.replace('orthophoto_', '')
+                for key in ('orthophoto_rgb', 'orthophoto_mapir', 'orthophoto_thermal')
+                if source.outputs.get(key)
+            }
+            if restored:
+                return restored
+        return {'rgb', 'mapir'}
+
+    def stage_saved_orthophotos_for_run(self, run_id: str, source_run_id: str) -> None:
+        source = self.load_run(source_run_id)
+        workspace = self.workspace_for_run(run_id)
+        targets = {
+            'orthophoto_rgb': workspace.ortho_rgb,
+            'orthophoto_mapir': workspace.ortho_mapir,
+            'orthophoto_thermal': workspace.ortho_thermal,
+        }
         for key, target in targets.items():
-            source_path = outputs_by_key.get(key)
+            source_path = source.outputs.get(key)
             if not source_path:
                 continue
             source_file = Path(source_path)
@@ -385,6 +530,36 @@ class RunService:
                 continue
             target.parent.mkdir(parents=True, exist_ok=True)
             shutil.copy2(source_file, target)
+
+    def _clear_discoverable_outputs_for_run(self, record: RunRecord) -> None:
+        workspace = self.workspace_for_record(record)
+        candidate_paths: list[Path] = []
+
+        if not self._is_orthophoto_creation_run(record):
+            ndvi_root = workspace.ndvi_output
+            candidate_paths.extend([
+                ndvi_root / 'ndvi.tif',
+                ndvi_root / 'ndvi_color.png',
+                ndvi_root / 'metadata.json',
+                ndvi_root / 'ndvi_grid_overlay.png',
+                ndvi_root / 'ndvi_grid_cells.csv',
+                ndvi_root / 'ndvi_grid_categories.csv',
+                ndvi_root / 'grid_metadata.json',
+            ])
+        if record.selected_steps.run_odm:
+            candidate_paths.extend([
+                workspace.ortho_rgb,
+                workspace.ortho_mapir,
+            ])
+        if record.selected_steps.generate_report:
+            candidate_paths.extend([
+                workspace.report_path,
+                workspace.output_root / 'report' / 'index.html',
+            ])
+
+        for path in candidate_paths:
+            if path.exists() and path.is_file():
+                path.unlink()
 
     def ensure_latest_orthophoto_run_saved(self) -> RunRecord | None:
         latest_run = next(
@@ -414,22 +589,12 @@ class RunService:
         record = self.load_run(run_id)
         if run_id in self._threads and self._threads[run_id].is_alive():
             return record
-        if record.selected_steps.run_odm:
-            active_odm_runs = [
-                run
-                for run in self.list_runs()
-                if run.run_id != run_id
-                and run.selected_steps.run_odm
-                and run.status in {'queued', 'running'}
-            ]
-            config = load_config()
-            app_cfg = config.get('app', {}) if isinstance(config.get('app'), dict) else {}
-            max_active = self._as_positive_int(app_cfg.get('max_active_odm_runs'), 1)
-            if len(active_odm_runs) >= max_active:
-                raise RunStartBlocked(
-                    f'Another ODM run is already active ({active_odm_runs[0].run_id}). '
-                    'Wait for it to finish or stop it before starting a new orthophoto run.'
-                )
+        blocker = self._active_run_blocker(run_id)
+        if blocker is not None:
+            raise RunStartBlocked(
+                f'Another run is already active ({blocker.run_id}). '
+                'Wait for it to finish or stop it before starting a new run.'
+            )
         self._cancel_events[run_id] = threading.Event()
         record = self.update_status(
             run_id,
@@ -458,14 +623,14 @@ class RunService:
         event = self._cancel_events.setdefault(run_id, threading.Event())
         event.set()
         self._stop_odm_containers()
-        return self.update_status(
+        return self.finalize_run_status(
             run_id,
             status='cancelled',
             current_stage='cancelled',
             stage_message='Run stopped by operator.',
-            errors=self._append_unique_error(record.errors, 'Run stopped by operator.'),
-            finished_at=datetime.now(timezone.utc),
-            stages=self._cancel_stages(record.stages),
+            error_message='Run stopped by operator.',
+            running_stage_state='cancelled',
+            running_stage_message='Stopped by operator.',
         )
 
     def launch_run(self, run_id: str) -> RunRecord:
@@ -494,11 +659,14 @@ class RunService:
         log_path = Path(record.logs_path)
         try:
             self._raise_if_cancelled(run_id)
+            self.update_stage(run_id, 'stage_inputs', 'running', 'Staging MAPIR and RGB inputs')
+            self._clear_discoverable_outputs_for_run(record)
             self.update_stage(run_id, 'stage_inputs', 'running', 'Staging camera inputs')
+            self._clear_discoverable_outputs_for_run(record)
             self.stage_inputs_for_run(run_id)
             source_orthophoto_run_id = record.parameters.get('source_orthophoto_run_id')
             if source_orthophoto_run_id and not record.selected_steps.run_odm:
-                self.stage_saved_orthophotos_for_run(str(source_orthophoto_run_id))
+                self.stage_saved_orthophotos_for_run(run_id, str(source_orthophoto_run_id))
             self.update_stage(run_id, 'stage_inputs', 'completed', 'Inputs staged')
             self._raise_if_cancelled(run_id)
 
@@ -527,10 +695,12 @@ class RunService:
                         pdm_crop=record.parameters.get('pdm_crop'),
                         pdm_model_key=record.parameters.get('pdm_model_key'),
                         progress_callback=callback,
+                        workspace_root=self.workspace_for_record(record).root,
+                        config=self.workspace_for_record(record).config,
                     )
             self._raise_if_cancelled(run_id)
             outputs = self._discover_outputs(Path(record.run_dir))
-            self.update_status(
+            self.finalize_run_status(
                 run_id,
                 status='completed',
                 outputs=outputs,
@@ -538,32 +708,29 @@ class RunService:
                 progress_percent=100,
                 current_stage='completed',
                 stage_message='Pipeline completed',
-                finished_at=datetime.now(timezone.utc),
             )
         except RunCancelled as exc:
-            record = self.load_run(run_id)
-            self.update_status(
+            self.finalize_run_status(
                 run_id,
                 status='cancelled',
                 current_stage='cancelled',
-                errors=self._append_unique_error(record.errors, str(exc)),
-                finished_at=datetime.now(timezone.utc),
                 stage_message=str(exc),
-                stages=self._cancel_stages(record.stages),
+                error_message=str(exc),
+                running_stage_state='cancelled',
+                running_stage_message='Stopped by operator.',
             )
             with log_path.open('a', encoding='utf-8') as log_handle:
                 log_handle.write(f"\n[dashboard] Run cancelled: {exc}\n")
         except Exception as exc:
             if self._cancel_events.get(run_id, threading.Event()).is_set():
-                record = self.load_run(run_id)
-                self.update_status(
+                self.finalize_run_status(
                     run_id,
                     status='cancelled',
                     current_stage='cancelled',
-                    errors=self._append_unique_error(record.errors, 'Run stopped by operator.'),
-                    finished_at=datetime.now(timezone.utc),
                     stage_message='Run stopped by operator.',
-                    stages=self._cancel_stages(record.stages),
+                    error_message='Run stopped by operator.',
+                    running_stage_state='cancelled',
+                    running_stage_message='Stopped by operator.',
                 )
                 with log_path.open('a', encoding='utf-8') as log_handle:
                     log_handle.write(f"\n[dashboard] Run cancelled: {exc}\n")
@@ -571,14 +738,16 @@ class RunService:
             outputs = self._discover_outputs(Path(record.run_dir))
             raw_error = str(exc)
             summary = summarize_failure(raw_error)
-            self.update_stage(run_id, self.load_run(run_id).current_stage or 'pipeline', 'failed', summary)
-            self.update_status(
+            failed_record = self.update_stage(run_id, self.load_run(run_id).current_stage or 'pipeline', 'failed', summary)
+            self.finalize_run_status(
                 run_id,
                 status='failed',
                 outputs=outputs,
-                errors=[summary],
-                finished_at=datetime.now(timezone.utc),
+                current_stage=failed_record.current_stage,
                 stage_message=summary,
+                error_message=summary,
+                running_stage_state='failed',
+                running_stage_message=summary,
             )
             with log_path.open('a', encoding='utf-8') as log_handle:
                 log_handle.write(f"\n[dashboard] Run failed: {summary}\n")
@@ -592,87 +761,151 @@ class RunService:
         return f"{_slugify_report_name(base_name)}.html"
 
     def _persist_report_for_run(self, record: RunRecord, source_report: Path) -> Path:
-        config = load_config()
-        runs_output_root = self.storage.layout.project_root / config['paths'].get('runs_output', 'output/runs')
-        run_output_dir = runs_output_root / record.run_id
+        run_output_dir = self._run_output_dir(record.run_id)
         run_output_dir.mkdir(parents=True, exist_ok=True)
         destination = run_output_dir / self._report_filename_for_run(record)
         shutil.copy2(source_report, destination)
         return destination
 
     def _persist_output_for_run(self, record: RunRecord, source_path: Path, filename: str) -> Path:
-        runs_output_root = self.storage.layout.project_root / load_config()['paths'].get('runs_output', 'output/runs')
-        run_output_dir = runs_output_root / record.run_id / 'orthophotos'
+        run_output_dir = self._run_orthophoto_output_dir(record.run_id)
         run_output_dir.mkdir(parents=True, exist_ok=True)
         destination = run_output_dir / filename
         shutil.copy2(source_path, destination)
         return destination
 
-    def _discover_outputs(self, run_dir: Path) -> dict[str, str]:
-        config = load_config()
-        project_root = self.storage.layout.project_root
+    def _artifact_stage(self, record: RunRecord, key: str) -> str:
+        if key == 'report_html':
+            return 'generate_report'
+        if key == 'disease_risk_summary':
+            return 'disease_risk'
+        if key.startswith('orthophoto_'):
+            if record.parameters.get('source_orthophoto_run_id') and not record.selected_steps.run_odm:
+                return 'stage_inputs'
+            if key == 'orthophoto_mapir':
+                return 'run_odm_mapir'
+            if key == 'orthophoto_thermal':
+                return 'run_odm_thermal'
+            return 'run_odm_rgb'
+        if key.startswith('grid_'):
+            return 'generate_grid'
+        return 'compute_ndvi'
+
+    def _artifact_source_path(self, record: RunRecord, key: str, discovered_path: Path) -> Path:
+        source_run_id = record.parameters.get('source_orthophoto_run_id')
+        if key.startswith('orthophoto_') and source_run_id and not record.selected_steps.run_odm:
+            source = self.load_run(str(source_run_id))
+            source_path = source.outputs.get(key)
+            if source_path:
+                return Path(source_path)
+        return discovered_path
+
+    def _artifact_origin(self, record: RunRecord, key: str, stored_path: Path, source_path: Path) -> str:
+        if key.startswith('orthophoto_') and record.parameters.get('source_orthophoto_run_id') and not record.selected_steps.run_odm:
+            return 'restored_from_previous_run'
+        if stored_path != source_path:
+            return 'copied_from_workspace'
+        return 'generated_in_run_workspace'
+
+    def _artifact_record(
+        self,
+        record: RunRecord,
+        key: str,
+        *,
+        stored_path: Path,
+        discovered_path: Path,
+        discovered_at: datetime,
+    ) -> ArtifactRecord:
+        source_path = self._artifact_source_path(record, key, discovered_path)
+        source_run_id = record.parameters.get('source_orthophoto_run_id')
+        return ArtifactRecord(
+            stored_path=str(stored_path),
+            source_path=str(source_path),
+            stage=self._artifact_stage(record, key),
+            origin=self._artifact_origin(record, key, stored_path, source_path),
+            discovered_at=discovered_at,
+            source_run_id=(
+                str(source_run_id)
+                if key.startswith('orthophoto_') and source_run_id and not record.selected_steps.run_odm
+                else None
+            ),
+        )
+
+    def _discover_outputs_with_artifacts(self, run_dir: Path) -> tuple[dict[str, str], dict[str, ArtifactRecord]]:
         record = RunRecord.model_validate(self.storage.read_json(run_dir / 'status.json'))
+        workspace = self.workspace_for_record(record)
         selected = record.selected_steps
-        camera_targets = set(record.parameters.get('camera_targets') or ['rgb', 'mapir'])
+        camera_targets = self._camera_targets_for_record(record)
         report_candidates = [
-            project_root / config['paths']['output_root'] / 'report_latest.html',
-            project_root / config['paths']['output_root'] / 'report' / 'index.html',
+            workspace.report_path,
+            workspace.output_root / 'report' / 'index.html',
         ]
+        include_orthophotos = selected.run_odm or bool(record.parameters.get('source_orthophoto_run_id'))
         candidates = {
             **(
                 {
-                    'ndvi_tif': project_root / config['paths']['ndvi_output'] / 'ndvi.tif',
-                    'ndvi_metadata': project_root / config['paths']['ndvi_output'] / 'metadata.json',
-                    'grid_metadata': project_root / config['paths']['ndvi_output'] / 'grid_metadata.json',
-                    'disease_risk_summary': project_root / config['paths']['ndvi_output'] / 'disease_risk' / 'summary.json',
+                    'ndvi_tif': workspace.ndvi_output / 'ndvi.tif',
+                    'ndvi_metadata': workspace.ndvi_output / 'metadata.json',
+                    'grid_metadata': workspace.ndvi_output / 'grid_metadata.json',
+                    'disease_risk_summary': workspace.ndvi_output / 'disease_risk' / 'summary.json',
+                    'ndvi_color_png': workspace.ndvi_output / 'ndvi_color.png',
+                    'grid_overlay_png': workspace.ndvi_output / 'ndvi_grid_overlay.png',
+                    'grid_cells_csv': workspace.ndvi_output / 'ndvi_grid_cells.csv',
+                    'grid_categories_csv': workspace.ndvi_output / 'ndvi_grid_categories.csv',
                 }
                 if not self._is_orthophoto_creation_run(record)
                 else {}
             ),
             **(
                 {
-                    **(
-                        {
-                            'orthophoto_rgb': project_root / config['paths']['odm_project_root_rgb'] / 'project' / 'odm_orthophoto' / 'odm_orthophoto.tif',
-                        }
-                        if 'rgb' in camera_targets
-                        else {}
-                    ),
-                    **(
-                        {
-                            'orthophoto_mapir': project_root / config['paths']['odm_project_root_mapir'] / 'project' / 'odm_orthophoto' / 'odm_orthophoto.tif',
-                        }
-                        if 'mapir' in camera_targets
-                        else {}
-                    ),
-                    **(
-                        {
-                            'orthophoto_thermal': project_root / config['paths'].get('odm_project_root_thermal', 'data/odm_project_thermal') / 'project' / 'odm_orthophoto' / 'odm_orthophoto.tif',
-                        }
-                        if 'thermal' in camera_targets
-                        else {}
-                    ),
+                    **({'orthophoto_rgb': workspace.ortho_rgb} if 'rgb' in camera_targets else {}),
+                    **({'orthophoto_mapir': workspace.ortho_mapir} if 'mapir' in camera_targets else {}),
+                    **({'orthophoto_thermal': workspace.ortho_thermal} if 'thermal' in camera_targets else {}),
                 }
-                if selected.run_odm
+                if include_orthophotos
                 else {}
             ),
         }
-        outputs = dict(record.outputs)
+
+        discovered_at = datetime.now(timezone.utc)
+        outputs: dict[str, str] = {}
+        artifacts: dict[str, ArtifactRecord] = {}
         for name, path in candidates.items():
             if not path.exists():
                 continue
+            stored_path = path
             if name == 'orthophoto_rgb':
-                outputs[name] = str(self._persist_output_for_run(record, path, 'orthophoto_rgb.tif'))
+                stored_path = self._persist_output_for_run(record, path, 'orthophoto_rgb.tif')
             elif name == 'orthophoto_mapir':
-                outputs[name] = str(self._persist_output_for_run(record, path, 'orthophoto_mapir.tif'))
+                stored_path = self._persist_output_for_run(record, path, 'orthophoto_mapir.tif')
             elif name == 'orthophoto_thermal':
-                outputs[name] = str(self._persist_output_for_run(record, path, 'orthophoto_thermal.tif'))
-            else:
-                outputs[name] = str(path)
+                stored_path = self._persist_output_for_run(record, path, 'orthophoto_thermal.tif')
+            outputs[name] = str(stored_path)
+            artifacts[name] = self._artifact_record(
+                record,
+                name,
+                stored_path=stored_path,
+                discovered_path=path,
+                discovered_at=discovered_at,
+            )
         report_path = next((path for path in report_candidates if path.exists()), None)
         if selected.generate_report and report_path is not None:
-            outputs['report_html'] = str(self._persist_report_for_run(record, report_path))
+            stored_report = self._persist_report_for_run(record, report_path)
+            outputs['report_html'] = str(stored_report)
+            artifacts['report_html'] = self._artifact_record(
+                record,
+                'report_html',
+                stored_path=stored_report,
+                discovered_path=report_path,
+                discovered_at=discovered_at,
+            )
+        return outputs, artifacts
+
+    def _discover_outputs(self, run_dir: Path) -> dict[str, str]:
+        outputs, artifacts = self._discover_outputs_with_artifacts(run_dir)
         self.storage.write_json(run_dir / 'outputs.json', outputs)
+        self.storage.write_json(run_dir / 'artifacts.json', {key: value.model_dump(mode='json') for key, value in artifacts.items()})
+        self.update_status(run_id=Path(run_dir).name, outputs=outputs, artifacts=artifacts)
         return outputs
 
     def log_text(self, run_id: str) -> str:

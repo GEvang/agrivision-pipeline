@@ -1,23 +1,35 @@
 # Deployment
 
-The root-level operational assets are the only supported deployment surface:
+The root-level operational assets are the supported deployment surface:
 
-- `install_agrivision.sh`
 - `Dockerfile`
 - `docker-compose.yml`
 - `docker-entrypoint.sh`
+- `install_agrivision.sh`
+- `Start AgriVision Windows.bat`
+- `Start AgriVision Linux.sh`
+- `Start AgriVision macOS.command`
 - `.env.example`
 
 ## Root Docker flow
 
 ```bash
-docker compose config
-docker compose build
-docker compose up
+docker compose up --build -d
 ```
 
-For local operator use, prefer the installer and `python run.py` commands documented in the README. Activate the project with `source .venv/bin/activate`.
+Then open `http://127.0.0.1:8008`.
 
-The Compose service publishes the dashboard on port `8008`, mounts the repository at `/workspace`, and mounts `/var/run/docker.sock` so ODM stages can launch OpenDroneMap containers. If the Docker socket is unavailable, the dashboard can start but ODM stages will fail.
+Base dashboard startup does not require `.env` and does not require optional OpenAgri services to be installed in advance.
+
+The base Compose service is intentionally dashboard-first:
+
+- publishes the dashboard on port `8008`
+- persists `./data`, `./output`, and `./runtime`
+- creates dashboard-managed runtime settings on first launch
+- keeps the dashboard usable before optional OpenAgri services are configured
+
+Python virtualenv setup remains available for development and advanced local runs, but it is no longer the primary operator deployment path.
+
+`install_agrivision.sh` remains available for advanced Linux host setup outside the dashboard-first Docker flow.
 
 For Windows self-hosting through Cloudflare Tunnel, see `docs/operator/windows-self-hosting.md`.

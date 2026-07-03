@@ -44,6 +44,64 @@ ORTHOPHOTO_PRESETS = [
 ]
 
 
+def _crop_details(run) -> dict[str, str]:
+    crop = str(run.parameters.get('pdm_crop') or '').strip().lower()
+    if crop == 'olive':
+        return {'label': 'Olive', 'icon': 'olive.png'}
+    if crop == 'grapevine':
+        return {'label': 'Grape', 'icon': 'grape.png'}
+    return {'label': 'Not set', 'icon': 'report.png'}
+
+
+def _run_type_label(run) -> str:
+    return 'Orthophoto Build' if run.selected_steps.run_odm else 'Field Analysis'
+
+
+def _health_score(quality: dict[str, object]) -> int | None:
+    try:
+        mean = quality.get('mean')
+        if mean is None:
+            return None
+        return int(round((float(mean) + 1.0) * 50.0))
+    except (TypeError, ValueError):
+        return None
+
+
+def _health_tone(score: int | None) -> str:
+    if score is None:
+        return 'muted'
+    if score >= 70:
+        return 'good'
+    if score >= 40:
+        return 'warn'
+    return 'bad'
+
+
+def _status_icon(status: str) -> str:
+    if status == 'completed':
+        return 'done'
+    if status in {'running', 'queued'}:
+        return 'progress'
+    if status in {'failed', 'cancelled'}:
+        return 'failed'
+    return 'idle'
+
+
+def _report_card(run, report) -> dict[str, object]:
+    quality = report.quality if report else {}
+    score = _health_score(quality)
+    return {
+        'run': run,
+        'report': report,
+        'quality': quality,
+        'crop': _crop_details(run),
+        'type_label': _run_type_label(run),
+        'health_score': score,
+        'health_tone': _health_tone(score),
+        'status_icon': _status_icon(run.status),
+    }
+
+
 def _artifact_path_exists(value: str) -> bool:
     path = Path(value)
     if path.exists():
@@ -56,8 +114,7 @@ def _artifact_path_exists(value: str) -> bool:
     return (deps.storage_service.layout.project_root / relative).exists()
 
 
-def _render_new_run_page(
-    request: Request,
+def _new_run_page_context(
     *,
     upload_run_id: str | None = None,
     complete_run_id: str | None = None,
@@ -97,6 +154,7 @@ def _render_new_run_page(
                 'thermal_uploaded': bool(manifest.get('thermal_files', [])),
                 'preset': run.parameters.get('orthophoto_preset') or '-',
                 'resolution_cm': run.parameters.get('orthophoto_resolution_cm') or '-',
+                'preview_run_id': run.run_id,
             },
         )
         item['rgb_ready'] = bool(item.get('rgb_ready')) or 'orthophoto_rgb' in orthophoto_paths
@@ -104,6 +162,7 @@ def _render_new_run_page(
         item['thermal_ready'] = bool(item.get('thermal_ready')) or 'orthophoto_thermal' in orthophoto_paths
         if 'orthophoto_rgb' in orthophoto_paths:
             item['rgb_run_id'] = run.run_id
+            item['preview_run_id'] = run.run_id
         if 'orthophoto_mapir' in orthophoto_paths:
             item['mapir_run_id'] = run.run_id
         if 'orthophoto_thermal' in orthophoto_paths:
@@ -146,12 +205,20 @@ def _render_new_run_page(
             manifest = deps.storage_service.read_json(deps.storage_service.upload_dir(upload_id) / 'manifest.json', default={})
             library_item = orthophoto_runs_by_upload.get(upload_id, {})
             missing_cameras = [
-                {'key': key, 'label': key.upper()}
+                {
+                    'key': key,
+                    'label': key.upper(),
+                    'icon': {'rgb': 'rgb (2).png', 'mapir': 'olive-branch.png', 'thermal': 'thermometer.png'}.get(key, 'report.png'),
+                }
                 for key in ('rgb', 'mapir', 'thermal')
                 if not library_item.get(f'{key}_ready')
             ]
             if not missing_cameras:
-                missing_cameras = [{'key': str(camera_kind), 'label': str(camera_kind).upper()}]
+                missing_cameras = [{
+                    'key': str(camera_kind),
+                    'label': str(camera_kind).upper(),
+                    'icon': {'rgb': 'rgb (2).png', 'mapir': 'olive-branch.png', 'thermal': 'thermometer.png'}.get(str(camera_kind), 'report.png'),
+                }]
             completion_context = {
                 'run_id': complete_run_id,
                 'camera_kind': camera_kind,
@@ -161,29 +228,61 @@ def _render_new_run_page(
             }
         except Exception:
             completion_context = None
+    return {
+        'uploads': uploads,
+        'orthophoto_uploads': orthophoto_uploads,
+        'orthophoto_runs': orthophoto_runs,
+        'orthophoto_presets': ORTHOPHOTO_PRESETS,
+        'selected_upload_run_id': upload_run_id,
+        'validation_result': validation_result,
+        'form_values': form_values or {},
+        'pdm_model_catalog': model_catalog,
+        'pdm_models_by_crop': models_by_crop,
+        'pdm_default_crop': settings_view['non_secret'].get('pdm_default_crop', 'grapevine'),
+        'pdm_default_model_key': settings_view['non_secret'].get('pdm_default_model_key', 'grapevine_powdery_mildew_risk_v1'),
+        'pdm_enabled_by_default': settings_view['non_secret'].get('pdm_enabled_by_default', True),
+        'completion_context': completion_context,
+    }
+
+
+def _render_build_orthophotos_page(
+    request: Request,
+    *,
+    upload_run_id: str | None = None,
+    complete_run_id: str | None = None,
+    camera_kind: str | None = None,
+) -> HTMLResponse:
     return deps.templates.TemplateResponse(
         request,
-        'new_run.html',
-        {
-            'uploads': uploads,
-            'orthophoto_uploads': orthophoto_uploads,
-            'orthophoto_runs': orthophoto_runs,
-            'orthophoto_presets': ORTHOPHOTO_PRESETS,
-            'selected_upload_run_id': upload_run_id,
-            'validation_result': validation_result,
-            'form_values': form_values or {},
-            'pdm_model_catalog': model_catalog,
-            'pdm_models_by_crop': models_by_crop,
-            'pdm_default_crop': settings_view['non_secret'].get('pdm_default_crop', 'grapevine'),
-            'pdm_default_model_key': settings_view['non_secret'].get('pdm_default_model_key', 'grapevine_powdery_mildew_risk_v1'),
-            'pdm_enabled_by_default': settings_view['non_secret'].get('pdm_enabled_by_default', True),
-            'completion_context': completion_context,
-        },
+        'build_orthophotos.html',
+        _new_run_page_context(
+            upload_run_id=upload_run_id,
+            complete_run_id=complete_run_id,
+            camera_kind=camera_kind,
+        ),
+    )
+
+
+def _render_analyze_field_page(
+    request: Request,
+    *,
+    upload_run_id: str | None = None,
+    validation_result: dict[str, object] | None = None,
+    form_values: dict[str, object] | None = None,
+) -> HTMLResponse:
+    return deps.templates.TemplateResponse(
+        request,
+        'analyze_field.html',
+        _new_run_page_context(
+            upload_run_id=upload_run_id,
+            validation_result=validation_result,
+            form_values=form_values,
+        ),
     )
 
 
 def _run_mode_label(run) -> str:
-    return 'Full ODM' if run.selected_steps.run_odm else 'Existing orthos'
+    return _run_type_label(run)
 
 
 def _filter_runs(runs, status: str | None = None, query: str | None = None, run_mode: str | None = None):
@@ -214,11 +313,42 @@ def new_run_page(
     complete_run_id: str | None = None,
     camera_kind: str | None = None,
 ) -> HTMLResponse:
-    return _render_new_run_page(
+    target = '/runs/orthophotos'
+    params: list[str] = []
+    if upload_run_id:
+        params.append(f'upload_run_id={upload_run_id}')
+    if complete_run_id:
+        params.append(f'complete_run_id={complete_run_id}')
+    if camera_kind:
+        params.append(f'camera_kind={camera_kind}')
+    if params:
+        target = f"{target}?{'&'.join(params)}"
+    return RedirectResponse(url=target, status_code=303)
+
+
+@router.get('/runs/orthophotos', response_class=HTMLResponse)
+def build_orthophotos_page(
+    request: Request,
+    upload_run_id: str | None = None,
+    complete_run_id: str | None = None,
+    camera_kind: str | None = None,
+) -> HTMLResponse:
+    return _render_build_orthophotos_page(
         request,
         upload_run_id=upload_run_id,
         complete_run_id=complete_run_id,
         camera_kind=camera_kind,
+    )
+
+
+@router.get('/runs/analyze', response_class=HTMLResponse)
+def analyze_field_page(
+    request: Request,
+    upload_run_id: str | None = None,
+) -> HTMLResponse:
+    return _render_analyze_field_page(
+        request,
+        upload_run_id=upload_run_id,
     )
 
 
@@ -227,11 +357,22 @@ def list_runs(request: Request, status: str = 'all', q: str = '', run_mode: str 
     runs = deps.run_service.list_runs()
     filtered_runs = _filter_runs(runs, status=status, query=q, run_mode=run_mode)
     if 'text/html' in request.headers.get('accept', ''):
+        report_lookup = {
+            item.run_id: item
+            for item in deps.report_service.list_reports(generate_previews=True)
+        }
+        report_cards = [
+            _report_card(run, report_lookup.get(run.run_id))
+            for run in filtered_runs
+        ]
+        latest_card = next((item for item in report_cards if item['run'].status == 'completed'), report_cards[0] if report_cards else None)
         return deps.templates.TemplateResponse(
             request,
             'runs.html',
             {
                 'runs': filtered_runs,
+                'report_cards': report_cards,
+                'latest_card': latest_card,
                 'total_runs': len(runs),
                 'filtered_count': len(filtered_runs),
                 'status_filter': status,
@@ -335,7 +476,7 @@ def create_run_ui(
     )
     validation = deps.preflight_service.validate(run_request)
     if not validation.get('ok'):
-        return _render_new_run_page(
+        return _render_analyze_field_page(
             request,
             upload_run_id=upload_run_id,
             validation_result=validation,
@@ -349,7 +490,29 @@ def create_run_ui(
                 'generate_report': generate_report,
             },
         )
-    created = create_run(run_request)
+    try:
+        created = create_run(run_request)
+    except HTTPException as exc:
+        if exc.status_code != 409:
+            raise
+        validation_with_block = dict(validation)
+        validation_with_block['ok'] = False
+        validation_with_block.setdefault('blockers', [])
+        validation_with_block['blockers'] = [*validation_with_block['blockers'], str(exc.detail)]
+        return _render_analyze_field_page(
+            request,
+            upload_run_id=upload_run_id,
+            validation_result=validation_with_block,
+            form_values={
+                'run_name': run_name,
+                'fetch_weather': fetch_weather,
+                'run_irrigation': run_irrigation,
+                'run_pdm': run_pdm,
+                'pdm_crop': pdm_crop,
+                'pdm_model_key': pdm_model_key,
+                'generate_report': generate_report,
+            },
+        )
     return RedirectResponse(url=created['redirect'], status_code=303)
 
 
@@ -389,7 +552,7 @@ def delete_orthophoto_ui(run_id: str) -> RedirectResponse:
         raise HTTPException(status_code=409, detail=str(exc)) from exc
     except FileNotFoundError as exc:
         raise HTTPException(status_code=404, detail='Orthophoto set not found.') from exc
-    return RedirectResponse(url='/runs/new', status_code=303)
+    return RedirectResponse(url='/runs/orthophotos', status_code=303)
 
 
 @router.post('/ui/runs/clear-stuck')

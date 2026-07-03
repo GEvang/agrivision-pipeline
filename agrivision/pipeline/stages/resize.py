@@ -25,32 +25,34 @@ with a friendly message.
 
 import shutil
 from pathlib import Path
+from typing import Any
 
 from PIL import Image
 
-from agrivision.config.settings import get_project_root, load_config
+from agrivision.pipeline.io.paths import resolve_pipeline_paths
 
 IMAGE_EXTS = {".jpg", ".jpeg", ".png", ".tif", ".tiff"}
 
 
-def _get_resize_settings() -> dict:
+def _get_resize_settings(
+    workspace_root: Path | None = None,
+    config: dict[str, Any] | None = None,
+) -> dict:
     """
     Resolve resize-related config at call time instead of import time.
     """
-    config = load_config()
-    project_root = get_project_root()
-
-    paths_cfg = config.get("paths", {})
+    resolved = resolve_pipeline_paths(workspace_root=workspace_root, config=config)
+    config = resolved["config"]
     resize_cfg = config.get("resize", {})
 
     return {
-        "project_root": project_root,
-        "images_full_rgb": project_root / paths_cfg["images_full"],
-        "images_resized_rgb": project_root / paths_cfg["images_resized"],
-        "images_full_mapir": project_root / paths_cfg["images_full_mapir"],
-        "images_resized_mapir": project_root / paths_cfg["images_resized_mapir"],
-        "images_full_thermal": project_root / paths_cfg["images_full_thermal"],
-        "images_resized_thermal": project_root / paths_cfg["images_resized_thermal"],
+        "project_root": resolved["project_root"],
+        "images_full_rgb": resolved["images_full_rgb"],
+        "images_resized_rgb": resolved["images_resized_rgb"],
+        "images_full_mapir": resolved["images_full_mapir"],
+        "images_resized_mapir": resolved["images_resized_mapir"],
+        "images_full_thermal": resolved["images_full_thermal"],
+        "images_resized_thermal": resolved["images_resized_thermal"],
         "max_long_edge": resize_cfg.get("max_long_edge", 3000),
     }
 
@@ -107,7 +109,10 @@ def _resize_dataset(src_dir: Path, dst_dir: Path, label: str, max_long_edge: int
     return processed
 
 
-def run_resize() -> None:
+def run_resize(
+    workspace_root: Path | None = None,
+    config: dict[str, Any] | None = None,
+) -> None:
     """
     Resize images for all supported datasets (RGB, MAPIR, thermal).
 
@@ -119,7 +124,7 @@ def run_resize() -> None:
 
     If a dataset has no images, it is skipped.
     """
-    settings = _get_resize_settings()
+    settings = _get_resize_settings(workspace_root=workspace_root, config=config)
     max_long_edge = settings["max_long_edge"]
     images_full_rgb = settings["images_full_rgb"]
     images_resized_rgb = settings["images_resized_rgb"]

@@ -167,3 +167,39 @@ def test_report_quality_summary_ignores_global_metadata_without_run_outputs(tmp_
 
     assert report.report_path is None
     assert report.quality == {}
+
+
+def test_report_quality_summary_surfaces_unreadable_metadata(tmp_path: Path) -> None:
+    storage = StorageService(project_root=tmp_path)
+    upload_dir = storage.upload_dir('upload-seed')
+    (upload_dir / 'a.jpg').write_bytes(b'123')
+    service = RunService(storage)
+    record = service.create_run_record(
+        RunCreateRequest.model_validate(
+            {
+                'run_name': 'Report Run',
+                'dataset_name': 'Dataset R',
+                'upload_run_id': 'upload-seed',
+                'selected_steps': {},
+                'parameters': {},
+            }
+        )
+    )
+    ndvi_meta = tmp_path / 'metadata.json'
+    grid_meta = tmp_path / 'grid_metadata.json'
+    ndvi_meta.write_text('{not-json', encoding='utf-8')
+    grid_meta.write_text('[]', encoding='utf-8')
+    service.update_status(
+        record.run_id,
+        status='completed',
+        outputs={
+            'ndvi_metadata': str(ndvi_meta),
+            'grid_metadata': str(grid_meta),
+        },
+    )
+
+    report = ReportService(run_service=service).get_report(record.run_id)
+
+    assert report.quality['state'] == 'error'
+    assert 'Unreadable metadata: metadata.json.' in report.quality['flags']
+    assert 'Invalid metadata format: grid_metadata.json.' in report.quality['flags']

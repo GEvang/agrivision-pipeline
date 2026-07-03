@@ -17,7 +17,7 @@ from agrivision.app.schemas.settings import (
     SettingsUpdateRequest,
 )
 from agrivision.config import get_project_root, load_config
-from agrivision.services.service_control import service_statuses
+from agrivision.services.service_control import service_controls, service_statuses
 
 router = APIRouter()
 
@@ -26,6 +26,7 @@ router = APIRouter()
 def settings_page(request: Request):
     view = deps.settings_service.get_settings_view()
     view['services'] = service_statuses(include_logs=True)
+    view['service_controls'] = service_controls()
     view['deployment_status'] = deployment_status()
     if 'text/html' in request.headers.get('accept', ''):
         return deps.templates.TemplateResponse(request, 'settings.html', view)

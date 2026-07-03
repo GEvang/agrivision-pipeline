@@ -1,13 +1,13 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-cd /workspace
-mkdir -p /workspace/output /workspace/data
+cd /app
+mkdir -p /app/output /app/data /app/runtime /app/runtime/runs /app/runtime/exports
 
-if [ -f "/workspace/.env" ]; then
+if [ -f "/app/.env" ]; then
   set -a
   # shellcheck disable=SC1091
-  source /workspace/.env
+  source /app/.env
   set +a
 fi
 
@@ -16,7 +16,7 @@ if ! command -v docker >/dev/null 2>&1; then
 fi
 
 if [ ! -S /var/run/docker.sock ]; then
-  echo "[Docker entrypoint] WARNING: /var/run/docker.sock not mounted. ODM stages will fail." >&2
+  echo "[Docker entrypoint] INFO: /var/run/docker.sock is not mounted. Dashboard startup is fine; ODM and advanced service controls remain unavailable." >&2
 fi
 
 exec "$@"

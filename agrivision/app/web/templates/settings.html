@@ -1,198 +1,231 @@
 {% extends 'base.html' %}
+{% block container_class %}container-wide{% endblock %}
 {% block content %}
-<section class="dashboard-hero">
+{% set deployment = deployment_status|default(none) %}
+
+<section class="page-topbar">
   <div>
-    <h2>Settings</h2>
-    <p class="muted">Pipeline configuration, credentials, and OpenAgri service controls.</p>
+    <h1 class="page-title">Settings</h1>
+    <p class="page-subtitle">Manage connected services, system preferences, and platform access.</p>
+  </div>
+  <div class="topbar-actions">
+    <a class="app-button app-button-secondary" href="/runs">Reports</a>
   </div>
 </section>
 
-<section class="settings-layout">
-  <form class="panel settings-card settings-main" method="post" action="/ui/settings">
-    <div class="settings-section-head">
-      <h2>Pipeline</h2>
-      <p class="muted">Core defaults used by new runs.</p>
+<section class="glass-panel settings-section" id="services">
+  <div class="section-label-row">
+    <div class="section-badge-icon section-badge-green">
+      <img class="icon-art icon-art-sm" src="/static/icons/cloud-computing.png" alt="" />
     </div>
+    <div>
+      <h2>Connected Services</h2>
+      <p>Check the status of the services used by crop analysis.</p>
+    </div>
+  </div>
 
-    <div class="settings-group">
-      <h3>Location</h3>
-      <label>Location name<input type="text" name="location_name" value="{{ non_secret.location_name }}" /></label>
-      <div class="inline-fields">
-        <label>Latitude<input type="number" step="any" name="location_lat" value="{{ non_secret.location_lat }}" /></label>
-        <label>Longitude<input type="number" step="any" name="location_lon" value="{{ non_secret.location_lon }}" /></label>
+  {% if not service_controls.available %}
+  <p class="muted">{{ service_controls.reason }}</p>
+  {% endif %}
+
+  <form class="service-key-banner" method="post" action="/ui/settings/credentials">
+    <div class="service-key-copy">
+      <div class="section-badge-icon section-badge-green soft">
+        <img class="icon-art icon-art-sm" src="/static/icons/meteorology.png" alt="" />
       </div>
-      <p class="muted">Image-coordinate location detection is planned; manual coordinates remain the fallback for now.</p>
+      <div>
+        <strong>Weather API Key</strong>
+        <p>Used to retrieve weather data for analysis.</p>
+      </div>
     </div>
-
-    <div class="settings-group">
-      <h3>Service endpoints</h3>
-      <label>Weather base URL<input type="text" name="weather_base_url" value="{{ non_secret.weather_base_url }}" /></label>
-      <label>Irrigation base URL<input type="text" name="irrigation_base_url" value="{{ non_secret.irrigation_base_url }}" /></label>
-      <label>Pest &amp; Disease base URL<input type="text" name="pdm_base_url" value="{{ non_secret.pdm_base_url }}" /></label>
+    <div class="service-key-inputs">
+      <div class="service-key-current">
+        <span>Current Key</span>
+        <strong>{{ credentials.openweather_api_key }}</strong>
+      </div>
+      <label class="service-key-field">
+        <span class="visually-hidden">OpenWeather API key</span>
+        <input type="password" name="openweather_api_key" placeholder="Enter a new OpenWeather API key" />
+      </label>
+      <button class="app-button app-button-primary" type="submit">Save Key</button>
     </div>
-
-    <button type="submit">Save settings</button>
   </form>
 
-  <aside class="settings-side">
-    <form class="panel settings-card" method="post" action="/ui/settings/credentials">
-      <div class="settings-section-head">
-        <h2>Credentials</h2>
-        <p class="muted">Existing values stay masked unless replaced.</p>
-      </div>
-      <div class="credential-list">
-        <span>Shared username</span><strong>{{ credentials.shared_username }}</strong>
-        <span>Shared password</span><strong>{{ credentials.shared_password }}</strong>
-        <span>OpenWeather key</span><strong>{{ credentials.openweather_api_key }}</strong>
-      </div>
-      <label>Shared username / email<input type="text" name="shared_username" /></label>
-      <label>Shared password<input type="password" name="shared_password" /></label>
-      <label>OpenWeather API key<input type="password" name="openweather_api_key" /></label>
-      <button type="submit">Save credentials</button>
-    </form>
-  </aside>
-</section>
-
-<section class="panel" id="services">
-  <div class="panel-header">
-    <div>
-      <h2>Services</h2>
-      <p class="muted">OpenAgri dependency status and controls.</p>
-    </div>
-  </div>
-  <div class="service-diagnostics compact-services">
+  <div class="service-card-grid">
     {% for service in services %}
-    <article class="service-card embedded-service-card">
-      <div class="panel-header">
-        <div>
-          <h3>{{ service.name }}</h3>
-          <p class="muted">{{ service.base_url }}</p>
+    <article class="service-overview-card service-state-{{ service.state }}">
+      <div class="service-overview-head">
+      <div class="service-overview-icon service-icon-{{ service.key }}">
+          {% if service.key == 'weather' %}
+          <img class="icon-art icon-art-sm" src="/static/icons/meteorology.png" alt="" />
+          {% elif service.key == 'irrigation' %}
+          <img class="icon-art icon-art-sm" src="/static/icons/humidity.png" alt="" />
+          {% elif service.key == 'pdm' %}
+          <img class="icon-art icon-art-sm" src="/static/icons/olive-branch.png" alt="" />
+          {% else %}
+          <img class="icon-art icon-art-sm" src="/static/icons/camera-drone.png" alt="" />
+          {% endif %}
         </div>
-        <span class="status-badge status-{{ 'completed' if service.state == 'ok' else 'failed' if service.state in ['warn', 'missing'] else service.state }}">{{ service.state }}</span>
+        <div class="service-overview-copy">
+          <div class="service-overview-title-row">
+            <h3>{{ service.name }}</h3>
+            <span class="status-badge status-{{ 'completed' if service.state == 'ok' else 'failed' if service.state in ['warn', 'missing'] else service.state }}">{{ service.status_label }}</span>
+          </div>
+          <p>{{ service.detail }}</p>
+        </div>
       </div>
-      <dl class="service-details">
-        <dt>Detail</dt><dd>{{ service.detail }}</dd>
-        <dt>Repository</dt><dd>{{ service.repo_dir }}</dd>
-        <dt>Compose</dt><dd>{{ service.compose_file or '-' }}</dd>
-      </dl>
-      <div class="button-row">
-        <a class="button-link secondary compact" href="{{ service.docs_url }}" target="_blank" rel="noreferrer">Open docs</a>
-        <form method="post" action="/ui/services/{{ service.key }}/start">
-          <button class="compact" type="submit">Start/check</button>
+      {% if service.key != 'odm' %}
+      <small class="service-last-checked">Last checked just now</small>
+      <div class="service-card-actions">
+        <a class="app-button app-button-ghost" href="{{ service.docs_url }}" target="_blank" rel="noreferrer">View Details</a>
+        {% if service.primary_action %}
+        <form method="post" action="{{ service.primary_action }}">
+          <button class="app-button app-button-secondary" type="submit">{{ service.primary_action_label }}</button>
         </form>
+        {% endif %}
+        {% if service.show_restart %}
         <form method="post" action="/ui/services/{{ service.key }}/restart" onsubmit="return confirm('Restart {{ service.name }} service containers?');">
-          <button class="danger-button compact" type="submit">Restart</button>
+          <button class="app-button app-button-secondary" type="submit">Restart</button>
         </form>
+        {% endif %}
       </div>
-      <details>
-        <summary>Readiness URLs</summary>
-        <ul>
-          {% for url in service.readiness_urls %}
-          <li>{{ url }}</li>
-          {% endfor %}
-        </ul>
-      </details>
-      <details>
-        <summary>Log tail</summary>
-        <pre class="log-box">{{ service.logs or 'No compose logs available.' }}</pre>
-      </details>
+      {% else %}
+      <small class="service-last-checked">OpenDroneMap availability is based on the local Docker runtime.</small>
+      <div class="service-card-actions">
+        <span class="app-button app-button-ghost app-button-static">Docs unavailable</span>
+      </div>
+      {% endif %}
     </article>
     {% endfor %}
   </div>
 </section>
 
-{% set deployment = deployment_status|default(none) %}
-<section class="panel settings-card deployment-card service-{{ deployment.state if deployment else 'warn' }}" id="deployment">
-  <div class="settings-section-head">
-    <h2>Deployment</h2>
-    <p class="muted">Host readiness for local and self-hosted use.</p>
-  </div>
-  {% if deployment %}
-  <div class="deployment-summary">
-    <span class="health-dot"></span>
+<section class="glass-panel settings-section">
+  <div class="section-label-row">
+    <div class="section-badge-icon section-badge-green">
+      <img class="icon-art icon-art-sm" src="/static/icons/hard-drive.png" alt="" />
+    </div>
     <div>
-      <strong>{{ deployment.deployment_mode|replace('_', ' ')|title }}</strong>
-      <p class="muted">{{ deployment.public_url or 'Local dashboard only' }}</p>
+      <h2>System &amp; Access</h2>
+      <p>This device is currently running AgriVision locally.</p>
     </div>
   </div>
-  <dl class="server-status-list">
-    <dt>Free disk</dt>
-    <dd class="status-value status-value-{{ deployment.disk_state }}">
-      {{ deployment.free_disk_gb if deployment.free_disk_gb is not none else 'Unknown' }} GB
-      <span class="muted">min {{ deployment.min_free_disk_gb }} GB</span>
-    </dd>
-    <dt>Docker</dt>
-    <dd class="status-value status-value-{{ deployment.docker.state }}">
-      {{ deployment.docker.detail }}
-    </dd>
-    <dt>Active ODM</dt>
-    <dd>
-      {{ deployment.active_odm_count }} / {{ deployment.max_active_odm_runs }}
-    </dd>
-    <dt>Version</dt>
-    <dd>{{ deployment.git_commit }}</dd>
-  </dl>
-  {% if deployment.active_odm_runs %}
-  <details>
-    <summary>Active orthophoto runs</summary>
-    <ul>
-      {% for run_id in deployment.active_odm_runs %}
-      <li><a href="/runs/{{ run_id }}">{{ run_id }}</a></li>
-      {% endfor %}
-    </ul>
-  </details>
+
+  {% if deployment %}
+  <div class="system-mode-banner">
+    <span class="status-badge status-completed">Local mode</span>
+    <p>All data and services run on this device{% if non_secret.public_url %}. Public URL: {{ non_secret.public_url }}{% else %}. No public URL is configured yet.{% endif %}</p>
+  </div>
+
+  <div class="system-fact-grid">
+    <article class="system-fact-card">
+      <div class="system-fact-icon-row">
+        <img class="icon-art icon-art-sm" src="/static/icons/hard-drive.png" alt="" />
+      </div>
+      <span>Free Disk</span>
+      <strong>{{ deployment.free_disk_gb if deployment.free_disk_gb is not none else 'Unknown' }} GB</strong>
+      <small>Minimum target: {{ deployment.min_free_disk_gb }} GB</small>
+    </article>
+    <article class="system-fact-card">
+      <div class="system-fact-icon-row">
+        <img class="icon-art icon-art-sm" src="/static/icons/docker.png" alt="" />
+      </div>
+      <span>Container Runtime</span>
+      <strong>{{ deployment.docker.detail }}</strong>
+      <small>{{ deployment.docker.target }}</small>
+    </article>
+    <article class="system-fact-card">
+      <div class="system-fact-icon-row">
+        <img class="icon-art icon-art-sm" src="/static/icons/camera-drone.png" alt="" />
+      </div>
+      <span>Active Orthophoto Jobs</span>
+      <strong>{{ deployment.active_odm_count }} / {{ deployment.max_active_odm_runs }}</strong>
+      <small>{{ deployment.max_active_odm_runs - deployment.active_odm_count if deployment.max_active_odm_runs > deployment.active_odm_count else 0 }} slots available</small>
+    </article>
+    <article class="system-fact-card">
+      <div class="system-fact-icon-row">
+        <img class="icon-art icon-art-sm" src="/static/icons/verified.png" alt="" />
+      </div>
+      <span>Version</span>
+      <strong>{{ deployment.git_commit }}</strong>
+      <small>Dashboard build</small>
+    </article>
+  </div>
   {% endif %}
-  <div class="settings-group cloudflare-checklist">
-    <h3>Cloudflare Tunnel checklist</h3>
-    <div class="checklist-grid">
-      {% for check in deployment.cloudflare_checks %}
-      <div class="checklist-item checklist-{{ check.state }}">
-        <span class="health-dot"></span>
+</section>
+
+<section class="glass-panel settings-section" id="deployment">
+  <div class="section-label-row">
+    <div class="section-badge-icon section-badge-amber">
+      <img class="icon-art icon-art-sm" src="/static/icons/shield.png" alt="" />
+    </div>
+    <div>
+      <h2>Remote Access Checklist</h2>
+      <p>Complete these steps to enable safe remote access to AgriVision.</p>
+    </div>
+  </div>
+
+  {% if deployment %}
+  <div class="remote-check-grid">
+    {% for check in deployment.cloudflare_checks %}
+    <article class="remote-check-card remote-check-{{ check.state }}">
+      <div class="remote-check-icon-row">
+        <img class="icon-art icon-art-sm" src="/static/icons/{% if 'hostname' in check.name|lower or 'url' in check.name|lower %}globe.png{% elif 'tunnel' in check.name|lower or 'reach' in check.name|lower %}link.png{% elif 'secure' in check.name|lower or 'protect' in check.name|lower %}shield.png{% else %}rocket.png{% endif %}" alt="" />
+      </div>
+      <strong>{{ check.name }}</strong>
+      <p>{{ check.detail }}</p>
+    </article>
+    {% endfor %}
+  </div>
+  {% endif %}
+
+  <details class="remote-helper">
+    <summary>Remote setup helper</summary>
+    {% if deployment %}
+    <div class="remote-helper-body">
+      <div class="remote-helper-grid">
         <div>
-          <strong>{{ check.name }}</strong>
-          <p class="muted">{{ check.detail }}</p>
+          <span>Hostname</span>
+          <strong>{{ deployment.cloudflare_setup.hostname or 'Set Public URL first' }}</strong>
+        </div>
+        <div>
+          <span>Tunnel target</span>
+          <strong>{{ deployment.cloudflare_setup.local_service }}</strong>
         </div>
       </div>
-      {% endfor %}
-    </div>
-  </div>
-  <details class="cloudflare-setup">
-    <summary>Cloudflare setup helper</summary>
-    <dl class="server-status-list">
-      <dt>Hostname</dt>
-      <dd>{{ deployment.cloudflare_setup.hostname or 'Set Public URL first' }}</dd>
-      <dt>Tunnel target</dt>
-      <dd>{{ deployment.cloudflare_setup.local_service }}</dd>
-    </dl>
-    <p class="muted">Run these commands in PowerShell after installing cloudflared.</p>
-    <pre class="snippet-box">{% for command in deployment.cloudflare_setup.commands %}{{ command }}
+      <pre class="snippet-box">{% for command in deployment.cloudflare_setup.commands %}{{ command }}
 {% endfor %}</pre>
-    <p class="muted">Cloudflare tunnel config:</p>
-    <pre class="snippet-box">{{ deployment.cloudflare_setup.config }}</pre>
+      <pre class="snippet-box">{{ deployment.cloudflare_setup.config }}</pre>
+    </div>
+    {% endif %}
   </details>
-  {% else %}
-  <p class="muted">Restart the dashboard container to load the latest deployment status code.</p>
-  {% endif %}
-  <form class="deployment-form" method="post" action="/ui/settings/deployment">
+
+  <form class="deployment-form enhanced-deployment-form" method="post" action="/ui/settings/deployment">
     <div class="inline-fields">
-      <label>Mode
+      <label>Access mode
         <select name="deployment_mode">
           <option value="local" {% if non_secret.deployment_mode == 'local' %}selected{% endif %}>Local</option>
           <option value="self_hosted" {% if non_secret.deployment_mode == 'self_hosted' %}selected{% endif %}>Self hosted</option>
           <option value="cloud" {% if non_secret.deployment_mode == 'cloud' %}selected{% endif %}>Cloud</option>
         </select>
       </label>
-      <label>Public URL<input type="url" name="public_url" value="{{ non_secret.public_url }}" placeholder="https://agrivision.example.com" /></label>
+      <label>Public URL
+        <input type="url" name="public_url" value="{{ non_secret.public_url }}" placeholder="https://agrivision.example.com" />
+      </label>
     </div>
     <div class="inline-fields">
-      <label>Minimum free disk (GB)<input type="number" min="0" max="10000" name="min_free_disk_gb" value="{{ non_secret.min_free_disk_gb }}" /></label>
-      <label>Max active ODM runs<input type="number" min="1" max="10" name="max_active_odm_runs" value="{{ non_secret.max_active_odm_runs }}" /></label>
+      <label>Minimum free disk (GB)
+        <input type="number" min="0" max="10000" name="min_free_disk_gb" value="{{ non_secret.min_free_disk_gb }}" />
+      </label>
+      <label>Maximum active ODM runs
+        <input type="number" min="1" max="10" name="max_active_odm_runs" value="{{ non_secret.max_active_odm_runs }}" />
+      </label>
     </div>
     <label class="toggle-line">
       <input type="checkbox" name="external_access_protection_confirmed" value="true" {% if non_secret.external_access_protection_confirmed %}checked{% endif %} />
-      Cloudflare Access or equivalent external login is enabled
+      External login protection is enabled
     </label>
-    <button type="submit">Save deployment settings</button>
+    <button class="app-button app-button-primary" type="submit">Save Access Settings</button>
   </form>
 </section>
 {% endblock %}

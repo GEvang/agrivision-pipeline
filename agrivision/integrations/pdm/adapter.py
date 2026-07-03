@@ -24,8 +24,10 @@ def _artifact_dir() -> Path:
     return path
 
 
-def _write_json(name: str, payload: dict[str, Any]) -> str:
-    path = _artifact_dir() / name
+def _write_json(name: str, payload: dict[str, Any], *, artifact_dir: Path | None = None) -> str:
+    path = (artifact_dir or _artifact_dir())
+    path.mkdir(parents=True, exist_ok=True)
+    path = path / name
     path.write_text(json.dumps(payload, indent=2), encoding='utf-8')
     return str(path)
 
@@ -287,6 +289,7 @@ def collect_pdm_snapshot(
     enabled: bool = True,
     crop: str | None = None,
     model_key: str | None = None,
+    artifact_dir: Path | None = None,
 ) -> dict[str, Any]:
     resolved_model = get_pdm_model(model_key)
     resolved_crop = (crop or resolved_model['crop']).strip().lower()
@@ -328,17 +331,15 @@ def collect_pdm_snapshot(
     }
     if not enabled:
         base_summary['notes'] = ['PDM disabled for this run.']
-        base_summary['raw_payload_artifact'] = _write_json('summary.json', base_summary)
+        base_summary['raw_payload_artifact'] = _write_json('summary.json', base_summary, artifact_dir=artifact_dir)
         return base_summary
 
-    client = PdmClient(get_pdm_service_config())
-    client.login()
-    service = client.probe()
-    base_summary['service_status'] = service
-    if service.get('reachable') and client.supports_fuzzy_risk():
-        return _collect_fuzzy_snapshot(client, weather_summary, base_summary, resolved_model, resolved_crop)
-
-    bootstrap = bootstrap_pdm_context(resolved_model['key'], resolved_crop, weather_summary)
+    bootstrap = bootstrap_pdm_context(
+        resolved_model['key'],
+        resolved_crop,
+        weather_summary,
+        artifact_dir=artifact_dir,
+    )
     base_summary['service_status'] = bootstrap.get('service', {})
     base_summary['runtime_status'] = bootstrap.get('runtime', {})
     base_summary['parcel_reference'] = bootstrap.get('parcel', {})
@@ -354,9 +355,11 @@ def collect_pdm_snapshot(
         base_summary['warning_state'] = 'service_unreachable'
         base_summary['error_message'] = 'PDM service did not become reachable.'
         base_summary['notes'] = list(base_summary['service_status'].get('notes', [])) or ['PDM service was unreachable.']
-        base_summary['raw_payload_artifact'] = _write_json('summary.json', base_summary)
+        base_summary['raw_payload_artifact'] = _write_json('summary.json', base_summary, artifact_dir=artifact_dir)
         return base_summary
 
+    client = PdmClient(get_pdm_service_config())
+    client.login()
     raw_payload = client.calculate_risk_index(
         parcel_id=int(base_summary['remote_parcel_id']),
         model_ids=[base_summary['remote_model_id']],
@@ -399,7 +402,7 @@ def collect_pdm_snapshot(
         'risk_entries': entries,
         'risk_stats': stats,
     }
-    artifact_path = write_pdm_artifact('remote-result', base_summary['raw_payload'])
+    artifact_path = write_pdm_artifact('remote-result', base_summary['raw_payload'], artifact_dir=artifact_dir)
     base_summary['raw_payload_artifact'] = artifact_path
-    _write_json('summary.json', base_summary)
+    _write_json('summary.json', base_summary, artifact_dir=artifact_dir)
     return base_summary
