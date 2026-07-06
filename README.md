@@ -2,7 +2,7 @@
 
 AgriVision is a dashboard-first crop risk assessment tool for orthophotos, vegetation analysis, disease-risk scoring, farmer-facing reports, and optional OpenAgri service integrations.
 
-The simplest way to start it is:
+## Quick Start
 
 ```bash
 git clone https://github.com/GEvang/agrivision-pipeline.git
@@ -10,121 +10,72 @@ cd agrivision-pipeline
 docker compose up --build -d
 ```
 
-Then open [http://127.0.0.1:8008](http://127.0.0.1:8008).
+Open [http://127.0.0.1:8008](http://127.0.0.1:8008).
 
-The dashboard starts even if `.env` is missing and even if optional services are not installed yet.
+Base dashboard startup does not require `.env` or the optional OpenAgri services.
 
-## Quick Start
+## First-Run Expectations
 
-### Windows
+Works immediately:
 
-1. Install Docker Desktop.
-2. Clone or download AgriVision.
-3. Double-click `Start AgriVision Windows.bat`.
-4. Your browser opens at [http://127.0.0.1:8008](http://127.0.0.1:8008).
-
-### Linux
-
-1. Install Docker.
-2. Clone AgriVision.
-3. Run:
-
-```bash
-chmod +x "Start AgriVision Linux.sh"
-./"Start AgriVision Linux.sh"
-```
-
-4. Open [http://127.0.0.1:8008](http://127.0.0.1:8008).
-
-### macOS
-
-1. Install Docker Desktop.
-2. Clone or download AgriVision.
-3. Run once:
-
-```bash
-chmod +x "Start AgriVision macOS.command"
-```
-
-4. Double-click `Start AgriVision macOS.command`.
-5. Your browser opens at [http://127.0.0.1:8008](http://127.0.0.1:8008).
-
-## What Works On First Launch
-
-- the dashboard and API
-- uploads
+- dashboard and API
+- image uploads
 - run tracking
-- orthophoto import/reuse flows
-- reports and exported run packages
+- orthophoto import and reuse flows
+- reports and export packages
 - runtime folder creation
-- default dashboard-managed settings in `runtime/settings.json`
+- default settings in `runtime/settings.json`
 
-These do not need to exist before the dashboard opens:
+Not required before startup:
 
 - `.env`
-- OpenAgri Weather Service
-- OpenAgri Irrigation Management
-- OpenAgri Pest & Disease Management
+- Weather, Irrigation, or Pest & Disease companion services
 - API keys
-- drone images
-- Docker socket access inside the dashboard container
+- local drone imagery
 
-## Optional Services
+## Persistent Data
 
-The Settings page shows whether optional services are:
+The default Docker flow persists:
 
-- Installed or Not installed
-- Connected or Not connected
-- Available or Not tested for OpenDroneMap
+- `data/`
+- `output/`
+- `runtime/`
 
-Missing optional services are shown as dashboard warnings, not startup errors.
+Important paths:
 
-## Persistent Folders
+- `data/uploads/<upload_id>/`
+- `runtime/runs/<run_id>/`
+- `runtime/settings.json`
+- `runtime/exports/`
+- `output/runs/<run_id>/`
 
-The base Docker setup keeps data in these local folders:
-
-- `./data`
-- `./output`
-- `./runtime`
-
-Important runtime locations:
-
-- uploaded datasets: `data/uploads/<upload_id>/`
-- run metadata and logs: `runtime/runs/<run_id>/`
-- dashboard settings: `runtime/settings.json`
-- saved reports and orthophotos: `output/runs/<run_id>/`
-- exported run packages: `runtime/exports/`
-
-## Project Structure
+## Repository Layout
 
 ```text
 agrivision/
   app/                 FastAPI app, routes, schemas, templates, static assets, CLI
-  config/              Config loading, runtime config, typed settings
-  domain/              Core contracts and domain models
+  config/              Config loading and typed settings
+  domain/              Core contracts and models
   integrations/        External service adapters and payload mapping
   pipeline/            Orchestration, stages, grid, risk, report, artifact I/O
-  services/            Runs, settings, exports, previews, preflight, service control
+  runtime/             Environment and Docker/runtime helpers
+  services/            Run, settings, export, preview, and service control logic
 config/                Example and environment-specific YAML configs
-data/                  Uploaded imagery and local datasets
-docs/                  API, architecture, developer, and operator documentation
-output/                Generated rasters, reports, run artifacts
-runtime/               Run state, logs, previews, exports, settings
+docs/                  Operator, developer, API, and architecture documentation
 tests/                 Unit, integration, and system tests
 ```
 
-## Advanced / Developer Usage
+## Read Next
 
-Python virtualenv setup is still supported for developers and advanced operators, but it is not required just to open the dashboard.
-
-Useful references:
-
-- `docs/operator/install.md`
-- `docs/operator/run.md`
-- `docs/operator/windows-self-hosting.md`
-- `docs/developer/local-dev.md`
-- `docs/developer/testing.md`
-- `docs/developer/config.md`
+- Operator install: `docs/operator/install.md`
+- Daily operation: `docs/operator/run.md`
+- Troubleshooting: `docs/operator/troubleshooting.md`
+- Windows self-hosting: `docs/operator/windows-self-hosting.md`
+- Local development: `docs/developer/local-dev.md`
+- Testing: `docs/developer/testing.md`
+- Configuration: `docs/developer/config.md`
+- API summary: `docs/api/README.md`
+- Architecture: `docs/architecture/overview.md`
 
 ## API Docs
 
@@ -133,10 +84,6 @@ When the dashboard is running:
 - OpenAPI JSON: [http://127.0.0.1:8008/openapi.json](http://127.0.0.1:8008/openapi.json)
 - Swagger UI: [http://127.0.0.1:8008/docs](http://127.0.0.1:8008/docs)
 - ReDoc: [http://127.0.0.1:8008/redoc](http://127.0.0.1:8008/redoc)
-
-## OpenAgri Alignment
-
-AgriVision can integrate with OpenAgri Weather, Irrigation, and Pest & Disease services when they are installed and configured, but the dashboard can start independently with safe defaults.
 
 ## License
 

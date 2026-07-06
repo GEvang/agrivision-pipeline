@@ -10,4 +10,15 @@ The supported assets are:
 - `docker-entrypoint.sh`
 - `.env.example`
 
-The Docker Compose service starts the dashboard with `python run.py --serve-dashboard --host 0.0.0.0 --port 8008`, bind-mounts the repository at `/workspace`, and mounts `/var/run/docker.sock` for ODM container launches.
+The Docker Compose service starts the dashboard with `python run.py --serve-dashboard --host 0.0.0.0 --port 8008`.
+
+The current container layout is:
+
+- working directory: `/app`
+- code mount: `./agrivision:/app/agrivision`
+- data mount: `./data:/app/data`
+- output mount: `./output:/app/output`
+- runtime mount: `./runtime:/app/runtime`
+- Docker socket mount: `/var/run/docker.sock:/var/run/docker.sock`
+
+This is not a full bind-mount of the repository. It is a selected-path runtime layout.

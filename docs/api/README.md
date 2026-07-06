@@ -45,6 +45,10 @@ FastAPI publishes machine-readable and human-readable API documentation:
 - `POST /settings/credentials`
 - `GET /services/status`
 
+### Browser form routes
+
+The dashboard also exposes `/ui/...` routes for browser form posts and workflow actions. These are not a stable public API contract for external clients. If you are integrating programmatically, prefer the documented JSON endpoints and the generated OpenAPI spec.
+
 ### Artifacts
 
 - `GET /artifacts/{run_id}/report`
@@ -67,6 +71,7 @@ Run packages include:
 - `/` dashboard
 - `/runs/new` new run form
 - `/runs/{run_id}` run detail
+- `/ui/orthophotos` orthophoto creation and import workflows
 - `/reports` report history
 - `/settings` settings and credentials
 

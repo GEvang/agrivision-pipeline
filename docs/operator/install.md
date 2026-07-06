@@ -1,41 +1,14 @@
 # Install AgriVision
 
-The recommended operator install path is dashboard-first with Docker.
+Use the Docker-based dashboard flow unless you are developing locally.
 
-## Windows
+## Prerequisites
 
-1. Install Docker Desktop.
-2. Clone or download AgriVision.
-3. Double-click `Start AgriVision Windows.bat`.
-4. Open `http://127.0.0.1:8008`.
+- Docker Desktop on Windows or macOS, or Docker Engine on Linux
+- enough disk space for imagery, ODM intermediates, and generated outputs
+- enough RAM for ODM workloads if you will build orthophotos locally
 
-## Linux
-
-1. Install Docker.
-2. Clone AgriVision.
-3. Run:
-
-```bash
-chmod +x "Start AgriVision Linux.sh"
-./"Start AgriVision Linux.sh"
-```
-
-4. Open `http://127.0.0.1:8008`.
-
-## macOS
-
-1. Install Docker Desktop.
-2. Clone or download AgriVision.
-3. Run once:
-
-```bash
-chmod +x "Start AgriVision macOS.command"
-```
-
-4. Double-click `Start AgriVision macOS.command`.
-5. Open `http://127.0.0.1:8008`.
-
-## Universal command
+## Default Install
 
 ```bash
 git clone https://github.com/GEvang/agrivision-pipeline.git
@@ -43,15 +16,32 @@ cd agrivision-pipeline
 docker compose up --build -d
 ```
 
-## Notes
+Open `http://127.0.0.1:8008`.
 
-- `.env` is optional for dashboard startup
-- `runtime/settings.json` is created automatically on first launch
-- optional OpenAgri services can be installed later from the Settings page
-- Python virtualenv setup remains available for development and advanced local runs, but it is not required for dashboard-only use
+## OS Launchers
 
-## Advanced references
+If you prefer launcher scripts instead of the raw Compose command:
 
-- `docs/developer/local-dev.md`
-- `docs/developer/config.md`
-- `docs/operator/windows-self-hosting.md`
+- Windows: `Start AgriVision Windows.bat`
+- Linux: `Start AgriVision Linux.sh`
+- macOS: `Start AgriVision macOS.command`
+
+Linux and macOS launchers may need execute permission first:
+
+```bash
+chmod +x "Start AgriVision Linux.sh"
+chmod +x "Start AgriVision macOS.command"
+```
+
+## First Launch
+
+Expected behavior:
+
+- `runtime/settings.json` is created automatically
+- the dashboard opens even if `.env` is missing
+- missing OpenAgri companion services appear as warnings, not fatal startup errors
+
+## When To Use Something Else
+
+- For local Python development, use `docs/developer/local-dev.md`
+- For Windows self-hosting behind Cloudflare, use `docs/operator/windows-self-hosting.md`

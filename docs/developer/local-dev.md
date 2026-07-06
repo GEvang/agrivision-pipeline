@@ -1,28 +1,62 @@
-# Local development
+# Local Development
 
-## Editable install
+Use this path when changing code. Operators should use the Docker flow instead.
+
+## Supported Python Versions
+
+CI validates Python 3.11 and 3.12. Package metadata requires `>=3.11`.
+
+## Editable Install
+
+Linux or macOS:
 
 ```bash
 python -m venv .venv
 source .venv/bin/activate
-pip install --upgrade pip
-pip install -r requirements.txt
-pip install -e ".[dev]"
+python -m pip install --upgrade pip
+python -m pip install -r requirements.txt
+python -m pip install -e ".[dev]"
 cp .env.example .env
 ```
 
-Python 3.11 and 3.12 are the supported development runtimes in CI. The package metadata requires Python `>=3.11`.
+Windows PowerShell:
 
-## Raw dashboard server
+```powershell
+py -3.11 -m venv .venv
+.\.venv\Scripts\Activate.ps1
+python -m pip install --upgrade pip
+python -m pip install -r requirements.txt
+python -m pip install -e ".[dev]"
+Copy-Item .env.example .env
+```
 
-For development only, you can run the FastAPI app directly:
+## Run The App
+
+Development server:
 
 ```bash
 uvicorn agrivision.app.api:app --host 127.0.0.1 --port 8008 --reload
 ```
 
-The canonical operator dashboard command remains:
+Operator-equivalent local command:
 
 ```bash
 python run.py --serve-dashboard --host 127.0.0.1 --port 8008
 ```
+
+## Common Developer Commands
+
+```bash
+python run.py --doctor
+make lint
+make test
+python -m pytest tests/unit -q
+python -m pytest tests/integration -q
+python -m pytest tests/system -q
+```
+
+## Notes
+
+- `.env` is optional for basic dashboard startup
+- `config.yaml` is for non-secret config
+- companion services are optional and can be developed independently

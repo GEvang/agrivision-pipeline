@@ -1,17 +1,18 @@
 # Deployment
 
-The root-level operational assets are the supported deployment surface:
+This repository supports one primary operator deployment path: the root Docker Compose stack.
+
+## Supported Deployment Assets
 
 - `Dockerfile`
 - `docker-compose.yml`
 - `docker-entrypoint.sh`
-- `install_agrivision.sh`
+- `.env.example`
 - `Start AgriVision Windows.bat`
 - `Start AgriVision Linux.sh`
 - `Start AgriVision macOS.command`
-- `.env.example`
 
-## Root Docker flow
+## Standard Local Deployment
 
 ```bash
 docker compose up --build -d
@@ -19,17 +20,19 @@ docker compose up --build -d
 
 Then open `http://127.0.0.1:8008`.
 
-Base dashboard startup does not require `.env` and does not require optional OpenAgri services to be installed in advance.
+Base startup does not require `.env` and does not require the optional OpenAgri services to be installed first.
 
-The base Compose service is intentionally dashboard-first:
+## What the Compose Service Does
 
 - publishes the dashboard on port `8008`
-- persists `./data`, `./output`, and `./runtime`
-- creates dashboard-managed runtime settings on first launch
-- keeps the dashboard usable before optional OpenAgri services are configured
+- mounts `./agrivision`, `./data`, `./output`, and `./runtime` into `/app`
+- mounts `/var/run/docker.sock` so ODM jobs can launch Docker workloads
+- writes runtime settings to `runtime/settings.json`
 
-Python virtualenv setup remains available for development and advanced local runs, but it is no longer the primary operator deployment path.
+## When Not To Use This Flow
 
-`install_agrivision.sh` remains available for advanced Linux host setup outside the dashboard-first Docker flow.
+Do not treat the root Compose file as a hardened internet-facing deployment. It is for local use, trusted internal use, and Windows self-hosting behind external access protection.
 
-For Windows self-hosting through Cloudflare Tunnel, see `docs/operator/windows-self-hosting.md`.
+For public or semi-public Windows exposure, use `docs/operator/windows-self-hosting.md`.
+
+For local Python development instead of the operator deployment path, use `docs/developer/local-dev.md`.

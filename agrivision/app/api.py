@@ -27,7 +27,7 @@ async def lifespan(_: FastAPI):
     yield
 
 
-app = FastAPI(title='AgriVision Dashboard', version='0.2.0', lifespan=lifespan)
+app = FastAPI(title='AgriVision Dashboard', version='1.0.0', lifespan=lifespan)
 app.mount('/static', StaticFiles(directory=str(Path(__file__).parent / 'web' / 'static')), name='static')
 
 deps.templates.env.filters['system_datetime'] = format_system_datetime

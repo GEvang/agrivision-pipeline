@@ -1,40 +1,48 @@
 # Run AgriVision
 
-## Recommended startup
+This page covers normal operator use after installation.
+
+## Start
 
 ```bash
 docker compose up --build -d
 ```
 
-Then open:
+Open `http://127.0.0.1:8008`.
 
-- `http://127.0.0.1:8008`
+## Stop
 
-## Launcher shortcuts
+```bash
+docker compose down
+```
 
-- Windows: `Start AgriVision Windows.bat`
-- Linux: `Start AgriVision Linux.sh`
-- macOS: `Start AgriVision macOS.command`
+This stops the dashboard container but leaves `data/`, `output/`, and `runtime/` intact.
 
-## First launch behavior
+## Daily Workflow
 
-- the dashboard creates `runtime/settings.json` if it does not exist
-- missing optional services appear in Settings as `Not installed` or `Not connected`
-- the Weather settings form only requires an OpenWeather API key when Weather enrichment is needed
-- missing `.env` does not block startup
+1. Open the dashboard.
+2. Upload imagery or import an existing orthophoto set.
+3. Create a run and choose the required steps.
+4. Wait for run completion or inspect the run detail page if it fails.
+5. Download reports, orthophotos, or the export package.
 
-## Where outputs live
+## What You Should Expect
+
+- `runtime/settings.json` is created on first launch if missing
+- missing companion services show up as warnings in Settings
+- weather credentials are only needed if you actually enable weather enrichment
+- the base dashboard can run without `.env`
+
+## Output Locations
 
 - reports and generated artifacts: `output/`
-- saved per-run outputs: `output/runs/<run_id>/`
+- per-run saved outputs: `output/runs/<run_id>/`
 - run metadata and logs: `runtime/runs/<run_id>/`
 - previews: `runtime/runs/<run_id>/previews/`
-- exports: `runtime/exports/`
+- export packages: `runtime/exports/`
 
-## Advanced commands
+## Useful Operator References
 
-For CLI pipeline work, testing, or service bootstrap helpers, use the commands documented in:
-
-- `README.md`
-- `docs/developer/local-dev.md`
-- `docs/developer/testing.md`
+- install and first-run setup: `docs/operator/install.md`
+- failure recovery: `docs/operator/troubleshooting.md`
+- offline and constrained environments: `docs/operator/offline-edge.md`
