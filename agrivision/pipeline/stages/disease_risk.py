@@ -18,7 +18,7 @@ def run_disease_risk(
     config = load_config()
     project_root = get_project_root()
     paths = config["paths"]
-    ndvi_dir = project_root / paths["ndvi_output"]
+    vegetation_index_dir = project_root / paths["vegetation_index_output"]
     rgb_orthophoto = (
         project_root
         / paths["odm_project_root_rgb"]
@@ -29,7 +29,7 @@ def run_disease_risk(
     print("\n[AgriVision] Disease risk scoring...")
     summary = run_disease_risk_scoring(
         crop=crop,
-        ndvi_dir=ndvi_dir,
+        vegetation_index_dir=vegetation_index_dir,
         rgb_orthophoto=Path(rgb_orthophoto),
         weather_summary=weather_summary,
         irrigation_summary=irrigation_summary,

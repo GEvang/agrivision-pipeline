@@ -96,7 +96,6 @@ def _create_pending_orthophoto_record(
             'dataset_name': dataset_name,
             'upload_run_id': upload_run_id,
             'selected_steps': {
-                'resize_images': False,
                 'run_odm': has_raw,
                 'fetch_weather': False,
                 'run_irrigation': False,
@@ -495,7 +494,6 @@ async def create_orthophotos_ui(
             'dataset_name': dataset_name,
             'upload_run_id': upload_run_id,
             'selected_steps': {
-                'resize_images': False,
                 'run_odm': has_raw,
                 'fetch_weather': False,
                 'run_irrigation': False,
@@ -562,7 +560,6 @@ async def upload_missing_orthophoto_camera_ui(
                 'dataset_name': dataset_name,
                 'upload_run_id': upload_run_id,
                 'selected_steps': {
-                    'resize_images': False,
                     'run_odm': False,
                     'fetch_weather': False,
                     'run_irrigation': False,
@@ -629,7 +626,6 @@ async def upload_missing_orthophoto_camera_ui(
             'dataset_name': dataset_name,
             'upload_run_id': upload_run_id,
             'selected_steps': {
-                'resize_images': False,
                 'run_odm': True,
                 'fetch_weather': False,
                 'run_irrigation': False,
@@ -704,7 +700,6 @@ async def complete_orthophoto_dataset_ui(
             'dataset_name': dataset_name,
             'upload_run_id': upload_run_id,
             'selected_steps': {
-                'resize_images': False,
                 'run_odm': bool(raw_camera_targets),
                 'fetch_weather': False,
                 'run_irrigation': False,
@@ -754,14 +749,27 @@ async def _store_imported_orthophoto(camera_kind: str, upload: UploadFile | None
         return None, []
     name = Path(upload.filename).name
     suffix = Path(name).suffix.lower()
-    if suffix not in {'.tif', '.tiff'}:
-        return None, [f'{camera_kind.upper()} orthophoto must be a GeoTIFF (.tif or .tiff).']
+    if suffix not in {'.tif', '.tiff', '.jpg', '.jpeg', '.png'}:
+        return None, [f'{camera_kind.upper()} orthophoto must be a TIFF, JPEG, or PNG image.']
     data = await upload.read()
     if not data:
         return None, [f'{camera_kind.upper()} orthophoto file is empty.']
     target_dir.mkdir(parents=True, exist_ok=True)
     target = target_dir / f'orthophoto_{camera_kind}.tif'
-    target.write_bytes(data)
+    if suffix in {'.jpg', '.jpeg', '.png'}:
+        source = target_dir / name
+        source.write_bytes(data)
+        try:
+            with Image.open(source) as image:
+                image.load()
+                image.convert('RGB').save(target, format='TIFF')
+        except (UnidentifiedImageError, OSError):
+            source.unlink(missing_ok=True)
+            target.unlink(missing_ok=True)
+            return None, [f'{camera_kind.upper()} orthophoto image is unreadable or corrupt.']
+        source.unlink(missing_ok=True)
+    else:
+        target.write_bytes(data)
     return _validate_imported_orthophoto_path(camera_kind, target)
 
 
@@ -769,13 +777,22 @@ def _store_pending_imported_orthophoto(camera_kind: str, source: Path, target_di
     if not source.exists():
         return None, [f'{camera_kind.upper()} orthophoto file is missing.']
     suffix = source.suffix.lower()
-    if suffix not in {'.tif', '.tiff'}:
-        return None, [f'{camera_kind.upper()} orthophoto must be a GeoTIFF (.tif or .tiff).']
+    if suffix not in {'.tif', '.tiff', '.jpg', '.jpeg', '.png'}:
+        return None, [f'{camera_kind.upper()} orthophoto must be a TIFF, JPEG, or PNG image.']
     if source.stat().st_size <= 0:
         return None, [f'{camera_kind.upper()} orthophoto file is empty.']
     target_dir.mkdir(parents=True, exist_ok=True)
     target = target_dir / f'orthophoto_{camera_kind}.tif'
-    shutil.copy2(source, target)
+    if suffix in {'.jpg', '.jpeg', '.png'}:
+        try:
+            with Image.open(source) as image:
+                image.load()
+                image.convert('RGB').save(target, format='TIFF')
+        except (UnidentifiedImageError, OSError):
+            target.unlink(missing_ok=True)
+            return None, [f'{camera_kind.upper()} orthophoto image is unreadable or corrupt.']
+    else:
+        shutil.copy2(source, target)
     return _validate_imported_orthophoto_path(camera_kind, target)
 
 
@@ -784,13 +801,9 @@ def _validate_imported_orthophoto_path(camera_kind: str, target: Path) -> tuple[
         with rasterio.open(target) as dataset:
             if dataset.width <= 0 or dataset.height <= 0:
                 raise ValueError('invalid raster dimensions')
-            if dataset.crs is None:
-                raise ValueError('missing CRS')
-            if dataset.transform.is_identity:
-                raise ValueError('missing geotransform')
     except (RasterioIOError, ValueError) as exc:
         target.unlink(missing_ok=True)
-        return None, [f'{camera_kind.upper()} orthophoto is not a valid georeferenced GeoTIFF: {exc}']
+        return None, [f'{camera_kind.upper()} orthophoto is not a valid raster image: {exc}']
     return str(target), []
 
 
@@ -1006,7 +1019,6 @@ async def import_orthophotos_ui(
             'dataset_name': dataset_name,
             'upload_run_id': upload_run_id,
             'selected_steps': {
-                'resize_images': False,
                 'run_odm': False,
                 'fetch_weather': False,
                 'run_irrigation': False,

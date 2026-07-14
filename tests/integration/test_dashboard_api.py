@@ -66,7 +66,6 @@ def test_api_create_run_upload_reports_and_settings(tmp_path: Path, monkeypatch)
             'dataset_name': 'Dataset API',
             'upload_run_id': upload_run_id,
             'selected_steps': {
-                'resize_images': False,
                 'run_odm': True,
                 'fetch_weather': True,
                 'generate_report': True,
@@ -131,7 +130,6 @@ def test_report_artifacts_are_served_from_run_workspace(tmp_path: Path, monkeypa
                 'dataset_name': 'Dataset API',
                 'upload_run_id': 'upload-seed',
                 'selected_steps': {
-                    'resize_images': False,
                     'run_odm': True,
                     'fetch_weather': False,
                     'generate_report': True,
@@ -212,7 +210,6 @@ def test_api_create_run_returns_conflict_when_another_run_is_active(tmp_path: Pa
             'dataset_name': 'Dataset API',
             'upload_run_id': 'upload-seed',
             'selected_steps': {
-                'resize_images': False,
                 'run_odm': True,
                 'fetch_weather': False,
                 'generate_report': True,
@@ -249,7 +246,6 @@ def test_dashboard_startup_reconciles_orphaned_active_runs(tmp_path: Path, monke
                 'dataset_name': 'Dataset API',
                 'upload_run_id': 'upload-seed',
                 'selected_steps': {
-                    'resize_images': False,
                     'run_odm': True,
                     'fetch_weather': False,
                     'generate_report': True,
@@ -265,7 +261,6 @@ def test_dashboard_startup_reconciles_orphaned_active_runs(tmp_path: Path, monke
                 'dataset_name': 'Dataset API',
                 'upload_run_id': 'upload-seed',
                 'selected_steps': {
-                    'resize_images': False,
                     'run_odm': True,
                     'fetch_weather': False,
                     'generate_report': True,

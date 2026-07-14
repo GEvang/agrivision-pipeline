@@ -57,7 +57,7 @@ def test_dashboard_pages_render(tmp_path: Path, monkeypatch) -> None:
         'progress_percent': 100,
         'current_stage': 'completed',
         'stage_message': 'Pipeline completed',
-        'selected_steps': {'resize_images': False, 'run_odm': True, 'fetch_weather': True, 'generate_report': True},
+        'selected_steps': {'run_odm': True, 'fetch_weather': True, 'generate_report': True},
         'started_at': '2026-03-24T10:00:05Z',
         'finished_at': '2026-03-24T10:05:05Z',
         'parameters': {},
@@ -96,7 +96,6 @@ def test_dashboard_pages_render(tmp_path: Path, monkeypatch) -> None:
         'current_stage': 'completed',
         'stage_message': 'Orthophoto completed',
         'selected_steps': {
-            'resize_images': False,
             'run_odm': True,
             'fetch_weather': False,
             'run_irrigation': False,

@@ -27,4 +27,4 @@ The current JSON-LD context uses Schema.org terms plus OpenAgri/OCSM-oriented id
 
 AgriVision currently renders local HTML reports inside the ADS because reports combine drone-derived rasters, grid overlays, OpenAgri Weather summaries, Irrigation outputs, and Pest & Disease results. This keeps field operation independent from a remote reporting dependency.
 
-For stricter reuse of the OpenAgri Reporting Service, add an optional adapter that sends a package manifest or JSON-LD payload to the Reporting Service and stores the returned PDF/report artifact next to the local HTML report. That adapter should be optional so offline/edge runs can continue using local reporting.
+For stricter reuse of the OpenAgri Reporting Service, add a reporting adapter that sends a package manifest or JSON-LD payload to the Reporting Service and stores the returned PDF/report artifact next to the local HTML report. Offline and edge runs can continue using the local HTML report renderer when the remote reporting service is not part of the deployment.

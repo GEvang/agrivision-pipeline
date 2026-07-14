@@ -1,14 +1,16 @@
 # Deployment view
 
-AgriVision Pipeline exposes one public operational surface at the repository root: installer, Dockerfile, compose file, and entrypoint.
+AgriVision Pipeline exposes one public operational surface at the repository root: launchers, Dockerfile, compose file, and entrypoint.
 
 The supported assets are:
 
-- `install_agrivision.sh`
 - `Dockerfile`
 - `docker-compose.yml`
 - `docker-entrypoint.sh`
 - `.env.example`
+- `Start AgriVision Windows.bat`
+- `Start AgriVision Linux.sh`
+- `Start AgriVision macOS.command`
 
 The Docker Compose service starts the dashboard with `python run.py --serve-dashboard --host 0.0.0.0 --port 8008`.
 

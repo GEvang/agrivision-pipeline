@@ -6,8 +6,10 @@ __pycache__/
 .git/
 OpenAgri-IrrigationManagement/
 OpenAgri-WeatherService/
+OpenAgri-PestAndDiseaseManagement/
 output/
 data/
+runtime/
 *.pyc
 *.pyo
 *.egg-info/

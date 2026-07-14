@@ -8,7 +8,7 @@ images.
 This module now supports TWO datasets:
 
   - RGB   : visual orthophoto (for reports, context)
-  - MAPIR : multispectral orthophoto (for real NDVI)
+  - MAPIR : multispectral orthophoto (for real Vegetation Index)
 
 Current pipeline:
 -----------------
@@ -18,16 +18,8 @@ Current pipeline:
 
 Image selection logic:
 ----------------------
-For each dataset (RGB or MAPIR), ODM selects its input images as:
-
-  1. If images_resized/<dataset>/ has images:
-         -> use that
-
-  2. Else if images_full/<dataset>/ has images:
-         -> use that
-
-  3. Else:
-         -> fail with a clear error.
+For each dataset, ODM uses full-resolution camera images and fails with a
+clear error if no images are available.
 
 Selected images are copied into an ODM project directory:
 
@@ -148,13 +140,10 @@ def _get_odm_settings(
     return {
         "project_root": resolved["project_root"],
         "images_full_rgb": resolved["images_full_rgb"],
-        "images_resized_rgb": resolved["images_resized_rgb"],
         "odm_project_root_rgb": resolved["odm_project_root_rgb"],
         "images_full_mapir": resolved["images_full_mapir"],
-        "images_resized_mapir": resolved["images_resized_mapir"],
         "odm_project_root_mapir": resolved["odm_project_root_mapir"],
         "images_full_thermal": resolved["images_full_thermal"],
-        "images_resized_thermal": resolved["images_resized_thermal"],
         "odm_project_root_thermal": resolved["odm_project_root_thermal"],
         "odm_docker_image": orthophoto["odm_docker_image"],
         "ortho_resolution_cm": orthophoto["orthophoto_resolution_cm"],
@@ -172,15 +161,14 @@ def _folder_has_images(folder: Path) -> bool:
     return False
 
 
-def _choose_input_folder(label: str, full_dir: Path, resized_dir: Path | None = None) -> Path:
+def _choose_input_folder(label: str, full_dir: Path) -> Path:
     """
     Decide which folder to use for a dataset.
 
     Raises RuntimeError if neither has images.
 
-    The resize stage remains available as a standalone module, but ODM always
-    uses the full image directory so multispectral matching is not weakened by
-    downsampled inputs.
+    ODM always uses the full image directory so multispectral matching is not
+    weakened by downsampled inputs.
     """
     full_has = _folder_has_images(full_dir)
 
@@ -188,13 +176,10 @@ def _choose_input_folder(label: str, full_dir: Path, resized_dir: Path | None = 
         print(f"[ODM-{label}] Using full-resolution images: {full_dir}")
         return full_dir
 
-    checked = [str(full_dir)]
-    if resized_dir is not None:
-        checked.append(str(resized_dir))
     raise RuntimeError(
         f"\n[ERROR] ODM-{label} cannot run because no images were found in:\n"
-        + "\n".join(f"  - {path}" for path in checked)
-        + "\n\nMake sure you have uploaded images for this camera category.\n"
+        f"  - {full_dir}\n\n"
+        "Make sure you have uploaded images for this camera category.\n"
     )
 
 
@@ -406,9 +391,8 @@ def run_odm() -> None:
     """
     Backwards-compatible entrypoint used by the controller.
 
-    For now, this simply runs ODM for the RGB dataset only.
-    MAPIR ODM support is available via run_odm_mapir(), which
-    will be wired into the main pipeline in a later step.
+    This runs ODM for the RGB dataset only. The main orchestrator calls the
+    RGB, MAPIR, and thermal entrypoints directly when those datasets exist.
     """
     run_odm_rgb()
 

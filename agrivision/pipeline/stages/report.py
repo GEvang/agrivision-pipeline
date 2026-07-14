@@ -79,24 +79,24 @@ def _location_label(config: dict[str, Any], weather_summary: Optional[Dict[str, 
     return "Location not set"
 
 
-def _quality_summary(ndvi_meta: dict[str, Any], grid_meta: dict[str, Any]) -> dict[str, str]:
+def _quality_summary(vegetation_index_meta: dict[str, Any], grid_meta: dict[str, Any]) -> dict[str, str]:
     source_dataset = (
-        _read_nested(ndvi_meta, "source", "dataset")
+        _read_nested(vegetation_index_meta, "source", "dataset")
         or grid_meta.get("source_dataset")
         or "Source not set"
     )
     index_mode = (
-        _read_nested(ndvi_meta, "index", "index_mode")
+        _read_nested(vegetation_index_meta, "index", "index_mode")
         or grid_meta.get("index_mode")
         or "index not set"
     )
-    valid_percent = _read_nested(ndvi_meta, "valid_pixels", "percent")
-    mean = _read_nested(ndvi_meta, "distribution", "mean")
-    median = _read_nested(ndvi_meta, "distribution", "median")
+    valid_percent = _read_nested(vegetation_index_meta, "valid_pixels", "percent")
+    mean = _read_nested(vegetation_index_meta, "distribution", "mean")
+    median = _read_nested(vegetation_index_meta, "distribution", "median")
     poor_max = _read_nested(grid_meta, "thresholds_used", "poor_max")
     medium_max = _read_nested(grid_meta, "thresholds_used", "medium_max")
     classification_mode = grid_meta.get("classification_mode") or "Classification not set"
-    flags = ndvi_meta.get("quality_flags", [])
+    flags = vegetation_index_meta.get("quality_flags", [])
 
     quality_state = "OK"
     valid_value = _as_float(valid_percent)
@@ -192,7 +192,7 @@ def _risk_target_html(summary: dict[str, Any], selected: dict[str, Any] | None) 
 def _risk_alert_html(selected: dict[str, Any] | None) -> str:
     if not selected:
         messages = [
-            "Disease risk layer unavailable; review NDVI grid and source imagery.",
+            "Disease risk layer unavailable; review Vegetation Index grid and source imagery.",
             "Generate a new analysis run to calculate no-input cell risk.",
             "Use field scouting to confirm any visual anomalies.",
             "Add thermal, irrigation, and historical data to improve confidence.",
@@ -228,7 +228,7 @@ def _risk_copy(selected: dict[str, Any] | None) -> str:
     missing = selected.get("missing_inputs") if isinstance(selected.get("missing_inputs"), list) else []
     missing_text = ", ".join(str(item).replace("_", " ") for item in missing) if missing else "none"
     return (
-        "No-input risk score using biological seasonality, weather suitability, NDVI cell anomaly, "
+        "No-input risk score using biological seasonality, weather suitability, Vegetation Index cell anomaly, "
         f"and available context. Missing inputs reduce confidence rather than being renormalized: {missing_text}."
     )
 
@@ -246,7 +246,7 @@ def run_report(
     resolved = get_report_settings(workspace_root=workspace_root, config=config)
     output_dir = cast(Path, resolved["output_dir"])
     report_path = cast(Path, resolved["report_path"])
-    ndvi_meta_path = cast(Path, resolved["ndvi_meta_path"])
+    vegetation_index_meta_path = cast(Path, resolved["vegetation_index_meta_path"])
     grid_meta_path = cast(Path, resolved["grid_meta_path"])
     orthophoto_rgb = cast(Path, resolved["orthophoto_rgb"])
     orthophoto_mapir = cast(Path, resolved["orthophoto_mapir"])
@@ -254,8 +254,8 @@ def run_report(
     orthophoto_rgb_preview = cast(Path, resolved["orthophoto_rgb_preview"])
     orthophoto_mapir_preview = cast(Path, resolved["orthophoto_mapir_preview"])
     orthophoto_thermal_preview = cast(Path, resolved["orthophoto_thermal_preview"])
-    ndvi_tif = cast(Path, resolved["ndvi_tif"])
-    ndvi_color_png = cast(Path, resolved["ndvi_color_png"])
+    vegetation_index_tif = cast(Path, resolved["vegetation_index_tif"])
+    vegetation_index_color_png = cast(Path, resolved["vegetation_index_color_png"])
     grid_overlay_png = cast(Path, resolved["grid_overlay_png"])
     grid_cells_csv = cast(Path, resolved["grid_cells_csv"])
     grid_categories_csv = cast(Path, resolved["grid_categories_csv"])
@@ -264,7 +264,7 @@ def run_report(
     output_dir.mkdir(parents=True, exist_ok=True)
 
     config = cast(dict[str, Any], resolved["config"])
-    ndvi_meta = load_json(ndvi_meta_path)
+    vegetation_index_meta = load_json(vegetation_index_meta_path)
     grid_meta = load_json(grid_meta_path)
     visible_preview = ensure_report_preview(orthophoto_rgb, orthophoto_rgb_preview)
     mapir_preview = ensure_report_preview(orthophoto_mapir, orthophoto_mapir_preview)
@@ -272,7 +272,7 @@ def run_report(
 
     index_title = "Vegetation Index"
     weather_html = render_weather_section(weather_summary, output_dir)
-    methodology_html = render_methodology_section(ndvi_meta)
+    methodology_html = render_methodology_section(vegetation_index_meta)
     grid_meta_html = render_grid_metadata_section(grid_meta)
 
     grid_rows = load_grid_cells(grid_cells_csv)
@@ -281,7 +281,7 @@ def run_report(
     pdm_html = render_pdm_section(pdm_summary, output_dir)
 
     generated_at = datetime.now(UTC).strftime("%Y-%m-%d %H:%M UTC")
-    report_quality = _quality_summary(ndvi_meta, grid_meta)
+    report_quality = _quality_summary(vegetation_index_meta, grid_meta)
     risk_summary = _load_disease_risk_summary(disease_risk_summary, disease_risk_summary_path)
     selected_risk = _selected_risk_layer(risk_summary)
     risk_overlay_png = _report_artifact_path(selected_risk.get("overlay_png")) if selected_risk else None
@@ -291,12 +291,12 @@ def run_report(
 
     artifacts_list_html = "\n".join(
         [
-            render_artifact_link(f"{index_title} Map (PNG)", ndvi_color_png, output_dir),
-            render_artifact_link(f"{index_title} GeoTIFF", ndvi_tif, output_dir),
+            render_artifact_link(f"{index_title} Map (PNG)", vegetation_index_color_png, output_dir),
+            render_artifact_link(f"{index_title} GeoTIFF", vegetation_index_tif, output_dir),
             render_artifact_link("Grid Overlay (PNG)", grid_overlay_png, output_dir),
             render_artifact_link("Grid Cells (CSV)", grid_cells_csv, output_dir),
             render_artifact_link("Grid Categories (CSV)", grid_categories_csv, output_dir),
-            render_artifact_link("Index Run Metadata (JSON)", ndvi_meta_path, output_dir),
+            render_artifact_link("Index Run Metadata (JSON)", vegetation_index_meta_path, output_dir),
             render_artifact_link("Grid Run Metadata (JSON)", grid_meta_path, output_dir),
             render_artifact_link("Disease Risk Summary (JSON)", disease_risk_summary_path, output_dir),
         ]
@@ -316,7 +316,7 @@ def run_report(
             if mapir_preview
             else render_pending_image("MAPIR orthomosaic")
         ),
-        ndvi_color_html=render_image_if_exists(index_title + " Map", ndvi_color_png, output_dir),
+        vegetation_index_color_html=render_image_if_exists(index_title + " Map", vegetation_index_color_png, output_dir),
         thermal_image_html=(
             render_image_if_exists("Thermal Orthomosaic", thermal_preview or orthophoto_thermal_preview, output_dir)
             if thermal_preview

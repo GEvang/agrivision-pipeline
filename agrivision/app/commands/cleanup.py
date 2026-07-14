@@ -9,7 +9,7 @@ def cleanup_outputs() -> list[str]:
     config = load_config()
     project_root = get_project_root()
     removed: list[str] = []
-    for relative in [config['paths']['ndvi_output'], config['paths']['runs_output']]:
+    for relative in [config['paths']['vegetation_index_output'], config['paths']['runs_output']]:
         path = project_root / relative
         if path.exists():
             shutil.rmtree(path)

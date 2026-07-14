@@ -35,7 +35,6 @@ Use the repository root operational assets for operator-facing execution.
 
 Examples:
 
-- `install_agrivision.sh`;
 - `Dockerfile`;
 - `docker-compose.yml`;
 - `docker-entrypoint.sh`.

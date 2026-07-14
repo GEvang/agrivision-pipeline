@@ -2,7 +2,7 @@
 
 This repository supports one primary operator deployment path: the root Docker Compose stack.
 
-## Supported Deployment Assets
+## Supported Root-Level Operational Assets
 
 - `Dockerfile`
 - `docker-compose.yml`
@@ -20,7 +20,7 @@ docker compose up --build -d
 
 Then open `http://127.0.0.1:8008`.
 
-Base startup does not require `.env` and does not require the optional OpenAgri services to be installed first.
+Base dashboard startup does not require `.env`, but valid full-report operation requires the OpenAgri Weather, Irrigation, and Pest & Disease services for the report sections that are enabled.
 
 ## What the Compose Service Does
 

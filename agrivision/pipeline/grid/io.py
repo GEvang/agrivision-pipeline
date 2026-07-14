@@ -17,42 +17,42 @@ def get_grid_settings(
 ) -> dict[str, object]:
     resolved = resolve_pipeline_paths(workspace_root=workspace_root, config=config)
     config = resolved["config"]
-    ndvi_dir = resolved["ndvi_output"]
-    ndvi_tif = ndvi_dir / "ndvi.tif"
-    ndvi_meta_json = ndvi_dir / "metadata.json"
-    grid_png = ndvi_dir / "ndvi_grid_overlay.png"
-    analysis_mask_png = ndvi_dir / "analysis_mask.png"
-    grid_table_csv = ndvi_dir / "ndvi_grid_cells.csv"
-    grid_categories_csv = ndvi_dir / "ndvi_grid_categories.csv"
-    grid_meta_json = ndvi_dir / "grid_metadata.json"
+    vegetation_index_dir = resolved["vegetation_index_output"]
+    vegetation_index_tif = vegetation_index_dir / "vegetation_index.tif"
+    vegetation_index_meta_json = vegetation_index_dir / "metadata.json"
+    grid_png = vegetation_index_dir / "vegetation_index_grid_overlay.png"
+    analysis_mask_png = vegetation_index_dir / "analysis_mask.png"
+    grid_table_csv = vegetation_index_dir / "vegetation_index_grid_cells.csv"
+    grid_categories_csv = vegetation_index_dir / "vegetation_index_grid_categories.csv"
+    grid_meta_json = vegetation_index_dir / "grid_metadata.json"
     ortho_rgb = resolved["ortho_rgb"]
 
     return {
-        "ndvi_dir": ndvi_dir,
-        "ndvi_tif": ndvi_tif,
-        "ndvi_meta_json": ndvi_meta_json,
+        "vegetation_index_dir": vegetation_index_dir,
+        "vegetation_index_tif": vegetation_index_tif,
+        "vegetation_index_meta_json": vegetation_index_meta_json,
         "ortho_rgb": ortho_rgb,
         "grid_png": grid_png,
         "analysis_mask_png": analysis_mask_png,
         "grid_table_csv": grid_table_csv,
         "grid_categories_csv": grid_categories_csv,
         "grid_meta_json": grid_meta_json,
-        "grid_rows": int(config["ndvi"]["grid_rows"]),
-        "grid_cols": int(config["ndvi"]["grid_cols"]),
-        "poor_max_cfg": float(config["ndvi"]["poor_max"]),
-        "medium_max_cfg": float(config["ndvi"]["medium_max"]),
-        "threshold_mode": str(config["ndvi"].get("threshold_mode", "fixed")),
-        "calibration_percentiles": config["ndvi"].get("calibration_percentiles", [33, 66]),
-        "min_cell_valid_fraction": float(config["ndvi"].get("min_cell_valid_fraction", 0.2)),
+        "grid_rows": int(config["vegetation_index"]["grid_rows"]),
+        "grid_cols": int(config["vegetation_index"]["grid_cols"]),
+        "poor_max_cfg": float(config["vegetation_index"]["poor_max"]),
+        "medium_max_cfg": float(config["vegetation_index"]["medium_max"]),
+        "threshold_mode": str(config["vegetation_index"].get("threshold_mode", "fixed")),
+        "calibration_percentiles": config["vegetation_index"].get("calibration_percentiles", [33, 66]),
+        "min_cell_valid_fraction": float(config["vegetation_index"].get("min_cell_valid_fraction", 0.2)),
     }
 
 
 
-def load_index_identity(ndvi_meta_json: Path) -> Tuple[str, str, str]:
+def load_index_identity(vegetation_index_meta_json: Path) -> Tuple[str, str, str]:
     """Return (index_name, index_mode, source_dataset) from metadata.json."""
-    if ndvi_meta_json.exists():
+    if vegetation_index_meta_json.exists():
         try:
-            with ndvi_meta_json.open("r", encoding="utf-8") as f:
+            with vegetation_index_meta_json.open("r", encoding="utf-8") as f:
                 meta = json.load(f)
             idx = meta.get("index", {}) or {}
             src = meta.get("source", {}) or {}
@@ -81,7 +81,7 @@ def save_cell_table_csv(
         "row_label",
         "col_label",
         "mean_index",
-        "mean_ndvi",
+        "mean_vegetation_index",
         "valid_fraction",
         "class",
         "index_name",
@@ -105,7 +105,7 @@ def save_cell_table_csv(
                     "row_label": cell["row_label"],
                     "col_label": cell["col_label"],
                     "mean_index": mean_str,
-                    "mean_ndvi": mean_str,
+                    "mean_vegetation_index": mean_str,
                     "valid_fraction": f"{float(cell.get('valid_fraction', 0.0)):.4f}",
                     "class": cell["class"],
                     "index_name": index_name,

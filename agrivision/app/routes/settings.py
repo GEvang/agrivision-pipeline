@@ -247,7 +247,6 @@ def update_settings_ui(
     pdm_enabled_by_default: bool | None = Form(None),
     pdm_default_crop: str | None = Form(None),
     pdm_default_model_key: str | None = Form(None),
-    resize_max_long_edge: int | None = Form(None),
     orthophoto_resolution_cm: int | None = Form(None),
 ) -> RedirectResponse:
     update_settings(
@@ -261,7 +260,6 @@ def update_settings_ui(
             pdm_enabled_by_default=pdm_enabled_by_default,
             pdm_default_crop=pdm_default_crop or None,
             pdm_default_model_key=pdm_default_model_key or None,
-            resize_max_long_edge=resize_max_long_edge,
             orthophoto_resolution_cm=orthophoto_resolution_cm,
         )
     )

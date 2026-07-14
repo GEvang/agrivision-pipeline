@@ -113,7 +113,7 @@ class RunService:
         if self._is_orthophoto_creation_run(selected_steps):
             return stages
         stages.extend([
-            StageStatus(key='compute_ndvi', label='Compute NDVI'),
+            StageStatus(key='compute_vegetation_index', label='Compute Vegetation Index'),
             StageStatus(key='generate_grid', label='Generate grid'),
         ])
         if selected_steps.fetch_weather:
@@ -542,15 +542,15 @@ class RunService:
         candidate_paths: list[Path] = []
 
         if not self._is_orthophoto_creation_run(record):
-            ndvi_root = workspace.ndvi_output
+            vegetation_index_root = workspace.vegetation_index_output
             candidate_paths.extend([
-                ndvi_root / 'ndvi.tif',
-                ndvi_root / 'ndvi_color.png',
-                ndvi_root / 'metadata.json',
-                ndvi_root / 'ndvi_grid_overlay.png',
-                ndvi_root / 'ndvi_grid_cells.csv',
-                ndvi_root / 'ndvi_grid_categories.csv',
-                ndvi_root / 'grid_metadata.json',
+                vegetation_index_root / 'vegetation_index.tif',
+                vegetation_index_root / 'vegetation_index_color.png',
+                vegetation_index_root / 'metadata.json',
+                vegetation_index_root / 'vegetation_index_grid_overlay.png',
+                vegetation_index_root / 'vegetation_index_grid_cells.csv',
+                vegetation_index_root / 'vegetation_index_grid_categories.csv',
+                vegetation_index_root / 'grid_metadata.json',
             ])
         if record.selected_steps.run_odm:
             candidate_paths.extend([
@@ -686,12 +686,11 @@ class RunService:
             with log_path.open('a', encoding='utf-8') as log_handle:
                 with contextlib.redirect_stdout(log_handle), contextlib.redirect_stderr(log_handle):
                     run_full_pipeline(
-                        run_resize_step=False,
                         skip_odm=not selected.run_odm,
                         skip_odm_rgb='rgb' not in camera_targets,
                         skip_odm_mapir='mapir' not in camera_targets,
                         skip_odm_thermal='thermal' not in camera_targets,
-                        skip_ndvi=orthophoto_creation_only,
+                        skip_vegetation_index=orthophoto_creation_only,
                         skip_grid=orthophoto_creation_only,
                         skip_weather=not selected.fetch_weather,
                         skip_irrigation=not selected.run_irrigation,
@@ -795,7 +794,7 @@ class RunService:
             return 'run_odm_rgb'
         if key.startswith('grid_'):
             return 'generate_grid'
-        return 'compute_ndvi'
+        return 'compute_vegetation_index'
 
     def _artifact_source_path(self, record: RunRecord, key: str, discovered_path: Path) -> Path:
         source_run_id = record.parameters.get('source_orthophoto_run_id')
@@ -850,14 +849,14 @@ class RunService:
         candidates = {
             **(
                 {
-                    'ndvi_tif': workspace.ndvi_output / 'ndvi.tif',
-                    'ndvi_metadata': workspace.ndvi_output / 'metadata.json',
-                    'grid_metadata': workspace.ndvi_output / 'grid_metadata.json',
-                    'disease_risk_summary': workspace.ndvi_output / 'disease_risk' / 'summary.json',
-                    'ndvi_color_png': workspace.ndvi_output / 'ndvi_color.png',
-                    'grid_overlay_png': workspace.ndvi_output / 'ndvi_grid_overlay.png',
-                    'grid_cells_csv': workspace.ndvi_output / 'ndvi_grid_cells.csv',
-                    'grid_categories_csv': workspace.ndvi_output / 'ndvi_grid_categories.csv',
+                    'vegetation_index_tif': workspace.vegetation_index_output / 'vegetation_index.tif',
+                    'vegetation_index_metadata': workspace.vegetation_index_output / 'metadata.json',
+                    'grid_metadata': workspace.vegetation_index_output / 'grid_metadata.json',
+                    'disease_risk_summary': workspace.vegetation_index_output / 'disease_risk' / 'summary.json',
+                    'vegetation_index_color_png': workspace.vegetation_index_output / 'vegetation_index_color.png',
+                    'grid_overlay_png': workspace.vegetation_index_output / 'vegetation_index_grid_overlay.png',
+                    'grid_cells_csv': workspace.vegetation_index_output / 'vegetation_index_grid_cells.csv',
+                    'grid_categories_csv': workspace.vegetation_index_output / 'vegetation_index_grid_categories.csv',
                 }
                 if not self._is_orthophoto_creation_run(record)
                 else {}

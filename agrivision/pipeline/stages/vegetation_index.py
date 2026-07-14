@@ -4,14 +4,14 @@ agrivision.pipeline.stages.vegetation_index
 
 Compute a vegetation index from an orthophoto and save:
 
-  - GeoTIFF:  output/ndvi/ndvi.tif
-  - Color PNG: output/ndvi/ndvi_color.png
+  - GeoTIFF:  output/vegetation_index/vegetation_index.tif
+  - Color PNG: output/vegetation_index/vegetation_index_color.png
 
 NEW (Priority 1 - Metadata):
 ----------------------------
 After computation, write a self-describing metadata file:
 
-  output/ndvi/metadata.json
+  output/vegetation_index/metadata.json
 
 This helps SIP7-style auditability and makes results reproducible.
 """
@@ -32,27 +32,27 @@ from rasterio.windows import Window
 from agrivision.pipeline.io.paths import resolve_pipeline_paths
 
 
-def _get_ndvi_settings(
+def _get_vegetation_index_settings(
     workspace_root: Path | None = None,
     config: dict[str, Any] | None = None,
 ) -> dict[str, Any]:
     resolved = resolve_pipeline_paths(workspace_root=workspace_root, config=config)
     config = resolved["config"]
-    ndvi_config = config["ndvi"]
-    out_dir = resolved["ndvi_output"]
+    vegetation_index_config = config["vegetation_index"]
+    out_dir = resolved["vegetation_index_output"]
 
     return {
         "project_root": resolved["project_root"],
         "ortho_rgb": resolved["ortho_rgb"],
         "ortho_mapir": resolved["ortho_mapir"],
         "out_dir": out_dir,
-        "out_tif": out_dir / "ndvi.tif",
-        "out_png": out_dir / "ndvi_color.png",
+        "out_tif": out_dir / "vegetation_index.tif",
+        "out_png": out_dir / "vegetation_index_color.png",
         "out_meta": out_dir / "metadata.json",
-        "poor_max": float(ndvi_config["poor_max"]),
-        "medium_max": float(ndvi_config["medium_max"]),
-        "mapir_profile": ndvi_config["mapir_profile"],
-        "rgb_profile": ndvi_config["rgb_profile"],
+        "poor_max": float(vegetation_index_config["poor_max"]),
+        "medium_max": float(vegetation_index_config["medium_max"]),
+        "mapir_profile": vegetation_index_config["mapir_profile"],
+        "rgb_profile": vegetation_index_config["rgb_profile"],
     }
 
 
@@ -146,7 +146,7 @@ def _index_definition(label: str, profile: Dict[str, Any]) -> tuple[str, int, in
         red_idx = int(profile["red_band"])
         return mode, nir_idx, red_idx, {
             "index_mode": "nir_red",
-            "index_name": "NDVI",
+            "index_name": "Vegetation Index",
             "formula": "(NIR - RED) / (NIR + RED)",
             "band_mapping": {"nir_band": nir_idx, "red_band": red_idx},
         }
@@ -202,11 +202,11 @@ def compute_index(
 
         meta = {
             "index_mode": "nir_red",
-            "index_name": "NDVI",
+            "index_name": "Vegetation Index",
             "formula": "(NIR - RED) / (NIR + RED)",
             "band_mapping": {"nir_band": nir_idx, "red_band": red_idx},
         }
-        print(f"[VI] {label} index_mode=nir_red → computing NDVI (true NDVI)")
+        print(f"[VI] {label} index_mode=nir_red â†’ computing Vegetation Index (a true vegetation index)")
         return _normalized_diff(nir, red, valid_mask), meta
 
     if mode == "nir_green":
@@ -222,7 +222,7 @@ def compute_index(
             "formula": "(NIR - GREEN) / (NIR + GREEN)",
             "band_mapping": {"nir_band": nir_idx, "green_band": green_idx},
         }
-        print(f"[VI] {label} index_mode=nir_green → computing Vegetation Index")
+        print(f"[VI] {label} index_mode=nir_green â†’ computing Vegetation Index")
         return _normalized_diff(nir, green, valid_mask), meta
 
     if mode == "pseudo":
@@ -238,7 +238,7 @@ def compute_index(
             "formula": "(B2 - B1) / (B2 + B1)  (configured bands)",
             "band_mapping": {"band_a": nir_idx, "band_b": red_idx},
         }
-        print(f"[VI] {label} index_mode=pseudo → computing pseudo vegetation index")
+        print(f"[VI] {label} index_mode=pseudo â†’ computing pseudo vegetation index")
         return _normalized_diff(nir, red, valid_mask), meta
 
     raise ValueError(
@@ -467,7 +467,7 @@ def compute_index_streaming(
 # ---------------------------------------------------------------------
 # Public entry point
 # ---------------------------------------------------------------------
-def run_ndvi(
+def run_vegetation_index(
     workspace_root: Path | None = None,
     config: dict[str, Any] | None = None,
 ) -> None:
@@ -475,7 +475,7 @@ def run_ndvi(
     Compute vegetation index from MAPIR or RGB orthophoto (auto-selected),
     write outputs, and emit metadata.json for traceability.
     """
-    settings = _get_ndvi_settings(workspace_root=workspace_root, config=config)
+    settings = _get_vegetation_index_settings(workspace_root=workspace_root, config=config)
     ortho_rgb = settings["ortho_rgb"]
     ortho_mapir = settings["ortho_mapir"]
     out_dir = settings["out_dir"]
@@ -548,4 +548,4 @@ def run_ndvi(
 
 
 if __name__ == "__main__":
-    run_ndvi()
+    run_vegetation_index()

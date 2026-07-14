@@ -95,7 +95,7 @@ def build_report_html(
     artifacts_list_html: str,
     visible_image_html: str,
     mapir_image_html: str,
-    ndvi_color_html: str,
+    vegetation_index_color_html: str,
     thermal_image_html: str,
     grid_meta_html: str,
     grid_overlay_html: str,
@@ -654,7 +654,7 @@ def build_report_html(
     <section class="analysis-stack">
       <section class="panel">
         <h2><span class="icon green">{vegetation_icon}</span>{safe_html(index_title)}</h2>
-        <div class="image-block">{ndvi_color_html}</div>
+        <div class="image-block">{vegetation_index_color_html}</div>
         <div class="bar"></div>
         <div class="bar-labels"><span>Low Vigor</span><span>High Vigor</span></div>
       </section>

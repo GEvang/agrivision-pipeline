@@ -4,7 +4,7 @@ This repository is software first. It does not publish a standalone reference da
 
 ## Scope
 
-AgriVision produces run-specific data products from uploaded imagery and optional OpenAgri enrichments. These outputs are operational artifacts, not a curated public dataset release.
+AgriVision produces run-specific data products from uploaded imagery and OpenAgri enrichments. These outputs are operational artifacts, not a curated public dataset release.
 
 ## Main Data Products
 
@@ -32,7 +32,7 @@ Typical provenance chain:
 1. operator uploads imagery or imports an orthophoto
 2. AgriVision validates the input set
 3. ODM and downstream analysis stages generate artifacts
-4. optional service enrichments add weather, irrigation, or PDM context
+4. service enrichments add weather, irrigation, or PDM context for enabled full-report sections
 5. AgriVision writes reports, metadata, and export packages
 
 ## Export Package Contract

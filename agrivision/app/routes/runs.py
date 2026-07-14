@@ -460,7 +460,6 @@ def create_run_ui(
             'dataset_name': dataset_name,
             'upload_run_id': upload_run_id,
             'selected_steps': {
-                'resize_images': False,
                 'run_odm': False,
                 'fetch_weather': fetch_weather,
                 'run_irrigation': run_irrigation,

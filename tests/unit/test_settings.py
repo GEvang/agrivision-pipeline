@@ -86,7 +86,7 @@ def test_load_config_returns_defaults_when_config_file_missing(monkeypatch, tmp_
 
     assert isinstance(cfg, dict)
     assert "paths" in cfg
-    assert "ndvi" in cfg
+    assert "vegetation_index" in cfg
     assert "weather" in cfg
     assert "irrigation" in cfg
     assert cfg["weather"]["service_dir"] == "OpenAgri-WeatherService"

@@ -112,8 +112,8 @@ def run_grid_report(
 ) -> None:
     """Load the index raster, compute the grid, and write all grid artifacts."""
     resolved = get_grid_settings(workspace_root=workspace_root, config=config)
-    ndvi_tif = cast(Path, resolved["ndvi_tif"])
-    ndvi_meta_json = cast(Path, resolved["ndvi_meta_json"])
+    vegetation_index_tif = cast(Path, resolved["vegetation_index_tif"])
+    vegetation_index_meta_json = cast(Path, resolved["vegetation_index_meta_json"])
     ortho_rgb = cast(Path, resolved["ortho_rgb"])
     grid_png = cast(Path, resolved["grid_png"])
     analysis_mask_png = cast(Path, resolved["analysis_mask_png"])
@@ -131,15 +131,15 @@ def run_grid_report(
         calibration_percentiles = [33, 66]
 
     print("[AgriVision] Grid report")
-    print(f"  Raster source: {ndvi_tif}")
+    print(f"  Raster source: {vegetation_index_tif}")
     print(f"  Grid: {grid_rows} rows x {grid_cols} cols")
 
-    if not ndvi_tif.exists():
-        raise FileNotFoundError(f"Index file not found: {ndvi_tif}")
+    if not vegetation_index_tif.exists():
+        raise FileNotFoundError(f"Index file not found: {vegetation_index_tif}")
 
-    index_name, index_mode, source_dataset = load_index_identity(ndvi_meta_json)
+    index_name, index_mode, source_dataset = load_index_identity(vegetation_index_meta_json)
 
-    with rasterio.open(ndvi_tif) as src:
+    with rasterio.open(vegetation_index_tif) as src:
         arr = src.read(1).astype("float32")
 
     arr[~np.isfinite(arr)] = np.nan
@@ -149,7 +149,7 @@ def run_grid_report(
         analysis_arr = _resample_array_to_shape(arr, analysis_mask.shape)
         analysis_arr = analysis_arr.copy()
         analysis_arr[~analysis_mask] = np.nan
-        _save_masked_index_png(analysis_arr, ndvi_tif.with_name("ndvi_color.png"), title=index_name, out_dir=ndvi_tif.parent)
+        _save_masked_index_png(analysis_arr, vegetation_index_tif.with_name("vegetation_index_color.png"), title=index_name, out_dir=vegetation_index_tif.parent)
 
     print("[Grid] First pass classification with configured thresholds:")
     print(f"       POOR_MAX={poor_max_cfg}, MEDIUM_MAX={medium_max_cfg}")

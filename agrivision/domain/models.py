@@ -30,7 +30,6 @@ class PipelineContext:
 
 @dataclass
 class PipelineRunSummary:
-    resize: StageResult | None = None
     odm_rgb: StageResult | None = None
     odm_mapir: StageResult | None = None
     vegetation_index: StageResult | None = None

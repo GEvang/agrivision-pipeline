@@ -106,7 +106,6 @@ class SettingsService:
                 'pdm_enabled_by_default': config.get('pdm', {}).get('enabled_by_default', True),
                 'pdm_default_crop': config.get('pdm', {}).get('default_crop', 'grapevine'),
                 'pdm_default_model_key': config.get('pdm', {}).get('default_model_key', 'grapevine_powdery_mildew_risk_v1'),
-                'resize_max_long_edge': config.get('resize', {}).get('max_long_edge', ''),
                 'orthophoto_resolution_cm': config.get('orthophoto', {}).get('orthophoto_resolution_cm', ''),
                 'settings_file': str(self.runtime_settings_path),
                 'deployment_mode': config.get('app', {}).get('deployment_mode', 'local'),
@@ -176,8 +175,6 @@ class SettingsService:
             payload.setdefault('pdm', {})['default_crop'] = request.pdm_default_crop
         if request.pdm_default_model_key is not None:
             payload.setdefault('pdm', {})['default_model_key'] = request.pdm_default_model_key
-        if request.resize_max_long_edge is not None:
-            payload.setdefault('resize', {})['max_long_edge'] = request.resize_max_long_edge
         if request.orthophoto_resolution_cm is not None:
             payload.setdefault('orthophoto', {})['orthophoto_resolution_cm'] = request.orthophoto_resolution_cm
         if request.deployment_mode is not None:

@@ -17,7 +17,7 @@ Describe how you want it to work.
 
 ## Affected area
 - Pipeline
-- NDVI
+- Vegetation Index
 - Grid analysis
 - Report generation
 - Weather integration

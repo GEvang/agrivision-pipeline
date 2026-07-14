@@ -15,7 +15,6 @@ class SettingsUpdateRequest(BaseModel):
     pdm_enabled_by_default: bool | None = None
     pdm_default_crop: str | None = Field(default=None, max_length=120)
     pdm_default_model_key: str | None = Field(default=None, max_length=120)
-    resize_max_long_edge: int | None = Field(default=None, ge=256, le=12000)
     orthophoto_resolution_cm: int | None = Field(default=None, ge=1, le=50)
     deployment_mode: str | None = Field(default=None, max_length=40)
     public_url: str | None = Field(default=None, max_length=500)

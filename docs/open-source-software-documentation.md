@@ -12,7 +12,7 @@ This file is a short release-oriented summary for readers who want one place to 
 
 ## Scope
 
-AgriVision processes agricultural drone imagery and produces orthophotos, vegetation products, risk outputs, reports, and export packages. It supports both CLI execution and a FastAPI dashboard, with optional integration into OpenAgri companion services.
+AgriVision processes agricultural drone imagery and produces orthophotos, vegetation products, risk outputs, reports, and export packages. It supports both CLI execution and a FastAPI dashboard, with OpenAgri companion services required for valid full-report operation.
 
 ## Main Capabilities
 
@@ -20,7 +20,7 @@ AgriVision processes agricultural drone imagery and produces orthophotos, vegeta
 - CLI entry points for diagnostics, cleanup, service setup/control, and direct runs
 - ODM-backed orthophoto generation
 - vegetation, grid, and disease-risk analysis
-- optional Weather, Irrigation, and Pest & Disease enrichment
+- Weather, Irrigation, and Pest & Disease enrichment for enabled full-report sections
 - export packages with `manifest.json` and `metadata/run_metadata.jsonld`
 
 ## Deployment Model

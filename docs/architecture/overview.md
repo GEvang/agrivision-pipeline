@@ -28,7 +28,7 @@ The CLI still exists for diagnostics, cleanup, service setup/control, and direct
 3. run or reuse ODM orthophoto generation
 4. compute vegetation products
 5. generate grid and risk outputs
-6. fetch optional enrichment data
+6. fetch OpenAgri enrichment data for enabled report sections
 7. write artifacts and metadata
 8. render the final report
 

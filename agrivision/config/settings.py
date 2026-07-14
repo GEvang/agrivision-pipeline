@@ -98,22 +98,16 @@ DEFAULT_CONFIG: dict[str, Any] = {
         "data_root": "data",
         "output_root": "output",
         "images_full": "data/images_full/rgb",
-        "images_resized": "data/images_resized/rgb",
         "odm_project_root": "data/odm_project_rgb",
         "odm_project_root_rgb": "data/odm_project_rgb",
         "odm_project_root_mapir": "data/odm_project_mapir",
         "odm_project_root_thermal": "data/odm_project_thermal",
-        "ndvi_output": "output/ndvi",
+        "vegetation_index_output": "output/vegetation_index",
         "runs_output": "output/runs",
         "images_full_mapir": "data/images_full/mapir",
-        "images_resized_mapir": "data/images_resized/mapir",
         "images_full_thermal": "data/images_full/thermal",
-        "images_resized_thermal": "data/images_resized/thermal",
     },
-    "resize": {
-        "max_long_edge": 3000,
-    },
-    "ndvi": {
+    "vegetation_index": {
         "poor_max": 0.25,
         "medium_max": 0.4,
         "threshold_mode": "fixed",
@@ -211,17 +205,14 @@ class PathsSettings:
     data_root: str
     output_root: str
     images_full: str
-    images_resized: str
     odm_project_root: str
     odm_project_root_rgb: str
     odm_project_root_mapir: str
     odm_project_root_thermal: str
-    ndvi_output: str
+    vegetation_index_output: str
     runs_output: str
     images_full_mapir: str
-    images_resized_mapir: str
     images_full_thermal: str
-    images_resized_thermal: str
 
 
 @dataclass(frozen=True)
@@ -299,7 +290,7 @@ class PdmSettings:
     service_dir: str
 
 @dataclass(frozen=True)
-class NdviSettings:
+class VegetationIndexSettings:
     poor_max: float
     medium_max: float
     threshold_mode: str
@@ -312,11 +303,6 @@ class NdviSettings:
 
 
 @dataclass(frozen=True)
-class ResizeSettings:
-    max_long_edge: int
-
-
-@dataclass(frozen=True)
 class AppSettings:
     app: ApplicationSettings
     paths: PathsSettings
@@ -324,8 +310,7 @@ class AppSettings:
     location: LocationSettings
     irrigation: IrrigationSettings
     pdm: PdmSettings
-    ndvi: NdviSettings
-    resize: ResizeSettings
+    vegetation_index: VegetationIndexSettings
     orthophoto: OrthophotoSettings
     
 
@@ -535,8 +520,7 @@ def get_settings() -> AppSettings:
     irrigation_eto_cfg = _as_dict(irrigation_cfg.get("eto"))
     pdm_cfg = _as_dict(cfg.get("pdm"))
     pdm_auth_cfg = _as_dict(pdm_cfg.get("auth"))
-    ndvi_cfg = _as_dict(cfg.get("ndvi"))
-    resize_cfg = _as_dict(cfg.get("resize"))
+    vegetation_index_cfg = _as_dict(cfg.get("vegetation_index"))
     orthophoto_cfg = _as_dict(cfg.get("orthophoto"))
     app_cfg = _as_dict(cfg.get("app"))
 
@@ -548,8 +532,7 @@ def get_settings() -> AppSettings:
     irrigation_eto_defaults = _as_dict(irrigation_defaults.get("eto"))
     pdm_defaults = _as_dict(defaults.get("pdm"))
     pdm_auth_defaults = _as_dict(pdm_defaults.get("auth"))
-    ndvi_defaults = _as_dict(defaults.get("ndvi"))
-    resize_defaults = _as_dict(defaults.get("resize"))
+    vegetation_index_defaults = _as_dict(defaults.get("vegetation_index"))
     orthophoto_defaults = _as_dict(defaults.get("orthophoto"))
     app_defaults = _as_dict(defaults.get("app"))
 
@@ -580,7 +563,6 @@ def get_settings() -> AppSettings:
             data_root=_as_str(paths_cfg.get("data_root"), _as_str(paths_defaults.get("data_root"))),
             output_root=_as_str(paths_cfg.get("output_root"), _as_str(paths_defaults.get("output_root"))),
             images_full=_as_str(paths_cfg.get("images_full"), _as_str(paths_defaults.get("images_full"))),
-            images_resized=_as_str(paths_cfg.get("images_resized"), _as_str(paths_defaults.get("images_resized"))),
             odm_project_root=_as_str(paths_cfg.get("odm_project_root"), _as_str(paths_defaults.get("odm_project_root"))),
             odm_project_root_rgb=_as_str(
                 paths_cfg.get("odm_project_root_rgb"),
@@ -594,23 +576,15 @@ def get_settings() -> AppSettings:
                 paths_cfg.get("odm_project_root_thermal"),
                 _as_str(paths_defaults.get("odm_project_root_thermal")),
             ),
-            ndvi_output=_as_str(paths_cfg.get("ndvi_output"), _as_str(paths_defaults.get("ndvi_output"))),
+            vegetation_index_output=_as_str(paths_cfg.get("vegetation_index_output"), _as_str(paths_defaults.get("vegetation_index_output"))),
             runs_output=_as_str(paths_cfg.get("runs_output"), _as_str(paths_defaults.get("runs_output"))),
             images_full_mapir=_as_str(
                 paths_cfg.get("images_full_mapir"),
                 _as_str(paths_defaults.get("images_full_mapir")),
             ),
-            images_resized_mapir=_as_str(
-                paths_cfg.get("images_resized_mapir"),
-                _as_str(paths_defaults.get("images_resized_mapir")),
-            ),
             images_full_thermal=_as_str(
                 paths_cfg.get("images_full_thermal"),
                 _as_str(paths_defaults.get("images_full_thermal")),
-            ),
-            images_resized_thermal=_as_str(
-                paths_cfg.get("images_resized_thermal"),
-                _as_str(paths_defaults.get("images_resized_thermal")),
             ),
         ),
         weather=WeatherSettings(
@@ -674,40 +648,34 @@ def get_settings() -> AppSettings:
             allow_per_run_override=bool(pdm_cfg.get("allow_per_run_override", pdm_defaults.get("allow_per_run_override", True))),
             service_dir=_as_str(pdm_cfg.get("service_dir"), _as_str(pdm_defaults.get("service_dir"), "OpenAgri-PestAndDiseaseManagement")),
         ),
-        ndvi=NdviSettings(
-            poor_max=_as_float(ndvi_cfg.get("poor_max"), _as_float(ndvi_defaults.get("poor_max"), 0.25)),
+        vegetation_index=VegetationIndexSettings(
+            poor_max=_as_float(vegetation_index_cfg.get("poor_max"), _as_float(vegetation_index_defaults.get("poor_max"), 0.25)),
             medium_max=_as_float(
-                ndvi_cfg.get("medium_max"),
-                _as_float(ndvi_defaults.get("medium_max"), 0.4),
+                vegetation_index_cfg.get("medium_max"),
+                _as_float(vegetation_index_defaults.get("medium_max"), 0.4),
             ),
             threshold_mode=_as_str(
-                ndvi_cfg.get("threshold_mode"),
-                _as_str(ndvi_defaults.get("threshold_mode"), "fixed"),
+                vegetation_index_cfg.get("threshold_mode"),
+                _as_str(vegetation_index_defaults.get("threshold_mode"), "fixed"),
             ),
             calibration_percentiles=[
                 _as_float(value, fallback)
                 for value, fallback in zip(
-                    ndvi_cfg.get(
+                    vegetation_index_cfg.get(
                         "calibration_percentiles",
-                        ndvi_defaults.get("calibration_percentiles", [33, 66]),
+                        vegetation_index_defaults.get("calibration_percentiles", [33, 66]),
                     ),
                     [33, 66],
                 )
             ],
             min_cell_valid_fraction=_as_float(
-                ndvi_cfg.get("min_cell_valid_fraction"),
-                _as_float(ndvi_defaults.get("min_cell_valid_fraction"), 0.2),
+                vegetation_index_cfg.get("min_cell_valid_fraction"),
+                _as_float(vegetation_index_defaults.get("min_cell_valid_fraction"), 0.2),
             ),
-            grid_rows=_as_int(ndvi_cfg.get("grid_rows"), _as_int(ndvi_defaults.get("grid_rows"), 17)),
-            grid_cols=_as_int(ndvi_cfg.get("grid_cols"), _as_int(ndvi_defaults.get("grid_cols"), 17)),
-            mapir_profile=_as_dict(ndvi_cfg.get("mapir_profile")) or _as_dict(ndvi_defaults.get("mapir_profile")),
-            rgb_profile=_as_dict(ndvi_cfg.get("rgb_profile")) or _as_dict(ndvi_defaults.get("rgb_profile")),
-        ),
-        resize=ResizeSettings(
-            max_long_edge=_as_int(
-                resize_cfg.get("max_long_edge"),
-                _as_int(resize_defaults.get("max_long_edge"), 3000),
-            )
+            grid_rows=_as_int(vegetation_index_cfg.get("grid_rows"), _as_int(vegetation_index_defaults.get("grid_rows"), 17)),
+            grid_cols=_as_int(vegetation_index_cfg.get("grid_cols"), _as_int(vegetation_index_defaults.get("grid_cols"), 17)),
+            mapir_profile=_as_dict(vegetation_index_cfg.get("mapir_profile")) or _as_dict(vegetation_index_defaults.get("mapir_profile")),
+            rgb_profile=_as_dict(vegetation_index_cfg.get("rgb_profile")) or _as_dict(vegetation_index_defaults.get("rgb_profile")),
         ),
         orthophoto=OrthophotoSettings(
             odm_docker_image=_as_str(

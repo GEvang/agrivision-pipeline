@@ -37,9 +37,13 @@ def load_local_env() -> None:
 
 def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(description='AgriVision Pipeline entry point.')
-    parser.add_argument('--run-resize', action='store_true', help='Deprecated; ignored. ODM uses full-resolution images.')
     parser.add_argument('--skip-odm', action='store_true', help='Skip the ODM orthophoto generation step.')
-    parser.add_argument('--skip-ndvi', action='store_true', help='Skip NDVI computation and reuse existing NDVI outputs.')
+    parser.add_argument(
+        '--skip-vegetation-index',
+        dest='skip_vegetation_index',
+        action='store_true',
+        help='Skip Vegetation Index computation and reuse existing Vegetation Index outputs.',
+    )
     parser.add_argument('--doctor', action='store_true', help='Print runtime diagnostics and exit.')
     parser.add_argument('--setup-services', action='store_true', help='Prepare sibling OpenAgri services and exit.')
     parser.add_argument('--service-control', action='store_true', help='Run a single companion service management action and exit.')
@@ -111,9 +115,8 @@ def main() -> None:
         return
 
     run_full_pipeline(
-        run_resize_step=False,
         skip_odm=args.skip_odm,
-        skip_ndvi=args.skip_ndvi,
+        skip_vegetation_index=args.skip_vegetation_index,
         skip_weather=args.skip_weather,
         skip_report=args.skip_report,
     )

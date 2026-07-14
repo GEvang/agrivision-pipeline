@@ -59,4 +59,4 @@ python -m pytest tests/system -q
 
 - `.env` is optional for basic dashboard startup
 - `config.yaml` is for non-secret config
-- companion services are optional and can be developed independently
+- companion services can be developed independently, but valid full-report operation requires the enabled OpenAgri services to work

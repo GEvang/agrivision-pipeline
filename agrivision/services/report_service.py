@@ -34,7 +34,7 @@ class ReportService:
     def _to_report_item(self, run: RunRecord, *, generate_preview: bool = True) -> ReportItem:
         preview_path: str | None = None
         orthophoto_path = run.outputs.get('orthophoto_rgb') or run.outputs.get('orthophoto_mapir')
-        preview_source = run.outputs.get('ndvi_color_png') or orthophoto_path
+        preview_source = run.outputs.get('vegetation_index_color_png') or orthophoto_path
         if preview_source and generate_preview:
             artifact = Path(preview_source)
             preview_file = Path(run.run_dir) / 'previews' / self.preview_service.preview_name_for(artifact)
@@ -53,25 +53,25 @@ class ReportService:
         )
 
     def _quality_summary(self, run: RunRecord) -> dict[str, Any]:
-        ndvi_meta, ndvi_error = self._read_json(self._metadata_path(run, 'ndvi_metadata', 'metadata.json'))
+        vegetation_index_meta, vegetation_index_error = self._read_json(self._metadata_path(run, 'vegetation_index_metadata', 'metadata.json'))
         grid_meta, grid_error = self._read_json(self._metadata_path(run, 'grid_metadata', 'grid_metadata.json'))
-        if not ndvi_meta and not grid_meta and not ndvi_error and not grid_error:
+        if not vegetation_index_meta and not grid_meta and not vegetation_index_error and not grid_error:
             return {}
 
-        valid_pixels = ndvi_meta.get('valid_pixels', {}) if isinstance(ndvi_meta, dict) else {}
-        distribution = ndvi_meta.get('distribution', {}) if isinstance(ndvi_meta, dict) else {}
-        source = ndvi_meta.get('source', {}) if isinstance(ndvi_meta, dict) else {}
-        index = ndvi_meta.get('index', {}) if isinstance(ndvi_meta, dict) else {}
-        flags = ndvi_meta.get('quality_flags', []) if isinstance(ndvi_meta, dict) else []
+        valid_pixels = vegetation_index_meta.get('valid_pixels', {}) if isinstance(vegetation_index_meta, dict) else {}
+        distribution = vegetation_index_meta.get('distribution', {}) if isinstance(vegetation_index_meta, dict) else {}
+        source = vegetation_index_meta.get('source', {}) if isinstance(vegetation_index_meta, dict) else {}
+        index = vegetation_index_meta.get('index', {}) if isinstance(vegetation_index_meta, dict) else {}
+        flags = vegetation_index_meta.get('quality_flags', []) if isinstance(vegetation_index_meta, dict) else []
         thresholds_used = grid_meta.get('thresholds_used', {}) if isinstance(grid_meta, dict) else {}
         valid_percent = self._as_float(valid_pixels.get('percent'))
         saturated_high = self._as_float(distribution.get('saturated_high_percent'))
         saturated_low = self._as_float(distribution.get('saturated_low_percent'))
         quality_flags = [str(item) for item in flags if str(item).strip()]
         state = 'ok'
-        if ndvi_error:
+        if vegetation_index_error:
             state = 'error'
-            quality_flags.append(ndvi_error)
+            quality_flags.append(vegetation_index_error)
         if grid_error:
             state = 'error'
             quality_flags.append(grid_error)

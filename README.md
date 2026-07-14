@@ -1,6 +1,6 @@
 # AgriVision
 
-AgriVision is a dashboard-first crop risk assessment tool for orthophotos, vegetation analysis, disease-risk scoring, farmer-facing reports, and optional OpenAgri service integrations.
+AgriVision is a dashboard-first crop risk assessment tool for orthophotos, vegetation analysis, disease-risk scoring, farmer-facing reports, and OpenAgri service integrations.
 
 ## Quick Start
 
@@ -12,7 +12,7 @@ docker compose up --build -d
 
 Open [http://127.0.0.1:8008](http://127.0.0.1:8008).
 
-Base dashboard startup does not require `.env` or the optional OpenAgri services.
+Base dashboard startup does not require `.env`, but a valid full report requires the OpenAgri Weather, Irrigation, and Pest & Disease services to be available for the enabled report sections.
 
 ## First-Run Expectations
 
@@ -26,10 +26,10 @@ Works immediately:
 - runtime folder creation
 - default settings in `runtime/settings.json`
 
-Not required before startup:
+Not required before dashboard startup:
 
 - `.env`
-- Weather, Irrigation, or Pest & Disease companion services
+- Weather, Irrigation, or Pest & Disease companion services, although disabled or unavailable services make the full report incomplete
 - API keys
 - local drone imagery
 

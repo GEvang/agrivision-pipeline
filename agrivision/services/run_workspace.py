@@ -17,13 +17,10 @@ class RunWorkspace:
     config: dict[str, Any]
     project_root: Path
     output_root: Path
-    ndvi_output: Path
+    vegetation_index_output: Path
     images_full_rgb: Path
-    images_resized_rgb: Path
     images_full_mapir: Path
-    images_resized_mapir: Path
     images_full_thermal: Path
-    images_resized_thermal: Path
     odm_project_root_rgb: Path
     odm_project_root_mapir: Path
     odm_project_root_thermal: Path
@@ -43,13 +40,10 @@ class RunWorkspace:
             config=config,
             project_root=resolved['project_root'],
             output_root=resolved['output_root'],
-            ndvi_output=resolved['ndvi_output'],
+            vegetation_index_output=resolved['vegetation_index_output'],
             images_full_rgb=resolved['images_full_rgb'],
-            images_resized_rgb=resolved['images_resized_rgb'],
             images_full_mapir=resolved['images_full_mapir'],
-            images_resized_mapir=resolved['images_resized_mapir'],
             images_full_thermal=resolved['images_full_thermal'],
-            images_resized_thermal=resolved['images_resized_thermal'],
             odm_project_root_rgb=resolved['odm_project_root_rgb'],
             odm_project_root_mapir=resolved['odm_project_root_mapir'],
             odm_project_root_thermal=resolved['odm_project_root_thermal'],

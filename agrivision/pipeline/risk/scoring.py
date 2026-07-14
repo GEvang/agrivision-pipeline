@@ -25,13 +25,13 @@ RISK_COLORS = {
 }
 DRIVER_WEIGHTS = {
     "weather": 0.40,
-    "ndvi_anomaly": 0.20,
+    "vegetation_index_anomaly": 0.20,
     "thermal_anomaly": 0.20,
     "historical_pressure": 0.10,
     "soil_irrigation": 0.10,
 }
 SPATIAL_DRIVER_WEIGHTS = {
-    "ndvi_anomaly": 0.50,
+    "vegetation_index_anomaly": 0.50,
     "thermal_anomaly": 0.50,
 }
 
@@ -165,7 +165,7 @@ def _weather_suitability(profile: dict[str, Any], weather_summary: dict[str, Any
     return score, components
 
 
-def _ndvi_anomaly_scores(cells: list[dict[str, Any]]) -> dict[str, float | None]:
+def _vegetation_index_anomaly_scores(cells: list[dict[str, Any]]) -> dict[str, float | None]:
     values = np.array([row["mean_index"] for row in cells if row.get("mean_index") is not None], dtype="float32")
     if values.size < 2:
         return {str(row["cell_id"]): None for row in cells}
@@ -191,10 +191,10 @@ def _irrigation_score(irrigation_summary: dict[str, Any] | None) -> float | None
     return None
 
 
-def _capture_month(ndvi_meta: dict[str, Any], grid_meta: dict[str, Any], weather_summary: dict[str, Any]) -> int:
+def _capture_month(vegetation_index_meta: dict[str, Any], grid_meta: dict[str, Any], weather_summary: dict[str, Any]) -> int:
     candidates = [
         weather_summary.get("current_weather", {}).get("timestamp") if isinstance(weather_summary.get("current_weather"), dict) else None,
-        ndvi_meta.get("generated_at_utc"),
+        vegetation_index_meta.get("generated_at_utc"),
         grid_meta.get("generated_at_utc"),
     ]
     for candidate in candidates:
@@ -215,7 +215,7 @@ def _score_profile(
     phenology = 1.0
     biological_gate = seasonality * phenology
     weather_score, weather_components = _weather_suitability(profile, weather_summary)
-    ndvi_scores = _ndvi_anomaly_scores(cells)
+    vegetation_index_scores = _vegetation_index_anomaly_scores(cells)
     soil_irrigation = _irrigation_score(irrigation_summary)
 
     scored: list[dict[str, Any]] = []
@@ -231,7 +231,7 @@ def _score_profile(
                     "phenology_score": phenology,
                     "biological_gate": biological_gate,
                     "weather_suitability": weather_score,
-                    "ndvi_anomaly": None,
+                    "vegetation_index_anomaly": None,
                     "thermal_anomaly": None,
                     "historical_pressure": None,
                     "soil_irrigation": None,
@@ -244,7 +244,7 @@ def _score_profile(
             continue
         components = {
             "weather": weather_score,
-            "ndvi_anomaly": ndvi_scores.get(cell_id),
+            "vegetation_index_anomaly": vegetation_index_scores.get(cell_id),
             "thermal_anomaly": None,
             "historical_pressure": None,
             "soil_irrigation": soil_irrigation,
@@ -273,7 +273,7 @@ def _score_profile(
                 "phenology_score": phenology,
                 "biological_gate": biological_gate,
                 "weather_suitability": weather_score,
-                "ndvi_anomaly": components["ndvi_anomaly"],
+                "vegetation_index_anomaly": components["vegetation_index_anomaly"],
                 "thermal_anomaly": components["thermal_anomaly"],
                 "historical_pressure": components["historical_pressure"],
                 "soil_irrigation": components["soil_irrigation"],
@@ -321,7 +321,7 @@ def _save_profile_csv(rows: list[dict[str, Any]], path: Path) -> None:
         "phenology_score",
         "biological_gate",
         "weather_suitability",
-        "ndvi_anomaly",
+        "vegetation_index_anomaly",
         "thermal_anomaly",
         "historical_pressure",
         "soil_irrigation",
@@ -401,19 +401,19 @@ def _save_risk_overlay(rows: list[dict[str, Any]], row_edges: np.ndarray, col_ed
 def run_disease_risk_scoring(
     *,
     crop: str | None,
-    ndvi_dir: Path,
+    vegetation_index_dir: Path,
     rgb_orthophoto: Path,
     weather_summary: dict[str, Any],
     irrigation_summary: dict[str, Any] | None,
 ) -> dict[str, Any]:
-    grid_csv = ndvi_dir / "ndvi_grid_cells.csv"
-    grid_meta_path = ndvi_dir / "grid_metadata.json"
-    ndvi_meta_path = ndvi_dir / "metadata.json"
+    grid_csv = vegetation_index_dir / "vegetation_index_grid_cells.csv"
+    grid_meta_path = vegetation_index_dir / "grid_metadata.json"
+    vegetation_index_meta_path = vegetation_index_dir / "metadata.json"
     cells = _load_grid_cells(grid_csv)
     if not cells:
         return {"enabled": False, "notes": ["No grid cells available for disease risk scoring."], "layers": []}
     grid_meta = _load_json(grid_meta_path)
-    ndvi_meta = _load_json(ndvi_meta_path)
+    vegetation_index_meta = _load_json(vegetation_index_meta_path)
     grid_shape = grid_meta.get("grid", {}) if isinstance(grid_meta.get("grid"), dict) else {}
     rows = int(grid_shape.get("rows") or len({row.get("row_label") for row in cells}) or 1)
     cols = int(grid_shape.get("cols") or max(int(row.get("col_label") or 1) for row in cells))
@@ -427,8 +427,8 @@ def run_disease_risk_scoring(
         }
     row_edges = np.linspace(0, max_row_edge, rows + 1, dtype=int)
     col_edges = np.linspace(0, max_col_edge, cols + 1, dtype=int)
-    month = _capture_month(ndvi_meta, grid_meta, weather_summary)
-    out_dir = ndvi_dir / "disease_risk"
+    month = _capture_month(vegetation_index_meta, grid_meta, weather_summary)
+    out_dir = vegetation_index_dir / "disease_risk"
     out_dir.mkdir(parents=True, exist_ok=True)
 
     layers: list[dict[str, Any]] = []
