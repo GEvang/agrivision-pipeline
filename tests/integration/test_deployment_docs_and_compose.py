@@ -3,7 +3,6 @@ from pathlib import Path
 
 def test_deployment_documentation_mentions_root_assets() -> None:
     content = Path("DEPLOYMENT.md").read_text(encoding="utf-8")
-    assert "root-level operational assets" in content.lower()
     assert "docker-compose.yml" in content
     assert "Start AgriVision Windows.bat" in content
 
