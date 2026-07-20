@@ -11,9 +11,8 @@ def test_cli_doctor_mode_prints_json(monkeypatch, capsys):
         'doctor': True,
         'setup_services': False,
         'cleanup': False,
-        'run_resize': False,
         'skip_odm': False,
-        'skip_ndvi': False,
+        'skip_vegetation_index': False,
     })())
 
     cli.main()

@@ -16,7 +16,6 @@ def _request(upload_run_id: str) -> RunCreateRequest:
             'field_name': 'Field 7',
             'upload_run_id': upload_run_id,
             'selected_steps': {
-                'resize_images': True,
                 'run_odm': True,
                 'fetch_weather': False,
                 'generate_report': True,
@@ -103,7 +102,6 @@ def test_start_run_blocks_non_odm_runs_while_another_run_is_active(tmp_path: Pat
             'dataset_name': 'Dataset 1',
             'upload_run_id': 'upload-seed',
             'selected_steps': {
-                'resize_images': False,
                 'run_odm': False,
                 'fetch_weather': True,
                 'run_irrigation': False,
@@ -222,7 +220,6 @@ def test_odm_only_run_does_not_include_services(tmp_path: Path) -> None:
             'dataset_name': 'Dataset 1',
             'upload_run_id': 'upload-seed',
             'selected_steps': {
-                'resize_images': False,
                 'run_odm': True,
                 'fetch_weather': False,
                 'run_irrigation': False,
@@ -236,7 +233,7 @@ def test_odm_only_run_does_not_include_services(tmp_path: Path) -> None:
     stage_keys = [stage.key for stage in record.stages]
 
     assert 'run_odm_rgb' in stage_keys
-    assert 'compute_ndvi' not in stage_keys
+    assert 'compute_vegetation_index' not in stage_keys
     assert 'generate_grid' not in stage_keys
     assert 'fetch_weather' not in stage_keys
     assert 'irrigation_enrichment' not in stage_keys
@@ -309,21 +306,21 @@ def test_launch_run_does_not_attach_stale_global_outputs(tmp_path: Path, monkeyp
     record = service.create_run_record(_request('upload-seed'))
 
     output_root = tmp_path / 'output'
-    ndvi_dir = output_root / 'ndvi'
+    vegetation_index_dir = output_root / 'vegetation_index'
     report_dir = output_root / 'report'
     rgb_ortho = tmp_path / 'odm_rgb' / 'project' / 'odm_orthophoto' / 'odm_orthophoto.tif'
     mapir_ortho = tmp_path / 'odm_mapir' / 'project' / 'odm_orthophoto' / 'odm_orthophoto.tif'
 
-    ndvi_dir.mkdir(parents=True, exist_ok=True)
+    vegetation_index_dir.mkdir(parents=True, exist_ok=True)
     report_dir.mkdir(parents=True, exist_ok=True)
     rgb_ortho.parent.mkdir(parents=True, exist_ok=True)
     mapir_ortho.parent.mkdir(parents=True, exist_ok=True)
 
     (output_root / 'report_latest.html').write_text('<html>stale latest</html>', encoding='utf-8')
     (report_dir / 'index.html').write_text('<html>stale report</html>', encoding='utf-8')
-    (ndvi_dir / 'ndvi.tif').write_text('stale ndvi', encoding='utf-8')
-    (ndvi_dir / 'metadata.json').write_text('{}', encoding='utf-8')
-    (ndvi_dir / 'grid_metadata.json').write_text('{}', encoding='utf-8')
+    (vegetation_index_dir / 'vegetation_index.tif').write_text('stale vegetation_index', encoding='utf-8')
+    (vegetation_index_dir / 'metadata.json').write_text('{}', encoding='utf-8')
+    (vegetation_index_dir / 'grid_metadata.json').write_text('{}', encoding='utf-8')
     rgb_ortho.write_text('stale rgb', encoding='utf-8')
     mapir_ortho.write_text('stale mapir', encoding='utf-8')
 
@@ -336,7 +333,7 @@ def test_launch_run_does_not_attach_stale_global_outputs(tmp_path: Path, monkeyp
     assert completed.outputs == {}
     assert (output_root / 'report_latest.html').exists()
     assert (report_dir / 'index.html').exists()
-    assert (ndvi_dir / 'ndvi.tif').exists()
+    assert (vegetation_index_dir / 'vegetation_index.tif').exists()
     assert rgb_ortho.exists()
     assert mapir_ortho.exists()
 
@@ -427,7 +424,7 @@ def test_run_output_helpers_respect_configured_runs_output_root(tmp_path: Path, 
         'progress_percent': 0,
         'current_stage': 'generate_report',
         'stage_message': 'Generating report',
-        'selected_steps': {'resize_images': False, 'run_odm': True, 'fetch_weather': False, 'generate_report': True},
+        'selected_steps': {'run_odm': True, 'fetch_weather': False, 'generate_report': True},
         'parameters': {},
         'outputs': {},
         'errors': [],
@@ -557,7 +554,7 @@ def test_update_status_uses_storage_run_dir_for_legacy_record_paths(tmp_path: Pa
         'progress_percent': 0,
         'current_stage': 'run_odm_rgb',
         'stage_message': 'Running ODM',
-        'selected_steps': {'resize_images': False, 'run_odm': True, 'fetch_weather': False, 'generate_report': True},
+        'selected_steps': {'run_odm': True, 'fetch_weather': False, 'generate_report': True},
         'parameters': {},
         'outputs': {},
         'errors': [],
@@ -590,7 +587,7 @@ def test_discover_outputs_copies_report_to_per_run_output(tmp_path: Path, monkey
         'progress_percent': 0,
         'current_stage': 'generate_report',
         'stage_message': 'Generating report',
-        'selected_steps': {'resize_images': False, 'run_odm': True, 'fetch_weather': False, 'generate_report': True},
+        'selected_steps': {'run_odm': True, 'fetch_weather': False, 'generate_report': True},
         'parameters': {},
         'outputs': {},
         'errors': [],
@@ -605,9 +602,9 @@ def test_discover_outputs_copies_report_to_per_run_output(tmp_path: Path, monkey
     report_latest = output_root / 'report_latest.html'
     report_latest.parent.mkdir(parents=True, exist_ok=True)
     report_latest.write_text('<html></html>', encoding='utf-8')
-    ndvi_dir = output_root / 'ndvi'
-    ndvi_dir.mkdir(parents=True, exist_ok=True)
-    (ndvi_dir / 'ndvi.tif').write_text('x', encoding='utf-8')
+    vegetation_index_dir = output_root / 'vegetation_index'
+    vegetation_index_dir.mkdir(parents=True, exist_ok=True)
+    (vegetation_index_dir / 'vegetation_index.tif').write_text('x', encoding='utf-8')
     rgb_ortho = workspace_dir / 'data' / 'odm_project_rgb' / 'project' / 'odm_orthophoto' / 'odm_orthophoto.tif'
     rgb_ortho.parent.mkdir(parents=True)
     rgb_ortho.write_text('rgb', encoding='utf-8')
@@ -640,7 +637,6 @@ def test_orthophoto_only_outputs_do_not_attach_stale_analysis_files(tmp_path: Pa
         'current_stage': 'run_odm_mapir',
         'stage_message': 'Running ODM',
         'selected_steps': {
-            'resize_images': False,
             'run_odm': True,
             'fetch_weather': False,
             'run_irrigation': False,
@@ -657,11 +653,11 @@ def test_orthophoto_only_outputs_do_not_attach_stale_analysis_files(tmp_path: Pa
         'run_dir': str(run_dir),
     })
     output_root = tmp_path / 'output'
-    (output_root / 'ndvi').mkdir(parents=True, exist_ok=True)
+    (output_root / 'vegetation_index').mkdir(parents=True, exist_ok=True)
     (output_root / 'report_latest.html').write_text('<html>stale</html>', encoding='utf-8')
-    (output_root / 'ndvi' / 'ndvi.tif').write_text('stale ndvi', encoding='utf-8')
-    (output_root / 'ndvi' / 'metadata.json').write_text('{}', encoding='utf-8')
-    (output_root / 'ndvi' / 'grid_metadata.json').write_text('{}', encoding='utf-8')
+    (output_root / 'vegetation_index' / 'vegetation_index.tif').write_text('stale vegetation_index', encoding='utf-8')
+    (output_root / 'vegetation_index' / 'metadata.json').write_text('{}', encoding='utf-8')
+    (output_root / 'vegetation_index' / 'grid_metadata.json').write_text('{}', encoding='utf-8')
     workspace_dir = run_dir / 'workspace'
     rgb_ortho = workspace_dir / 'data' / 'odm_project_rgb' / 'project' / 'odm_orthophoto' / 'odm_orthophoto.tif'
     rgb_ortho.parent.mkdir(parents=True)
@@ -716,7 +712,7 @@ def test_stage_saved_orthophotos_for_run_restores_pipeline_inputs(tmp_path: Path
         'progress_percent': 100,
         'current_stage': 'completed',
         'stage_message': 'Done',
-        'selected_steps': {'resize_images': False, 'run_odm': True, 'fetch_weather': False, 'generate_report': False},
+        'selected_steps': {'run_odm': True, 'fetch_weather': False, 'generate_report': False},
         'parameters': {},
         'outputs': {'orthophoto_rgb': str(saved_rgb), 'orthophoto_mapir': str(saved_mapir)},
         'errors': [],
@@ -754,7 +750,7 @@ def test_report_filename_falls_back_to_system_timestamp(tmp_path: Path, monkeypa
         'progress_percent': 0,
         'current_stage': 'generate_report',
         'stage_message': 'Generating report',
-        'selected_steps': {'resize_images': False, 'run_odm': True, 'fetch_weather': False, 'generate_report': True},
+        'selected_steps': {'run_odm': True, 'fetch_weather': False, 'generate_report': True},
         'parameters': {},
         'outputs': {},
         'errors': [],
@@ -794,11 +790,11 @@ def test_back_to_back_runs_keep_outputs_isolated_and_track_reused_orthophotos(tm
             mapir.parent.mkdir(parents=True, exist_ok=True)
             rgb.write_text('rgb-ortho', encoding='utf-8')
             mapir.write_text('mapir-ortho', encoding='utf-8')
-            ndvi_dir = workspace / 'output' / 'ndvi'
-            ndvi_dir.mkdir(parents=True, exist_ok=True)
-            (ndvi_dir / 'ndvi.tif').write_text('ndvi', encoding='utf-8')
-            (ndvi_dir / 'metadata.json').write_text('{}', encoding='utf-8')
-            (ndvi_dir / 'grid_metadata.json').write_text('{}', encoding='utf-8')
+            vegetation_index_dir = workspace / 'output' / 'vegetation_index'
+            vegetation_index_dir.mkdir(parents=True, exist_ok=True)
+            (vegetation_index_dir / 'vegetation_index.tif').write_text('vegetation_index', encoding='utf-8')
+            (vegetation_index_dir / 'metadata.json').write_text('{}', encoding='utf-8')
+            (vegetation_index_dir / 'grid_metadata.json').write_text('{}', encoding='utf-8')
         if not skip_report:
             report = workspace / 'output' / 'report_latest.html'
             report.parent.mkdir(parents=True, exist_ok=True)
@@ -816,7 +812,6 @@ def test_back_to_back_runs_keep_outputs_isolated_and_track_reused_orthophotos(tm
             'dataset_name': 'Dataset 1',
             'upload_run_id': 'upload-seed',
             'selected_steps': {
-                'resize_images': False,
                 'run_odm': False,
                 'fetch_weather': False,
                 'run_irrigation': False,
@@ -833,7 +828,7 @@ def test_back_to_back_runs_keep_outputs_isolated_and_track_reused_orthophotos(tm
     assert 'report_html' in first_loaded.outputs
     assert sorted(second_loaded.outputs) == ['orthophoto_mapir', 'orthophoto_rgb']
     assert 'report_html' not in second_loaded.outputs
-    assert 'ndvi_metadata' not in second_loaded.outputs
+    assert 'vegetation_index_metadata' not in second_loaded.outputs
     assert second_loaded.artifacts['orthophoto_rgb'].origin == 'restored_from_previous_run'
     assert second_loaded.artifacts['orthophoto_rgb'].source_run_id == first.run_id
     assert second_loaded.artifacts['orthophoto_rgb'].source_path == first_loaded.outputs['orthophoto_rgb']

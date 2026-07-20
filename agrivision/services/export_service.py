@@ -161,10 +161,10 @@ class RunExportService:
         ]
 
         for key, arcname in (
-            ('ndvi_metadata', 'quality/metadata.json'),
+            ('vegetation_index_metadata', 'quality/metadata.json'),
             ('grid_metadata', 'quality/grid_metadata.json'),
             ('disease_risk_summary', 'risk/disease_risk_summary.json'),
-            ('ndvi_tif', 'rasters/vegetation_index.tif'),
+            ('vegetation_index_tif', 'rasters/vegetation_index.tif'),
             ('orthophoto_rgb', 'rasters/orthophoto_rgb.tif'),
             ('orthophoto_mapir', 'rasters/orthophoto_mapir.tif'),
             ('orthophoto_thermal', 'rasters/orthophoto_thermal.tif'),
@@ -175,16 +175,16 @@ class RunExportService:
 
         candidates.extend(
             [
-                (workspace.ndvi_output / 'ndvi_color.png', 'quality/vegetation_index.png'),
-                (workspace.ndvi_output / 'ndvi_grid_overlay.png', 'quality/grid_overlay.png'),
-                (workspace.ndvi_output / 'ndvi_grid_cells.csv', 'quality/grid_cells.csv'),
-                (workspace.ndvi_output / 'ndvi_grid_categories.csv', 'quality/grid_categories.csv'),
-                (workspace.ndvi_output / 'metadata.json', 'quality/metadata.json'),
-                (workspace.ndvi_output / 'grid_metadata.json', 'quality/grid_metadata.json'),
-                (workspace.ndvi_output / 'disease_risk' / 'summary.json', 'risk/disease_risk_summary.json'),
+                (workspace.vegetation_index_output / 'vegetation_index_color.png', 'quality/vegetation_index.png'),
+                (workspace.vegetation_index_output / 'vegetation_index_grid_overlay.png', 'quality/grid_overlay.png'),
+                (workspace.vegetation_index_output / 'vegetation_index_grid_cells.csv', 'quality/grid_cells.csv'),
+                (workspace.vegetation_index_output / 'vegetation_index_grid_categories.csv', 'quality/grid_categories.csv'),
+                (workspace.vegetation_index_output / 'metadata.json', 'quality/metadata.json'),
+                (workspace.vegetation_index_output / 'grid_metadata.json', 'quality/grid_metadata.json'),
+                (workspace.vegetation_index_output / 'disease_risk' / 'summary.json', 'risk/disease_risk_summary.json'),
             ]
         )
-        risk_dir = workspace.ndvi_output / 'disease_risk'
+        risk_dir = workspace.vegetation_index_output / 'disease_risk'
         if risk_dir.exists():
             for path in sorted(risk_dir.glob('*_overlay.png')):
                 candidates.append((path, f'risk/{path.name}'))

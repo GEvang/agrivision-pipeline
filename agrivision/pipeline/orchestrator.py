@@ -9,8 +9,9 @@ from agrivision.pipeline.stages.grid import run_grid_report
 from agrivision.pipeline.stages.irrigation_enrichment import run_irrigation_enrichment
 from agrivision.pipeline.stages.odm import run_odm_mapir, run_odm_rgb, run_odm_thermal
 from agrivision.pipeline.stages.pdm_enrichment import run_pdm_enrichment
+from agrivision.pipeline.stages.pixel_alignment import run_pixel_alignment_fallback
 from agrivision.pipeline.stages.report import run_report
-from agrivision.pipeline.stages.vegetation_index import run_ndvi
+from agrivision.pipeline.stages.vegetation_index import run_vegetation_index
 from agrivision.pipeline.stages.weather_enrichment import run_weather_enrichment
 from agrivision.pipeline.state import folder_has_images
 
@@ -19,17 +20,16 @@ def _orthophoto_exists(path: Path) -> bool:
     return path.exists()
 
 
-def _ndvi_exists(path: Path) -> bool:
+def _vegetation_index_exists(path: Path) -> bool:
     return path.exists()
 
 
 def run_full_pipeline(
-    run_resize_step: bool = False,
     skip_odm: bool = False,
     skip_odm_rgb: bool = False,
     skip_odm_mapir: bool = False,
     skip_odm_thermal: bool = False,
-    skip_ndvi: bool = False,
+    skip_vegetation_index: bool = False,
     skip_grid: bool = False,
     skip_weather: bool = False,
     skip_irrigation: bool = False,
@@ -44,12 +44,11 @@ def run_full_pipeline(
 ) -> None:
     print("\n================== AgriVision Pipeline Start ==================\n")
     print("Configuration:")
-    print(f"  run_resize_step = {run_resize_step}")
     print(f"  skip_odm        = {skip_odm}")
     print(f"  skip_odm_rgb    = {skip_odm_rgb}")
     print(f"  skip_odm_mapir  = {skip_odm_mapir}")
     print(f"  skip_odm_thermal= {skip_odm_thermal}")
-    print(f"  skip_ndvi       = {skip_ndvi}")
+    print(f"  skip_vegetation_index       = {skip_vegetation_index}")
     print(f"  skip_grid       = {skip_grid}")
     print(f"  skip_weather    = {skip_weather}")
     print(f"  skip_irrigation = {skip_irrigation}")
@@ -62,18 +61,40 @@ def run_full_pipeline(
     ortho_rgb = resolved['ortho_rgb']
     ortho_mapir = resolved['ortho_mapir']
     ortho_thermal = resolved.get('ortho_thermal')
-    ndvi_tif = resolved['ndvi_output'] / 'ndvi.tif'
+    vegetation_index_tif = resolved['vegetation_index_output'] / 'vegetation_index.tif'
     images_full_rgb = resolved.get('images_full_rgb')
     images_full_mapir = resolved.get('images_full_mapir')
     images_full_thermal = resolved.get('images_full_thermal')
     output_root = resolved['output_root']
+    pixel_fallback_used = False
+    odm_failures: list[str] = []
 
-    if run_resize_step:
-        print('Step 1/5: Resize requested but disabled. Using full-resolution images.')
+    def _available_demo_inputs() -> bool:
+        return any(
+            isinstance(path, Path) and folder_has_images(path)
+            for path in (images_full_rgb, images_full_mapir, images_full_thermal)
+        )
+
+    def _run_pixel_fallback(reason: str) -> None:
+        nonlocal pixel_fallback_used
+        if pixel_fallback_used:
+            return
+        if not _available_demo_inputs():
+            raise RuntimeError(reason)
         if progress_callback:
-            progress_callback('resize_images', 'Resize disabled; full-resolution images will be used', 'completed')
-    else:
-        print('Step 1/5: Resize disabled. ODM will use full-resolution images.')
+            progress_callback('run_odm_rgb', 'Falling back to pixel-space demo alignment', 'running')
+        print(f"\n[Demo Alignment] {reason}")
+        run_pixel_alignment_fallback(workspace_root=workspace_root, config=config)
+        pixel_fallback_used = True
+        if progress_callback:
+            for stage_key, label in (
+                ('run_odm_rgb', 'RGB fallback analysis image ready'),
+                ('run_odm_mapir', 'MAPIR fallback analysis image ready'),
+                ('run_odm_thermal', 'Thermal fallback analysis image ready'),
+            ):
+                progress_callback(stage_key, label, 'completed')
+
+    print('Step 1/5: ODM will use full-resolution images.')
 
     if skip_odm:
         skip_odm_rgb = True
@@ -92,9 +113,14 @@ def run_full_pipeline(
             if progress_callback:
                 progress_callback('run_odm_rgb', 'Running ODM for RGB images', 'running')
             print('\n[ODM-RGB] Running RGB ODM...')
-            run_odm_rgb(ortho_resolution_cm=orthophoto_resolution_cm, workspace_root=workspace_root, config=config)
-            if progress_callback:
-                progress_callback('run_odm_rgb', 'RGB orthophoto complete', 'completed')
+            try:
+                run_odm_rgb(ortho_resolution_cm=orthophoto_resolution_cm, workspace_root=workspace_root, config=config)
+                if progress_callback:
+                    progress_callback('run_odm_rgb', 'RGB orthophoto complete', 'completed')
+            except Exception as exc:
+                message = f'RGB ODM failed ({exc}); using pixel-space demo fallback instead.'
+                odm_failures.append(message)
+                _run_pixel_fallback(message)
         else:
             print('\n[ODM-RGB] No RGB images found. Skipping RGB ODM.')
             if progress_callback:
@@ -103,13 +129,20 @@ def run_full_pipeline(
     if skip_odm_mapir:
         print('\n[ODM-MAPIR] Skipping MAPIR ODM (skip flag active).')
     else:
-        if isinstance(images_full_mapir, Path) and folder_has_images(images_full_mapir):
+        if pixel_fallback_used:
+            print('\n[ODM-MAPIR] Demo fallback already created MAPIR analysis image.')
+        elif isinstance(images_full_mapir, Path) and folder_has_images(images_full_mapir):
             if progress_callback:
                 progress_callback('run_odm_mapir', 'Running ODM for MAPIR images', 'running')
-            print('\n[ODM-MAPIR] MAPIR images detected – running MAPIR ODM...')
-            run_odm_mapir(ortho_resolution_cm=orthophoto_resolution_cm, workspace_root=workspace_root, config=config)
-            if progress_callback:
-                progress_callback('run_odm_mapir', 'MAPIR orthophoto complete', 'completed')
+            print('\n[ODM-MAPIR] MAPIR images detected â€“ running MAPIR ODM...')
+            try:
+                run_odm_mapir(ortho_resolution_cm=orthophoto_resolution_cm, workspace_root=workspace_root, config=config)
+                if progress_callback:
+                    progress_callback('run_odm_mapir', 'MAPIR orthophoto complete', 'completed')
+            except Exception as exc:
+                message = f'MAPIR ODM failed ({exc}); using pixel-space demo fallback instead.'
+                odm_failures.append(message)
+                _run_pixel_fallback(message)
         else:
             print('\n[ODM-MAPIR] No MAPIR images found. Skipping MAPIR ODM.')
             if progress_callback:
@@ -120,43 +153,55 @@ def run_full_pipeline(
         if isinstance(ortho_thermal, Path) and _orthophoto_exists(ortho_thermal):
             print(f'[ODM-THERMAL] Reusing existing thermal orthophoto: {ortho_thermal}')
     else:
-        if isinstance(images_full_thermal, Path) and folder_has_images(images_full_thermal):
+        if pixel_fallback_used:
+            print('\n[ODM-THERMAL] Demo fallback already created thermal analysis image.')
+        elif isinstance(images_full_thermal, Path) and folder_has_images(images_full_thermal):
             if progress_callback:
                 progress_callback('run_odm_thermal', 'Running ODM for thermal images', 'running')
             print('\n[ODM-THERMAL] Thermal images detected - running thermal ODM...')
-            run_odm_thermal(ortho_resolution_cm=orthophoto_resolution_cm, workspace_root=workspace_root, config=config)
-            if progress_callback:
-                progress_callback('run_odm_thermal', 'Thermal orthophoto complete', 'completed')
+            try:
+                run_odm_thermal(ortho_resolution_cm=orthophoto_resolution_cm, workspace_root=workspace_root, config=config)
+                if progress_callback:
+                    progress_callback('run_odm_thermal', 'Thermal orthophoto complete', 'completed')
+            except Exception as exc:
+                message = f'Thermal ODM failed ({exc}); using pixel-space demo fallback instead.'
+                odm_failures.append(message)
+                _run_pixel_fallback(message)
         else:
             print('\n[ODM-THERMAL] No thermal images found. Skipping thermal ODM.')
             if progress_callback:
                 progress_callback('run_odm_thermal', 'No thermal images found', 'completed')
 
-    if skip_ndvi:
-        print('\nStep 3/5: Skipping NDVI (--skip-ndvi).')
-        if not skip_grid and not _ndvi_exists(ndvi_tif):
+    if not _orthophoto_exists(ortho_rgb) and not _orthophoto_exists(ortho_mapir) and _available_demo_inputs():
+        _run_pixel_fallback('No orthophoto outputs were generated; using pixel-space demo fallback.')
+    elif odm_failures and not pixel_fallback_used:
+        raise RuntimeError(odm_failures[0])
+
+    if skip_vegetation_index:
+        print('\nStep 3/5: Skipping Vegetation Index (--skip-vegetation-index).')
+        if not skip_grid and not _vegetation_index_exists(vegetation_index_tif):
             raise RuntimeError(
-                f'\n[ERROR] NDVI skipped but NDVI output missing:\n  {ndvi_tif}\n'
+                f'\n[ERROR] Vegetation Index skipped but Vegetation Index output missing:\n  {vegetation_index_tif}\n'
             )
     else:
         if progress_callback:
-            progress_callback('compute_ndvi', 'Computing NDVI', 'running')
-        print('\nStep 3/5: Computing NDVI...')
+            progress_callback('compute_vegetation_index', 'Computing Vegetation Index', 'running')
+        print('\nStep 3/5: Computing Vegetation Index...')
         if not _orthophoto_exists(ortho_rgb) and not _orthophoto_exists(ortho_mapir):
-            raise RuntimeError('\n[ERROR] No orthophoto available for NDVI.\n')
-        run_ndvi(workspace_root=workspace_root, config=config)
+            raise RuntimeError('\n[ERROR] No orthophoto available for Vegetation Index.\n')
+        run_vegetation_index(workspace_root=workspace_root, config=config)
         if progress_callback:
-            progress_callback('compute_ndvi', 'NDVI complete', 'completed')
+            progress_callback('compute_vegetation_index', 'Vegetation Index complete', 'completed')
 
     if skip_grid:
-        print('\nStep 4/5: Skipping NDVI grid (--skip-grid).')
+        print('\nStep 4/5: Skipping Vegetation Index grid (--skip-grid).')
     else:
         if progress_callback:
-            progress_callback('generate_grid', 'Generating NDVI grid', 'running')
-        print('\nStep 4/5: Generating NDVI grid...')
+            progress_callback('generate_grid', 'Generating Vegetation Index grid', 'running')
+        print('\nStep 4/5: Generating Vegetation Index grid...')
         run_grid_report(workspace_root=workspace_root, config=config)
         if progress_callback:
-            progress_callback('generate_grid', 'NDVI grid complete', 'completed')
+            progress_callback('generate_grid', 'Vegetation Index grid complete', 'completed')
 
     if skip_weather:
         print('\n[AgriVision] Skipping Weather integration (--skip-weather).')
@@ -169,9 +214,9 @@ def run_full_pipeline(
             output_root, config.get('location', {}).get('name', 'Unknown location')
         )
         if weather_summary.get('enabled'):
-            print('[AgriVision] ✅ Weather integration completed')
+            print('[AgriVision] âœ… Weather integration completed')
         else:
-            print('[AgriVision] ⚠️ Weather integration failed (continuing pipeline).')
+            print('[AgriVision] âš ï¸ Weather integration failed (continuing pipeline).')
             print(f"[AgriVision] Reason: {weather_summary.get('notes', [''])[0]}")
         if progress_callback:
             progress_callback('fetch_weather', 'Weather enrichment complete', 'completed')
@@ -214,9 +259,9 @@ def run_full_pipeline(
             artifact_dir=output_root / 'pdm',
         )
         if pdm_summary.get('status') == 'success':
-            print('[AgriVision] ✅ Pest & Disease integration completed')
+            print('[AgriVision] âœ… Pest & Disease integration completed')
         else:
-            print('[AgriVision] ⚠️ Pest & Disease integration failed or degraded (continuing pipeline).')
+            print('[AgriVision] âš ï¸ Pest & Disease integration failed or degraded (continuing pipeline).')
             print(f"[AgriVision] Reason: {pdm_summary.get('error_message') or (pdm_summary.get('notes', [''])[0] if pdm_summary.get('notes') else '')}")
         if progress_callback:
             progress_callback('pdm_enrichment', 'Pest & disease enrichment complete', 'completed')

@@ -1,4 +1,4 @@
-# Contributing
+# Contributing And Support
 
 ## Before Opening A Change
 
@@ -6,13 +6,7 @@
 - do not commit real credentials or populated `.env` files
 - update documentation when behavior, commands, or operator expectations change
 
-## Development Setup
-
-Use `docs/developer/local-dev.md` for local setup and `docs/developer/testing.md` for test commands.
-
-## Minimum Quality Bar
-
-Before opening a pull request or handing off a patch:
+## Quality Checks
 
 ```bash
 make lint
@@ -21,16 +15,19 @@ make smoke-config
 docker compose -f docker-compose.yml config
 ```
 
-## Documentation Rules
+## Issue Types
 
-- keep docs specific to the current repository behavior
-- do not add placeholder sections, unresolved questionnaires, or template filler
-- prefer one good guide over several overlapping ones
-
-## Issues
-
-Use the GitHub issue templates for:
+Use GitHub issues for:
 
 - bug reports
 - feature requests
+- documentation updates
 - support questions
+- testing issues
+
+## Documentation Rules
+
+- keep documentation specific to current repository behavior
+- keep operator instructions limited to the provided start files and Docker
+- document OpenAgri Weather, Irrigation, and Pest & Disease services as required
+- prefer one focused guide over several overlapping guides

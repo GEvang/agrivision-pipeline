@@ -22,7 +22,7 @@ def get_report_settings(
     resolved = resolve_pipeline_paths(workspace_root=workspace_root, config=config)
     output_dir = resolved["output_root"]
     report_path = resolved["report_path"]
-    ndvi_dir = resolved["ndvi_output"]
+    vegetation_index_dir = resolved["vegetation_index_output"]
     weather_dir = output_dir / "weather"
     report_assets_dir = output_dir / "report_assets"
     return {
@@ -30,7 +30,7 @@ def get_report_settings(
         "output_dir": output_dir,
         "report_path": report_path,
         "report_assets_dir": report_assets_dir,
-        "ndvi_dir": ndvi_dir,
+        "vegetation_index_dir": vegetation_index_dir,
         "weather_dir": weather_dir,
         "orthophoto_rgb": resolved["ortho_rgb"],
         "orthophoto_mapir": resolved["ortho_mapir"],
@@ -38,14 +38,14 @@ def get_report_settings(
         "orthophoto_rgb_preview": report_assets_dir / "visible_orthomosaic.png",
         "orthophoto_mapir_preview": report_assets_dir / "mapir_placeholder.png",
         "orthophoto_thermal_preview": report_assets_dir / "thermal_orthomosaic.png",
-        "ndvi_meta_path": ndvi_dir / "metadata.json",
-        "grid_meta_path": ndvi_dir / "grid_metadata.json",
-        "ndvi_tif": ndvi_dir / "ndvi.tif",
-        "ndvi_color_png": ndvi_dir / "ndvi_color.png",
-        "grid_overlay_png": ndvi_dir / "ndvi_grid_overlay.png",
-        "grid_cells_csv": ndvi_dir / "ndvi_grid_cells.csv",
-        "grid_categories_csv": ndvi_dir / "ndvi_grid_categories.csv",
-        "disease_risk_summary": ndvi_dir / "disease_risk" / "summary.json",
+        "vegetation_index_meta_path": vegetation_index_dir / "metadata.json",
+        "grid_meta_path": vegetation_index_dir / "grid_metadata.json",
+        "vegetation_index_tif": vegetation_index_dir / "vegetation_index.tif",
+        "vegetation_index_color_png": vegetation_index_dir / "vegetation_index_color.png",
+        "grid_overlay_png": vegetation_index_dir / "vegetation_index_grid_overlay.png",
+        "grid_cells_csv": vegetation_index_dir / "vegetation_index_grid_cells.csv",
+        "grid_categories_csv": vegetation_index_dir / "vegetation_index_grid_categories.csv",
+        "disease_risk_summary": vegetation_index_dir / "disease_risk" / "summary.json",
     }
 
 def rel_to_report(abs_path: Path, output_dir: Path) -> str:
@@ -79,8 +79,8 @@ def load_grid_cells(grid_cells_csv: Path) -> List[Dict[str, str]]:
 
 
 
-def get_index_title(ndvi_meta: dict, grid_meta: dict) -> str:
-    idx = (ndvi_meta.get("index", {}) or {}).get("index_name")
+def get_index_title(vegetation_index_meta: dict, grid_meta: dict) -> str:
+    idx = (vegetation_index_meta.get("index", {}) or {}).get("index_name")
     if idx:
         return str(idx)
     idx2 = grid_meta.get("index_name")

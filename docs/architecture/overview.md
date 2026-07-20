@@ -1,47 +1,37 @@
 # Architecture Overview
 
-AgriVision keeps the processing logic separate from its transport layers. The two supported entry points are:
+AgriVision separates the dashboard, configuration, integrations, processing pipeline, and runtime helpers.
 
-- the CLI
-- the FastAPI dashboard
+## Entry Points
 
-## Top-Level Structure
+- Dashboard: operator interface for uploads, runs, reports, settings, and artifacts
+- CLI: diagnostics, cleanup, service setup/control, and maintainer workflows
 
-- `agrivision/app/`: HTTP routes, templates, schemas, CLI entry, and presentation concerns
-- `agrivision/config/`: config loading, defaults, schema compatibility, typed settings
-- `agrivision/domain/`: internal contracts, enums, and core models
-- `agrivision/integrations/`: translation between AgriVision and external providers
+## Main Components
+
+- `agrivision/app/`: dashboard, API routes, templates, schemas, and CLI entry
+- `agrivision/config/`: configuration loading and typed settings
+- `agrivision/domain/`: internal contracts and models
+- `agrivision/integrations/`: adapters for OpenAgri and other external payloads
 - `agrivision/pipeline/`: orchestration, stages, artifact I/O, grid/risk/report generation
 - `agrivision/runtime/`: environment and Docker/runtime helpers
-- `agrivision/services/`: run management, exports, previews, settings persistence, service control
-
-## Execution Model
-
-Normal operator use starts the dashboard through the root Docker Compose stack. The dashboard creates runs, persists run state under `runtime/runs/`, and delegates long-running work to the pipeline/services layer.
-
-The CLI still exists for diagnostics, cleanup, service setup/control, and direct local pipeline execution.
+- `agrivision/services/`: run management, exports, previews, settings persistence, and service control
 
 ## Data Flow
 
-1. load config and environment overrides
-2. resolve input, output, and runtime paths
-3. run or reuse ODM orthophoto generation
-4. compute vegetation products
-5. generate grid and risk outputs
-6. fetch optional enrichment data
-7. write artifacts and metadata
-8. render the final report
+1. Load configuration and environment overrides.
+2. Resolve input, output, and runtime paths.
+3. Run or reuse ODM orthophoto generation.
+4. Compute vegetation products.
+5. Generate grid and risk outputs.
+6. Fetch OpenAgri Weather, Irrigation, and Pest & Disease enrichment data.
+7. Write artifacts and metadata.
+8. Render the final report.
 
-## Boundary Rules
+## Outputs
 
-- `integrations` translates external payloads into internal shapes
-- `services` owns concrete provider/runtime behavior
-- `pipeline` owns stage sequencing and artifact production
-- `app` should not contain pipeline logic
-
-## Related Docs
-
-- deployment details: `docs/architecture/deployment-view.md`
-- module boundary notes: `docs/architecture/module-boundaries.md`
-- data flow summary: `docs/architecture/data-flow.md`
-- interoperability notes: `docs/architecture/interoperability.md`
+- reports and generated artifacts: `output/`
+- per-run saved outputs: `output/runs/<run_id>/`
+- run metadata and logs: `runtime/runs/<run_id>/`
+- export packages: `runtime/exports/`
+- semantic metadata: `metadata/run_metadata.jsonld` inside export packages

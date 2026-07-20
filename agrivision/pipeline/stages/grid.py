@@ -9,6 +9,7 @@ from typing import Any, Optional, cast
 import numpy as np
 import rasterio
 from rasterio.enums import Resampling
+from rasterio.warp import reproject
 
 from agrivision.pipeline.grid.classify import classify_value_absolute, make_grid
 from agrivision.pipeline.grid.io import (
@@ -49,23 +50,41 @@ def _resample_array_to_shape(arr: np.ndarray, shape: tuple[int, int]) -> np.ndar
     return arr[np.ix_(row_idx, col_idx)]
 
 
-def _analysis_mask_from_rgb(rgb_path: Path, shape: tuple[int, int], out_png: Path) -> np.ndarray | None:
-    """Build a pixel-space mask that removes obvious hard surfaces from RGB."""
+def _analysis_mask_from_rgb(
+    rgb_path: Path,
+    shape: tuple[int, int],
+    out_png: Path,
+    *,
+    reference_transform: object | None = None,
+    reference_crs: object | None = None,
+) -> np.ndarray | None:
+    """Build an index-grid mask that removes obvious hard surfaces from RGB."""
     if not rgb_path.exists():
         return None
     full_height, full_width = shape
-    scale = min(1.0, 3000 / float(max(shape)))
-    height = max(1, int(full_height * scale))
-    width = max(1, int(full_width * scale))
     try:
         with rasterio.open(rgb_path) as src:
             if src.count < 3:
                 return None
-            rgb = src.read(
-                [1, 2, 3],
-                out_shape=(3, height, width),
-                resampling=Resampling.bilinear,
-            ).astype("float32")
+            if reference_transform is not None and reference_crs is not None and src.crs is not None:
+                rgb = np.zeros((3, full_height, full_width), dtype="float32")
+                for out_idx, band_idx in enumerate((1, 2, 3)):
+                    reproject(
+                        source=rasterio.band(src, band_idx),
+                        destination=rgb[out_idx],
+                        src_transform=src.transform,
+                        src_crs=src.crs,
+                        dst_transform=reference_transform,
+                        dst_crs=reference_crs,
+                        resampling=Resampling.bilinear,
+                        dst_nodata=0,
+                    )
+            else:
+                rgb = src.read(
+                    [1, 2, 3],
+                    out_shape=(3, full_height, full_width),
+                    resampling=Resampling.bilinear,
+                ).astype("float32")
     except (OSError, rasterio.errors.RasterioError):
         return None
 
@@ -92,11 +111,12 @@ def _analysis_mask_from_rgb(rgb_path: Path, shape: tuple[int, int], out_png: Pat
     )
 
     out_png.parent.mkdir(parents=True, exist_ok=True)
-    plt_mask = mask.astype("uint8") * 255
+    scale = min(1.0, 3000 / float(max(shape)))
+    preview_mask = _preview_array(mask.astype("uint8") * 255, max_edge=3000) if scale < 1.0 else mask.astype("uint8") * 255
     import matplotlib.pyplot as plt
 
     plt.figure(figsize=(8, 8))
-    plt.imshow(plt_mask, cmap="gray", vmin=0, vmax=255)
+    plt.imshow(preview_mask, cmap="gray", vmin=0, vmax=255)
     plt.axis("off")
     plt.tight_layout(pad=0)
     plt.savefig(out_png, dpi=220, bbox_inches="tight", pad_inches=0)
@@ -112,8 +132,8 @@ def run_grid_report(
 ) -> None:
     """Load the index raster, compute the grid, and write all grid artifacts."""
     resolved = get_grid_settings(workspace_root=workspace_root, config=config)
-    ndvi_tif = cast(Path, resolved["ndvi_tif"])
-    ndvi_meta_json = cast(Path, resolved["ndvi_meta_json"])
+    vegetation_index_tif = cast(Path, resolved["vegetation_index_tif"])
+    vegetation_index_meta_json = cast(Path, resolved["vegetation_index_meta_json"])
     ortho_rgb = cast(Path, resolved["ortho_rgb"])
     grid_png = cast(Path, resolved["grid_png"])
     analysis_mask_png = cast(Path, resolved["analysis_mask_png"])
@@ -131,25 +151,32 @@ def run_grid_report(
         calibration_percentiles = [33, 66]
 
     print("[AgriVision] Grid report")
-    print(f"  Raster source: {ndvi_tif}")
+    print(f"  Raster source: {vegetation_index_tif}")
     print(f"  Grid: {grid_rows} rows x {grid_cols} cols")
 
-    if not ndvi_tif.exists():
-        raise FileNotFoundError(f"Index file not found: {ndvi_tif}")
+    if not vegetation_index_tif.exists():
+        raise FileNotFoundError(f"Index file not found: {vegetation_index_tif}")
 
-    index_name, index_mode, source_dataset = load_index_identity(ndvi_meta_json)
+    index_name, index_mode, source_dataset = load_index_identity(vegetation_index_meta_json)
 
-    with rasterio.open(ndvi_tif) as src:
+    with rasterio.open(vegetation_index_tif) as src:
         arr = src.read(1).astype("float32")
+        index_transform = src.transform
+        index_crs = src.crs
 
     arr[~np.isfinite(arr)] = np.nan
     analysis_arr = arr
-    analysis_mask = _analysis_mask_from_rgb(ortho_rgb, arr.shape, analysis_mask_png)
+    analysis_mask = _analysis_mask_from_rgb(
+        ortho_rgb,
+        arr.shape,
+        analysis_mask_png,
+        reference_transform=index_transform,
+        reference_crs=index_crs,
+    )
     if analysis_mask is not None:
-        analysis_arr = _resample_array_to_shape(arr, analysis_mask.shape)
-        analysis_arr = analysis_arr.copy()
+        analysis_arr = arr.copy()
         analysis_arr[~analysis_mask] = np.nan
-        _save_masked_index_png(analysis_arr, ndvi_tif.with_name("ndvi_color.png"), title=index_name, out_dir=ndvi_tif.parent)
+        _save_masked_index_png(analysis_arr, vegetation_index_tif.with_name("vegetation_index_color.png"), title=index_name, out_dir=vegetation_index_tif.parent)
 
     print("[Grid] First pass classification with configured thresholds:")
     print(f"       POOR_MAX={poor_max_cfg}, MEDIUM_MAX={medium_max_cfg}")
@@ -229,7 +256,16 @@ def run_grid_report(
             min_valid_fraction=min_cell_valid_fraction,
         )
 
-    save_grid_overlay(analysis_arr, cells, row_edges, col_edges, grid_png, background_path=ortho_rgb)
+    save_grid_overlay(
+        analysis_arr,
+        cells,
+        row_edges,
+        col_edges,
+        grid_png,
+        background_path=ortho_rgb,
+        reference_transform=index_transform,
+        reference_crs=index_crs,
+    )
     save_cell_table_csv(cells, grid_table_csv, index_name=index_name, index_mode=index_mode)
     save_categories_csv(
         grid_categories_csv,

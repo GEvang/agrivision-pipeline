@@ -12,7 +12,6 @@ ArtifactOriginValue = Literal['generated_in_run_workspace', 'copied_from_workspa
 
 
 class StepSelection(BaseModel):
-    resize_images: bool = False
     run_odm: bool = True
     fetch_weather: bool = True
     run_irrigation: bool = True

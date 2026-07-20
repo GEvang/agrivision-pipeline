@@ -7,9 +7,9 @@ from agrivision.pipeline.report.tables import render_grid_table
 
 
 def test_get_index_title_prefers_metadata_index_name() -> None:
-    ndvi_meta = {"index": {"index_name": "Vegetation Index"}}
+    vegetation_index_meta = {"index": {"index_name": "Vegetation Index"}}
     grid_meta = {"index_name": "Fallback Index"}
-    assert get_index_title(ndvi_meta, grid_meta) == "Vegetation Index"
+    assert get_index_title(vegetation_index_meta, grid_meta) == "Vegetation Index"
 
 
 
@@ -84,7 +84,7 @@ def test_build_report_html_uses_risk_mapping_layout() -> None:
         artifacts_list_html="<li>Artifact</li>",
         visible_image_html='<img src="visible.png" alt="Visible" />',
         mapir_image_html='<img src="mapir.png" alt="MAPIR" />',
-        ndvi_color_html='<img src="ndvi.png" alt="NDVI" />',
+        vegetation_index_color_html='<img src="vegetation_index.png" alt="Vegetation Index" />',
         thermal_image_html='<img src="mapir.png" alt="MAPIR placeholder" />',
         grid_meta_html="<table><tr><td>Grid</td></tr></table>",
         grid_overlay_html='<img src="grid.png" alt="Risk grid" />',

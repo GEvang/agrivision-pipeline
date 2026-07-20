@@ -6,11 +6,10 @@ from pathlib import Path
 
 @dataclass
 class PipelineFlags:
-    run_resize_step: bool = False
     skip_odm: bool = False
     skip_odm_rgb: bool = False
     skip_odm_mapir: bool = False
-    skip_ndvi: bool = False
+    skip_vegetation_index: bool = False
 
 
 VALID_EXTS = ('.jpg', '.jpeg', '.png', '.tif', '.tiff')

@@ -31,8 +31,8 @@
 {% if missing_services %}
 <section class="notice-banner notice-banner-warn">
   <div>
-    <strong>Optional services still need setup.</strong>
-    <span>Weather, irrigation, and pest analysis become available after their companion services are installed.</span>
+    <strong>OpenAgri services still need setup.</strong>
+    <span>Weather, irrigation, and pest analysis require their companion services for a valid full report.</span>
   </div>
   {% if service_controls.available %}
   <form method="post" action="/ui/services/setup-missing" onsubmit="return confirm('Download and start missing OpenAgri service containers now?');">
@@ -238,7 +238,7 @@
       </div>
       <div>
         <h2>System Status</h2>
-        <p>Live readiness of the dashboard and optional services.</p>
+        <p>Live readiness of the dashboard and OpenAgri services.</p>
       </div>
     </div>
     <div class="status-list">

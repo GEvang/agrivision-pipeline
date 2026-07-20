@@ -749,7 +749,7 @@ def _fetch_eto_state(
     if verbose:
         print(
             f"[Irrigation] Fetching ETo via get-calculations for location_id={effective_location_id} "
-            f"({from_date_str} → {to_date_str})..."
+            f"({from_date_str} â†’ {to_date_str})..."
         )
 
     eto_status, eto_resp = fetch_eto_get_calculations(

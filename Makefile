@@ -3,12 +3,7 @@ PIP ?= pip
 RUFF ?= ruff
 PYTEST ?= pytest
 
-PYTHON ?= python
-
-.PHONY: install install-dev lint format test smoke-config run serve-dashboard verify-phase5
-
-install:
-	./install_agrivision.sh
+.PHONY: install-dev lint format test smoke-config run serve-dashboard verify-phase5
 
 install-dev:
 	$(PYTHON) -m pip install -r requirements.txt

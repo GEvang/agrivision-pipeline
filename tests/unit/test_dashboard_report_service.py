@@ -82,9 +82,9 @@ def test_report_quality_summary_reads_metadata(tmp_path: Path) -> None:
             }
         )
     )
-    ndvi_meta = tmp_path / 'metadata.json'
+    vegetation_index_meta = tmp_path / 'metadata.json'
     grid_meta = tmp_path / 'grid_metadata.json'
-    ndvi_meta.write_text(
+    vegetation_index_meta.write_text(
         json.dumps(
             {
                 'source': {'dataset': 'MAPIR'},
@@ -115,7 +115,7 @@ def test_report_quality_summary_reads_metadata(tmp_path: Path) -> None:
         status='completed',
         outputs={
             'report_html': str(tmp_path / 'report.html'),
-            'ndvi_metadata': str(ndvi_meta),
+            'vegetation_index_metadata': str(vegetation_index_meta),
             'grid_metadata': str(grid_meta),
         },
     )
@@ -140,7 +140,6 @@ def test_report_quality_summary_ignores_global_metadata_without_run_outputs(tmp_
                 'dataset_name': 'Dataset R',
                 'upload_run_id': 'upload-seed',
                 'selected_steps': {
-                    'resize_images': False,
                     'run_odm': True,
                     'fetch_weather': False,
                     'run_irrigation': False,
@@ -151,13 +150,13 @@ def test_report_quality_summary_ignores_global_metadata_without_run_outputs(tmp_
             }
         )
     )
-    global_ndvi = tmp_path / 'output' / 'ndvi'
-    global_ndvi.mkdir(parents=True)
-    (global_ndvi / 'metadata.json').write_text(
+    global_vegetation_index = tmp_path / 'output' / 'vegetation_index'
+    global_vegetation_index.mkdir(parents=True)
+    (global_vegetation_index / 'metadata.json').write_text(
         json.dumps({'valid_pixels': {'percent': 99}, 'distribution': {'mean': 0.9}}),
         encoding='utf-8',
     )
-    (global_ndvi / 'grid_metadata.json').write_text(
+    (global_vegetation_index / 'grid_metadata.json').write_text(
         json.dumps({'classification_mode': 'percentile_calibrated'}),
         encoding='utf-8',
     )
@@ -185,15 +184,15 @@ def test_report_quality_summary_surfaces_unreadable_metadata(tmp_path: Path) -> 
             }
         )
     )
-    ndvi_meta = tmp_path / 'metadata.json'
+    vegetation_index_meta = tmp_path / 'metadata.json'
     grid_meta = tmp_path / 'grid_metadata.json'
-    ndvi_meta.write_text('{not-json', encoding='utf-8')
+    vegetation_index_meta.write_text('{not-json', encoding='utf-8')
     grid_meta.write_text('[]', encoding='utf-8')
     service.update_status(
         record.run_id,
         status='completed',
         outputs={
-            'ndvi_metadata': str(ndvi_meta),
+            'vegetation_index_metadata': str(vegetation_index_meta),
             'grid_metadata': str(grid_meta),
         },
     )

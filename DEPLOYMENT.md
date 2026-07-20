@@ -1,38 +1,52 @@
 # Deployment
 
-This repository supports one primary operator deployment path: the root Docker Compose stack.
+AgriVision supports two operator deployment methods:
 
-## Supported Deployment Assets
+- the provided start files
+- Docker Compose
 
-- `Dockerfile`
-- `docker-compose.yml`
-- `docker-entrypoint.sh`
-- `.env.example`
-- `Start AgriVision Windows.bat`
-- `Start AgriVision Linux.sh`
-- `Start AgriVision macOS.command`
+## Start Files
 
-## Standard Local Deployment
+- Windows: `Start AgriVision Windows.bat`
+- Linux: `Start AgriVision Linux.sh`
+- macOS: `Start AgriVision macOS.command`
+
+Linux and macOS launchers may need execute permission first:
+
+```bash
+chmod +x "Start AgriVision Linux.sh"
+chmod +x "Start AgriVision macOS.command"
+```
+
+## Docker Compose
 
 ```bash
 docker compose up --build -d
 ```
 
-Then open `http://127.0.0.1:8008`.
+Open:
 
-Base startup does not require `.env` and does not require the optional OpenAgri services to be installed first.
+```text
+http://127.0.0.1:8008
+```
 
-## What the Compose Service Does
+## Runtime Layout
+
+The Compose service:
 
 - publishes the dashboard on port `8008`
-- mounts `./agrivision`, `./data`, `./output`, and `./runtime` into `/app`
+- mounts `./data`, `./output`, and `./runtime` for persistent operator data
 - mounts `/var/run/docker.sock` so ODM jobs can launch Docker workloads
 - writes runtime settings to `runtime/settings.json`
 
-## When Not To Use This Flow
+## Required Services
 
-Do not treat the root Compose file as a hardened internet-facing deployment. It is for local use, trusted internal use, and Windows self-hosting behind external access protection.
+Before field analysis, confirm these OpenAgri services are configured and reachable from the Settings page:
 
-For public or semi-public Windows exposure, use `docs/operator/windows-self-hosting.md`.
+- Weather
+- Irrigation
+- Pest & Disease
 
-For local Python development instead of the operator deployment path, use `docs/developer/local-dev.md`.
+## Internet Access
+
+Do not publish port `8008` directly to the internet. Put AgriVision behind an external access layer such as Cloudflare Access, VPN, or an authenticated reverse proxy.

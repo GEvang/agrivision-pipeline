@@ -49,7 +49,8 @@ class SettingsService:
 
     def ensure_runtime_settings_file(self) -> None:
         payload = load_runtime_settings(self.runtime_settings_path)
-        merged = _remove_yaml_secrets(_deep_merge(DEFAULT_CONFIG, payload or {}))
+        base = _deep_merge(DEFAULT_CONFIG, load_raw_config(self.config_path) or {})
+        merged = _remove_yaml_secrets(_deep_merge(base, payload or {}))
         self.runtime_settings_path.parent.mkdir(parents=True, exist_ok=True)
         self.runtime_settings_path.write_text(json.dumps(merged, indent=2), encoding='utf-8')
 
@@ -106,7 +107,6 @@ class SettingsService:
                 'pdm_enabled_by_default': config.get('pdm', {}).get('enabled_by_default', True),
                 'pdm_default_crop': config.get('pdm', {}).get('default_crop', 'grapevine'),
                 'pdm_default_model_key': config.get('pdm', {}).get('default_model_key', 'grapevine_powdery_mildew_risk_v1'),
-                'resize_max_long_edge': config.get('resize', {}).get('max_long_edge', ''),
                 'orthophoto_resolution_cm': config.get('orthophoto', {}).get('orthophoto_resolution_cm', ''),
                 'settings_file': str(self.runtime_settings_path),
                 'deployment_mode': config.get('app', {}).get('deployment_mode', 'local'),
@@ -145,7 +145,8 @@ class SettingsService:
         return {key: mask_env_value(str(value or '')) for key, value in values.items()}
 
     def update_non_secret_settings(self, request: SettingsUpdateRequest) -> dict[str, Any]:
-        payload = _deep_merge(DEFAULT_CONFIG, load_runtime_settings(self.runtime_settings_path) or {})
+        base = _deep_merge(DEFAULT_CONFIG, load_raw_config(self.config_path) or {})
+        payload = _deep_merge(base, load_runtime_settings(self.runtime_settings_path) or {})
 
         # do not persist secrets back into runtime settings from the settings UI
         payload.setdefault('weather', {}).pop('username', None)
@@ -176,8 +177,6 @@ class SettingsService:
             payload.setdefault('pdm', {})['default_crop'] = request.pdm_default_crop
         if request.pdm_default_model_key is not None:
             payload.setdefault('pdm', {})['default_model_key'] = request.pdm_default_model_key
-        if request.resize_max_long_edge is not None:
-            payload.setdefault('resize', {})['max_long_edge'] = request.resize_max_long_edge
         if request.orthophoto_resolution_cm is not None:
             payload.setdefault('orthophoto', {})['orthophoto_resolution_cm'] = request.orthophoto_resolution_cm
         if request.deployment_mode is not None:

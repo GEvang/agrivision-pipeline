@@ -15,7 +15,7 @@ def render_grid_table(index_title: str, rows: List[Dict[str, str]]) -> str:
     for row in rows:
         mean_val = row.get("mean_index")
         if mean_val in (None, ""):
-            mean_val = row.get("mean_ndvi", "")
+            mean_val = row.get("mean_vegetation_index", "")
 
         cls = row.get("class", "")
         row_class = f"class-{cls}" if cls else ""

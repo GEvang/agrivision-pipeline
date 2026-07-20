@@ -6,12 +6,11 @@ from agrivision.config.settings import (
     IrrigationEtoSettings,
     IrrigationSettings,
     LocationSettings,
-    NdviSettings,
     OrthophotoSettings,
     PathsSettings,
     PdmAuthSettings,
     PdmSettings,
-    ResizeSettings,
+    VegetationIndexSettings,
     WeatherSettings,
 )
 
@@ -21,11 +20,10 @@ __all__ = [
     "IrrigationEtoSettings",
     "IrrigationSettings",
     "LocationSettings",
-    "NdviSettings",
+    "VegetationIndexSettings",
     "OrthophotoSettings",
     "PdmAuthSettings",
     "PdmSettings",
     "PathsSettings",
-    "ResizeSettings",
     "WeatherSettings",
 ]

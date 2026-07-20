@@ -17,13 +17,15 @@ paths:
   odm_project_root_rgb: "data/odm_project_rgb"
   odm_project_root_mapir: "data/odm_project_mapir"
 
-  # NDVI + runs output
-  ndvi_output: "output/ndvi"
+  # Vegetation Index + runs output
+  vegetation_index_output: "output/vegetation_index"
   runs_output: "output/runs"
 
   # MAPIR image paths (for multispectral / false-color)
   images_full_mapir: "data/images_full/mapir"
-ndvi:
+  images_full_thermal: "data/images_full/thermal"
+  odm_project_root_thermal: "data/odm_project_thermal"
+vegetation_index:
   # Classification thresholds (used by grid/report)
   poor_max: 0.25
   medium_max: 0.4
@@ -45,7 +47,7 @@ ndvi:
   # a vegetation index of the form:
   #   (NIR - GREEN) / (NIR + GREEN)
   #
-  # This is GNDVI-like (not true NDVI). We'll reflect that in code + later in report text.
+  # This is vegetation-index-like (not a true vegetation index). We'll reflect that in code + later in report text.
   mapir_profile:
     index_mode: "nir_green"   # options we will support: "nir_red" or "nir_green"
     nir_band: 1
