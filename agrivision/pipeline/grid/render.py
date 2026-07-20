@@ -12,8 +12,8 @@ import matplotlib.patheffects as path_effects
 import matplotlib.pyplot as plt
 import numpy as np
 import rasterio
-from rasterio.enums import Resampling
 from matplotlib.patches import Rectangle
+from rasterio.enums import Resampling
 from rasterio.warp import reproject
 
 COLOR_BY_CLASS = {
