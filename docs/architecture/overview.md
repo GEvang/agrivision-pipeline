@@ -2,8 +2,8 @@
 
 AgriVision keeps the processing logic separate from its transport layers. The two supported entry points are:
 
-- the CLI
-- the FastAPI dashboard
+- the dashboard for operators
+- the CLI for diagnostics and maintainer workflows
 
 ## Top-Level Structure
 
@@ -19,7 +19,7 @@ AgriVision keeps the processing logic separate from its transport layers. The tw
 
 Normal operator use starts the dashboard through the root Docker Compose stack. The dashboard creates runs, persists run state under `runtime/runs/`, and delegates long-running work to the pipeline/services layer.
 
-The CLI still exists for diagnostics, cleanup, service setup/control, and direct local pipeline execution.
+The CLI is used for diagnostics, cleanup, service setup/control, and maintainer workflows.
 
 ## Data Flow
 
@@ -28,7 +28,7 @@ The CLI still exists for diagnostics, cleanup, service setup/control, and direct
 3. run or reuse ODM orthophoto generation
 4. compute vegetation products
 5. generate grid and risk outputs
-6. fetch OpenAgri enrichment data for enabled report sections
+6. fetch OpenAgri enrichment data from the required services
 7. write artifacts and metadata
 8. render the final report
 

@@ -1,44 +1,20 @@
-# Local Development
+# Maintainer Notes
 
-Use this path when changing code. Operators should use the Docker flow instead.
+This page is for maintainers changing AgriVision code. It is not an operator installation method. Operators should use the provided start files or Docker as described in `docs/operator/install.md`.
 
 ## Supported Python Versions
 
 CI validates Python 3.11 and 3.12. Package metadata requires `>=3.11`.
 
-## Editable Install
+## Run The App For Code Changes
 
-Linux or macOS:
-
-```bash
-python -m venv .venv
-source .venv/bin/activate
-python -m pip install --upgrade pip
-python -m pip install -r requirements.txt
-python -m pip install -e ".[dev]"
-cp .env.example .env
-```
-
-Windows PowerShell:
-
-```powershell
-py -3.11 -m venv .venv
-.\.venv\Scripts\Activate.ps1
-python -m pip install --upgrade pip
-python -m pip install -r requirements.txt
-python -m pip install -e ".[dev]"
-Copy-Item .env.example .env
-```
-
-## Run The App
-
-Development server:
+Maintainers can run the dashboard directly while changing code:
 
 ```bash
 uvicorn agrivision.app.api:app --host 127.0.0.1 --port 8008 --reload
 ```
 
-Operator-equivalent local command:
+The operator-equivalent command is:
 
 ```bash
 python run.py --serve-dashboard --host 127.0.0.1 --port 8008
@@ -57,6 +33,6 @@ python -m pytest tests/system -q
 
 ## Notes
 
-- `.env` is optional for basic dashboard startup
 - `config.yaml` is for non-secret config
-- companion services can be developed independently, but valid full-report operation requires the enabled OpenAgri services to work
+- secrets belong in `.env` or host environment variables
+- OpenAgri Weather, Irrigation, and Pest & Disease services are required for complete field analysis

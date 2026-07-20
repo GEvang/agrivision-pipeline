@@ -12,7 +12,7 @@ This file is a short release-oriented summary for readers who want one place to 
 
 ## Scope
 
-AgriVision processes agricultural drone imagery and produces orthophotos, vegetation products, risk outputs, reports, and export packages. It supports both CLI execution and a FastAPI dashboard, with OpenAgri companion services required for valid full-report operation.
+AgriVision processes agricultural drone imagery and produces orthophotos, vegetation products, risk outputs, reports, and export packages. It includes a dashboard, operator commands, and required OpenAgri Weather, Irrigation, and Pest & Disease services for complete field analysis.
 
 ## Main Capabilities
 
@@ -20,12 +20,12 @@ AgriVision processes agricultural drone imagery and produces orthophotos, vegeta
 - CLI entry points for diagnostics, cleanup, service setup/control, and direct runs
 - ODM-backed orthophoto generation
 - vegetation, grid, and disease-risk analysis
-- Weather, Irrigation, and Pest & Disease enrichment for enabled full-report sections
+- Weather, Irrigation, and Pest & Disease enrichment through required OpenAgri services
 - export packages with `manifest.json` and `metadata/run_metadata.jsonld`
 
 ## Deployment Model
 
-The supported operator deployment path is the root Docker Compose stack. Local Python execution remains available for development and advanced usage.
+The supported operator deployment methods are the provided start files and Docker Compose. Maintainer-only code workflows are documented separately and are not operator installation methods.
 
 Primary references:
 
@@ -33,7 +33,6 @@ Primary references:
 - `DEPLOYMENT.md`
 - `docs/operator/install.md`
 - `docs/operator/run.md`
-- `docs/developer/local-dev.md`
 - `docs/api/README.md`
 
 ## Source Structure
@@ -75,9 +74,9 @@ CI validates:
 - Docker Compose config validity
 - Docker image buildability
 
-## Known Limits
+## Operational Notes
 
 - public exposure requires external access protection
 - ODM workflows are resource-intensive
-- companion service enrichments depend on separate service availability and credentials
-- ARM or edge hardware support should not be claimed unless a release was actually tested there
+- OpenAgri service enrichments require reachable services and credentials
+- ARM or edge hardware deployments require release-specific validation

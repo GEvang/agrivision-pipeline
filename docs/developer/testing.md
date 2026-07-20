@@ -1,12 +1,12 @@
 # Testing
 
-## Test suites
+## Test Suites
 
 - `tests/unit/`: pure logic and helper behavior
 - `tests/integration/`: cross-module integration checks
 - `tests/system/`: CLI and end-to-end smoke checks
 
-## Recommended commands
+## Recommended Commands
 
 ```bash
 make test
@@ -16,7 +16,7 @@ python -m pytest tests/system -q
 python -m pytest tests --cov=agrivision --cov-report=term-missing
 ```
 
-## CI expectations
+## CI Expectations
 
 Continuous integration validates:
 

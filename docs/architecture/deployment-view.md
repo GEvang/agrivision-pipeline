@@ -1,6 +1,6 @@
-# Deployment view
+# Deployment View
 
-AgriVision Pipeline exposes one public operational surface at the repository root: launchers, Dockerfile, compose file, and entrypoint.
+AgriVision exposes the supported operator launch assets at the repository root.
 
 The supported assets are:
 
@@ -12,7 +12,7 @@ The supported assets are:
 - `Start AgriVision Linux.sh`
 - `Start AgriVision macOS.command`
 
-The Docker Compose service starts the dashboard with `python run.py --serve-dashboard --host 0.0.0.0 --port 8008`.
+Docker Compose starts the dashboard with `python run.py --serve-dashboard --host 0.0.0.0 --port 8008`.
 
 The current container layout is:
 
@@ -23,4 +23,4 @@ The current container layout is:
 - runtime mount: `./runtime:/app/runtime`
 - Docker socket mount: `/var/run/docker.sock:/var/run/docker.sock`
 
-This is not a full bind-mount of the repository. It is a selected-path runtime layout.
+This selected-path runtime layout keeps operator data in `data/`, `output/`, and `runtime/`.

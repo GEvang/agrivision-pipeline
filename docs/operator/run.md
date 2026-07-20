@@ -29,9 +29,9 @@ This stops the dashboard container but leaves `data/`, `output/`, and `runtime/`
 ## What You Should Expect
 
 - `runtime/settings.json` is created on first launch if missing
-- missing companion services show up as warnings in Settings
-- weather credentials are only needed if you actually enable weather enrichment
-- the base dashboard can run without `.env`
+- Settings shows Docker and OpenAgri service status
+- Weather, Irrigation, and Pest & Disease services are required for complete field analysis
+- credentials belong in the Settings page, `.env`, or host environment variables
 
 ## Output Locations
 

@@ -6,9 +6,9 @@
 - do not commit real credentials or populated `.env` files
 - update documentation when behavior, commands, or operator expectations change
 
-## Development Setup
+## Maintainer Notes
 
-Use `docs/developer/local-dev.md` for local setup and `docs/developer/testing.md` for test commands.
+Use `docs/developer/local-dev.md` for maintainer workflow notes and `docs/developer/testing.md` for test commands. Operator installation is documented in `docs/operator/install.md`.
 
 ## Minimum Quality Bar
 

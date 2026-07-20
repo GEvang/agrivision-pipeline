@@ -22,6 +22,7 @@ For both Windows and Linux:
 - AgriVision must already be installed. See `docs/operator/install.md`.
 - AgriVision must work locally first at `http://127.0.0.1:8008` or `http://localhost:8008`.
 - The host should stay powered on while users need access.
+- OpenAgri Weather, Irrigation, and Pest & Disease services must be configured for complete field analysis.
 - ODM workloads need enough CPU, RAM, and disk. Keep `Maximum active ODM runs` at `1`.
 
 For permanent Cloudflare access:

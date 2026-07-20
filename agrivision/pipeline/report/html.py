@@ -112,6 +112,7 @@ def build_report_html(
     ),
     risk_layers_html: str | None = None,
     risk_alert_html: str | None = None,
+    risk_legend_html: str | None = None,
 ) -> str:
     quality = quality or {}
     quality_state = quality.get("quality_state", "N/A")
@@ -154,6 +155,13 @@ def build_report_html(
           <div class="alert-item"><span class="alert-symbol">{search_icon}</span><span>Inspect high-risk cells and prioritize scouting.</span></div>
           <div class="alert-item"><span class="alert-symbol">{rain_icon}</span><span>Monitor conditions and revisit after key weather events.</span></div>
           <div class="alert-item"><span class="alert-symbol">{treatment_icon}</span><span>Plan targeted intervention in high-risk and adjacent yellow zones.</span></div>
+        """
+    if risk_legend_html is None:
+        risk_legend_html = """
+          <span><i class="dot blue"></i>Blue = Very Low</span>
+          <span><i class="dot green"></i>Green = Low</span>
+          <span><i class="dot yellow"></i>Yellow = Medium</span>
+          <span><i class="dot red"></i>Red = High</span>
         """
     return f"""<!DOCTYPE html>
 <html lang="en">
@@ -666,10 +674,7 @@ def build_report_html(
         </p>
         <div class="image-block">{grid_overlay_html}</div>
         <div class="legend">
-          <span><i class="dot blue"></i>Blue = Very Low</span>
-          <span><i class="dot green"></i>Green = Low</span>
-          <span><i class="dot yellow"></i>Yellow = Medium</span>
-          <span><i class="dot red"></i>Red = High</span>
+          {risk_legend_html}
         </div>
       </section>
     </section>

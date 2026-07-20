@@ -222,8 +222,7 @@ def _risk_alert_html(selected: dict[str, Any] | None) -> str:
 def _risk_copy(selected: dict[str, Any] | None) -> str:
     if not selected:
         return (
-            "Integrated risk map combining vegetation vigor, canopy temperature, weather suitability, "
-            "and historical pressure indicators."
+            "Vegetation grid overlay shown because no disease or pest risk layer was generated for this run."
         )
     missing = selected.get("missing_inputs") if isinstance(selected.get("missing_inputs"), list) else []
     missing_text = ", ".join(str(item).replace("_", " ") for item in missing) if missing else "none"
@@ -287,7 +286,16 @@ def run_report(
     risk_overlay_png = _report_artifact_path(selected_risk.get("overlay_png")) if selected_risk else None
     if risk_overlay_png is None:
         risk_overlay_png = grid_overlay_png
-    risk_title = str(selected_risk.get("profile_label") or "Risk Index") if selected_risk else "Risk Index"
+    risk_title = str(selected_risk.get("profile_label") or "Risk Index") if selected_risk else "Vegetation Grid Overlay"
+    risk_legend_html = (
+        None
+        if selected_risk
+        else (
+            '<span><i class="dot green"></i>Green = Good</span>'
+            '<span><i class="dot yellow"></i>Yellow = Medium</span>'
+            '<span><i class="dot red"></i>Red = Poor</span>'
+        )
+    )
 
     artifacts_list_html = "\n".join(
         [
@@ -331,6 +339,7 @@ def run_report(
         risk_copy=_risk_copy(selected_risk),
         risk_layers_html=_risk_target_html(risk_summary, selected_risk),
         risk_alert_html=_risk_alert_html(selected_risk),
+        risk_legend_html=risk_legend_html,
     )
 
     report_path.write_text(html_doc, encoding="utf-8")

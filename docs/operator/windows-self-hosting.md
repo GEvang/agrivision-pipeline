@@ -2,7 +2,7 @@
 
 This setup turns one Windows workstation into a private AgriVision host. Operators use the dashboard through a browser, while Docker Desktop runs the pipeline containers locally on the machine.
 
-Use this path for a small trusted deployment. For public or multi-tenant production, use a managed Linux server with normal backup, monitoring, and access-control operations.
+Use this path for a trusted farm deployment where a Windows workstation remains powered on and protected by Cloudflare Access.
 
 ## Runtime Model
 
@@ -47,15 +47,7 @@ AGRIVISION_EXTERNAL_ACCESS_PROTECTION_CONFIRMED=false
 
 `AGRIVISION_MIN_FREE_DISK_GB` is checked before ODM starts. Increase it for large drone datasets.
 
-## Run Locally First
-
-From the repository root:
-
-```powershell
-docker compose build
-docker compose up -d
-docker compose ps
-```
+## Confirm Local Access
 
 Open the local dashboard first:
 
@@ -78,7 +70,7 @@ Invoke-WebRequest -Uri http://localhost:8008 -UseBasicParsing
 
 Only continue when `http://localhost:8008` returns the dashboard.
 
-### Temporary quick tunnel
+### Temporary Quick Tunnel
 
 Use a quick tunnel for demos or first validation before buying or configuring a domain:
 
@@ -92,7 +84,7 @@ Cloudflare prints a temporary URL similar to:
 https://random-words.trycloudflare.com
 ```
 
-Open that URL and confirm the AgriVision dashboard loads. This URL is public while the command is running. It is temporary, has no uptime guarantee, and should not be used as the production URL.
+Open that URL and confirm the AgriVision dashboard loads. This URL is public while the command is running. Use it only for short validation.
 
 If running the quick tunnel in detached mode:
 
@@ -107,11 +99,11 @@ Stop it when testing is complete:
 docker rm -f agrivision-quick-tunnel
 ```
 
-### Permanent named tunnel
+### Permanent Named Tunnel
 
 For a stable farmer-facing URL, the organization needs a real registered domain that is active in Cloudflare DNS. A Zero Trust tunnel route alone is not enough; the hostname must resolve publicly.
 
-If the organization does not yet have a domain, either buy/register one or keep using a temporary quick tunnel for demos.
+If the organization does not yet have a domain, buy/register one and add it to Cloudflare before continuing.
 
 After the domain is registered and added to Cloudflare, create a named tunnel in the Cloudflare Zero Trust dashboard:
 
@@ -161,40 +153,6 @@ If the public URL returns FastAPI `{"detail":"Not Found"}`, the tunnel is reachi
 
 ```text
 https://agrivision.example.com/
-```
-
-### CLI-managed tunnel alternative
-
-Install `cloudflared`, then authenticate it:
-
-```powershell
-cloudflared tunnel login
-cloudflared tunnel create agrivision
-cloudflared tunnel route dns agrivision agrivision.example.com
-```
-
-Create a Cloudflare tunnel config pointing to the local dashboard:
-
-```yaml
-tunnel: agrivision
-credentials-file: C:\Users\<user>\.cloudflared\<tunnel-id>.json
-
-ingress:
-  - hostname: agrivision.example.com
-    service: http://localhost:8008
-  - service: http_status:404
-```
-
-Run it interactively for the first test:
-
-```powershell
-cloudflared tunnel run agrivision
-```
-
-After the URL works, install it as a Windows service:
-
-```powershell
-cloudflared service install
 ```
 
 ## Access Control

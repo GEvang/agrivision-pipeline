@@ -1,37 +1,35 @@
 # AgriVision
 
-AgriVision is a dashboard-first crop risk assessment tool for orthophotos, vegetation analysis, disease-risk scoring, farmer-facing reports, and OpenAgri service integrations.
+AgriVision helps farm teams turn drone imagery into orthophotos, vegetation analysis, disease-risk outputs, reports, and export packages. It is designed to run with the required OpenAgri Weather, Irrigation, and Pest & Disease services.
 
 ## Quick Start
 
+Use one of the provided start files:
+
+- Windows: `Start AgriVision Windows.bat`
+- Linux: `Start AgriVision Linux.sh`
+- macOS: `Start AgriVision macOS.command`
+
+Or start with Docker:
+
 ```bash
-git clone https://github.com/GEvang/agrivision-pipeline.git
-cd agrivision-pipeline
 docker compose up --build -d
 ```
 
 Open [http://127.0.0.1:8008](http://127.0.0.1:8008).
 
-Base dashboard startup does not require `.env`, but a valid full report requires the OpenAgri Weather, Irrigation, and Pest & Disease services to be available for the enabled report sections.
+Before running field analysis, confirm the required OpenAgri Weather, Irrigation, and Pest & Disease services are configured and reachable from the Settings page.
 
 ## First-Run Expectations
 
-Works immediately:
+On first launch, AgriVision creates the local runtime folders used for farm data and reports.
 
-- dashboard and API
-- image uploads
-- run tracking
-- orthophoto import and reuse flows
-- reports and export packages
-- runtime folder creation
-- default settings in `runtime/settings.json`
+Expected first-run behavior:
 
-Not required before dashboard startup:
-
-- `.env`
-- Weather, Irrigation, or Pest & Disease companion services, although disabled or unavailable services make the full report incomplete
-- API keys
-- local drone imagery
+- the dashboard opens at `http://127.0.0.1:8008`
+- `runtime/settings.json` is created automatically
+- the Settings page shows the status of Docker and the required OpenAgri services
+- uploaded imagery, reports, exports, and run history are stored in local project folders
 
 ## Persistent Data
 
@@ -72,7 +70,6 @@ tests/                 Unit, integration, and system tests
 - Internet deployment: `docs/operator/internet-cloud-deployment.md`
 - Troubleshooting: `docs/operator/troubleshooting.md`
 - Windows self-hosting: `docs/operator/windows-self-hosting.md`
-- Local development: `docs/developer/local-dev.md`
 - Testing: `docs/developer/testing.md`
 - Configuration: `docs/developer/config.md`
 - API summary: `docs/api/README.md`

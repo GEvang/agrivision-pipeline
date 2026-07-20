@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 from pathlib import Path
-from typing import Dict, List, Tuple
+from typing import Any, Dict, List, Tuple
 
 import matplotlib
 
@@ -12,7 +12,9 @@ import matplotlib.patheffects as path_effects
 import matplotlib.pyplot as plt
 import numpy as np
 import rasterio
+from rasterio.enums import Resampling
 from matplotlib.patches import Rectangle
+from rasterio.warp import reproject
 
 COLOR_BY_CLASS = {
     "poor": "#ef1d16",
@@ -63,6 +65,8 @@ def _normalize_rgb(bands: np.ndarray) -> np.ndarray:
 def _read_rgb_background(
     background_path: Path,
     shape: Tuple[int, int],
+    reference_transform: Any | None = None,
+    reference_crs: Any | None = None,
 ) -> Tuple[np.ndarray, float] | None:
     if not background_path.exists():
         return None
@@ -73,7 +77,22 @@ def _read_rgb_background(
         if not indexes:
             return None
 
-        bands = src.read(indexes, out_shape=(len(indexes), display_height, display_width))
+        if reference_transform is not None and reference_crs is not None and src.crs is not None:
+            dst_transform = reference_transform * reference_transform.scale(1 / scale, 1 / scale)
+            bands = np.zeros((len(indexes), display_height, display_width), dtype="float32")
+            for out_idx, band_idx in enumerate(indexes):
+                reproject(
+                    source=rasterio.band(src, band_idx),
+                    destination=bands[out_idx],
+                    src_transform=src.transform,
+                    src_crs=src.crs,
+                    dst_transform=dst_transform,
+                    dst_crs=reference_crs,
+                    resampling=Resampling.bilinear,
+                    dst_nodata=0,
+                )
+        else:
+            bands = src.read(indexes, out_shape=(len(indexes), display_height, display_width))
 
     return _normalize_rgb(bands), scale
 
@@ -93,11 +112,20 @@ def save_grid_overlay(
     col_edges: np.ndarray,
     out_path: Path,
     background_path: Path | None = None,
+    reference_transform: Any | None = None,
+    reference_crs: Any | None = None,
 ) -> None:
     out_path.parent.mkdir(parents=True, exist_ok=True)
 
     rgb_background = (
-        _read_rgb_background(background_path, arr.shape) if background_path is not None else None
+        _read_rgb_background(
+            background_path,
+            arr.shape,
+            reference_transform=reference_transform,
+            reference_crs=reference_crs,
+        )
+        if background_path is not None
+        else None
     )
 
     plt.figure(figsize=(8, 8))

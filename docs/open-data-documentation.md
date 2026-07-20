@@ -32,7 +32,7 @@ Typical provenance chain:
 1. operator uploads imagery or imports an orthophoto
 2. AgriVision validates the input set
 3. ODM and downstream analysis stages generate artifacts
-4. service enrichments add weather, irrigation, or PDM context for enabled full-report sections
+4. required OpenAgri services add weather, irrigation, and PDM context
 5. AgriVision writes reports, metadata, and export packages
 
 ## Export Package Contract
@@ -47,7 +47,7 @@ Run packages may contain:
 - `run/run.log`
 - report, raster, quality, and risk artifacts when present
 
-Contents vary by selected steps and run success.
+Contents vary by selected run steps and completed outputs.
 
 ## Data Quality Notes
 
@@ -56,7 +56,7 @@ The repository validates inputs and API payloads, but it does not define univers
 - input imagery quality
 - ODM success
 - selected analysis steps
-- external service availability
+- OpenAgri service availability and credentials
 
 ## Privacy and Distribution
 

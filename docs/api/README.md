@@ -1,8 +1,8 @@
-# AgriVision API and Dashboard Contract
+# AgriVision API And Dashboard Contract
 
 The dashboard is a thin FastAPI adapter over the pipeline core. Route handlers delegate to service-layer modules so HTTP concerns stay out of `pipeline/`, `integrations/`, and `domain/`.
 
-## Core endpoints
+## Core Endpoints
 
 FastAPI publishes machine-readable and human-readable API documentation:
 
@@ -38,14 +38,14 @@ FastAPI publishes machine-readable and human-readable API documentation:
 - `GET /reports/{run_id}`
 - `GET /reports/{run_id}/view`
 
-### Settings and services
+### Settings And Services
 
 - `GET /settings`
 - `POST /settings`
 - `POST /settings/credentials`
 - `GET /services/status`
 
-### Browser form routes
+### Browser Form Routes
 
 The dashboard also exposes `/ui/...` routes for browser form posts and workflow actions. These are not a stable public API contract for external clients. If you are integrating programmatically, prefer the documented JSON endpoints and the generated OpenAPI spec.
 
@@ -66,7 +66,7 @@ Run packages include:
 - `metadata/run_metadata.jsonld` for OpenAgri-oriented semantic interchange
 - run status, parameters, logs, reports, rasters, and quality artifacts when present
 
-## Dashboard pages
+## Dashboard Pages
 
 - `/` dashboard
 - `/runs/new` new run form
@@ -75,7 +75,7 @@ Run packages include:
 - `/reports` report history
 - `/settings` settings and credentials
 
-## Run persistence
+## Run Persistence
 
 Each run is stored under `runtime/runs/<run_id>/`.
 
@@ -85,6 +85,6 @@ Each run is stored under `runtime/runs/<run_id>/`.
 - `run.log`: captured pipeline log
 - `previews/`: derived orthophoto preview images
 
-## Security model
+## Security Model
 
 Non-secret settings are editable through `config.yaml`. Secrets are written to `.env` and masked in UI responses. Full credential values are never returned to the browser.

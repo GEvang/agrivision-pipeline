@@ -1,6 +1,6 @@
 # Release Flow
 
-This repository does not have a complicated release process, but it still needs discipline.
+Use this checklist before tagging a release.
 
 ## Before Tagging
 
@@ -32,4 +32,4 @@ At minimum, a release should identify:
 - Linux x86_64
 - ARM or edge hardware, if actually tested
 
-Do not claim platform support that was not exercised for that release.
+Record only the platforms exercised for that release.

@@ -1,6 +1,6 @@
 # Install AgriVision
 
-Use the Docker-based dashboard flow unless you are developing locally.
+Use one of the provided start files or Docker. These are the supported installation methods for operators.
 
 ## Prerequisites
 
@@ -10,17 +10,7 @@ Use the Docker-based dashboard flow unless you are developing locally.
 
 ## Default Install
 
-```bash
-git clone https://github.com/GEvang/agrivision-pipeline.git
-cd agrivision-pipeline
-docker compose up --build -d
-```
-
-Open `http://127.0.0.1:8008`.
-
-## OS Launchers
-
-If you prefer launcher scripts instead of the raw Compose command:
+Use one of the provided start files:
 
 - Windows: `Start AgriVision Windows.bat`
 - Linux: `Start AgriVision Linux.sh`
@@ -33,15 +23,25 @@ chmod +x "Start AgriVision Linux.sh"
 chmod +x "Start AgriVision macOS.command"
 ```
 
+Or start with Docker:
+
+```bash
+docker compose up --build -d
+```
+
+Open `http://127.0.0.1:8008`.
+
 ## First Launch
 
 Expected behavior:
 
 - `runtime/settings.json` is created automatically
-- the dashboard opens even if `.env` is missing
-- missing OpenAgri companion services appear as warnings, not fatal startup errors
+- the dashboard opens at `http://127.0.0.1:8008`
+- the Settings page shows Docker and OpenAgri service status
 
-## When To Use Something Else
+Before running field analysis, configure and start the required OpenAgri Weather, Irrigation, and Pest & Disease services.
 
-- For local Python development, use `docs/developer/local-dev.md`
-- For Windows self-hosting behind Cloudflare, use `docs/operator/windows-self-hosting.md`
+## Remote Access
+
+- For internet access, use `docs/operator/internet-cloud-deployment.md`
+- For Windows self-hosting details, use `docs/operator/windows-self-hosting.md`

@@ -49,7 +49,8 @@ class SettingsService:
 
     def ensure_runtime_settings_file(self) -> None:
         payload = load_runtime_settings(self.runtime_settings_path)
-        merged = _remove_yaml_secrets(_deep_merge(DEFAULT_CONFIG, payload or {}))
+        base = _deep_merge(DEFAULT_CONFIG, load_raw_config(self.config_path) or {})
+        merged = _remove_yaml_secrets(_deep_merge(base, payload or {}))
         self.runtime_settings_path.parent.mkdir(parents=True, exist_ok=True)
         self.runtime_settings_path.write_text(json.dumps(merged, indent=2), encoding='utf-8')
 
@@ -144,7 +145,8 @@ class SettingsService:
         return {key: mask_env_value(str(value or '')) for key, value in values.items()}
 
     def update_non_secret_settings(self, request: SettingsUpdateRequest) -> dict[str, Any]:
-        payload = _deep_merge(DEFAULT_CONFIG, load_runtime_settings(self.runtime_settings_path) or {})
+        base = _deep_merge(DEFAULT_CONFIG, load_raw_config(self.config_path) or {})
+        payload = _deep_merge(base, load_runtime_settings(self.runtime_settings_path) or {})
 
         # do not persist secrets back into runtime settings from the settings UI
         payload.setdefault('weather', {}).pop('username', None)

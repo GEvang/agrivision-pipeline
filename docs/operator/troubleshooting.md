@@ -38,17 +38,14 @@ Windows operators should review `docs/operator/windows-self-hosting.md` for Dock
 
 ## Weather, Irrigation, or PDM Looks Broken
 
-Expected behavior:
-
-- missing services do not block dashboard startup
-- missing credentials do not matter until you enable that integration
+OpenAgri Weather, Irrigation, and Pest & Disease services are required for complete field analysis. If one looks unavailable, resolve it before relying on the final report.
 
 Check:
 
 - service base URLs
-- credentials in `.env`
+- credentials in the Settings page, `.env`, or host environment variables
 - service status on the Settings page
-- service docs or health endpoints if the companion service is running
+- service docs or health endpoints
 
 ## Settings or Credentials Are Not Persisting
 
@@ -78,6 +75,5 @@ Useful artifacts:
 ## Last Resort Diagnostics
 
 ```bash
-python run.py --doctor
 docker compose logs --tail 200
 ```
