@@ -35,4 +35,6 @@ Do not treat the root Compose file as a hardened internet-facing deployment. It 
 
 For public or semi-public Windows exposure, use `docs/operator/windows-self-hosting.md`.
 
+For internet access from Windows or Linux hosts, use `docs/operator/internet-cloud-deployment.md`.
+
 For local Python development instead of the operator deployment path, use `docs/developer/local-dev.md`.

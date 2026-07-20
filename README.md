@@ -69,6 +69,7 @@ tests/                 Unit, integration, and system tests
 
 - Operator install: `docs/operator/install.md`
 - Daily operation: `docs/operator/run.md`
+- Internet deployment: `docs/operator/internet-cloud-deployment.md`
 - Troubleshooting: `docs/operator/troubleshooting.md`
 - Windows self-hosting: `docs/operator/windows-self-hosting.md`
 - Local development: `docs/developer/local-dev.md`
