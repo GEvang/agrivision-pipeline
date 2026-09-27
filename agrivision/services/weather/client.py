@@ -86,7 +86,20 @@ def _ts_from_iso(s: Any) -> datetime | None:
         return None
 
 
-def _get_location_params() -> dict[str, Any]:
+def _get_location_params(location: dict[str, Any] | None = None) -> dict[str, Any]:
+    """Return either the run-local orthophoto location or the configured fallback."""
+    if isinstance(location, dict):
+        try:
+            lat = float(location.get("latitude", location.get("lat")))
+            lon = float(location.get("longitude", location.get("lon")))
+        except (TypeError, ValueError):
+            pass
+        else:
+            return {
+                "lat": lat,
+                "lon": lon,
+                "location_name": str(location.get("label") or location.get("name") or f"{lat:.5f}, {lon:.5f}"),
+            }
     config = load_config()
     location_cfg = config.get("location", {})
     return {
@@ -155,8 +168,8 @@ def prepare_weather_repo_and_env() -> EnvSyncResult:
     return update_env_file(env_path, _weather_env_values())
 
 
-def _validate_weather_runtime(token: str) -> None:
-    location = _get_location_params()
+def _validate_weather_runtime(token: str, location: dict[str, Any] | None = None) -> None:
+    location = _get_location_params(location)
     base_url = str(_get_weather_settings()["base_url"]).rstrip("/")
     response = requests.get(
         f"{base_url}/api/data/weather/",
@@ -264,9 +277,9 @@ def _coerce_list_payload(payload: dict[str, Any] | list[Any]) -> list[Any]:
     return items if isinstance(items, list) else []
 
 
-def fetch_current_weather(token: str | None = None) -> CurrentWeather:
+def fetch_current_weather(token: str | None = None, *, location: dict[str, Any] | None = None) -> CurrentWeather:
     _require_openweather_key()
-    location = _get_location_params()
+    location = _get_location_params(location)
     payload = _authorized_get(
         "/api/data/weather",
         token=token,
@@ -301,9 +314,9 @@ def fetch_current_weather(token: str | None = None) -> CurrentWeather:
     )
 
 
-def fetch_forecast5(token: str | None = None) -> list[ForecastPoint]:
+def fetch_forecast5(token: str | None = None, *, location: dict[str, Any] | None = None) -> list[ForecastPoint]:
     _require_openweather_key()
-    location = _get_location_params()
+    location = _get_location_params(location)
     payload = _authorized_get(
         "/api/data/forecast5",
         token=token,
@@ -335,9 +348,9 @@ def fetch_forecast5(token: str | None = None) -> list[ForecastPoint]:
     return points
 
 
-def fetch_forecast5_jsonld(token: str | None = None) -> dict[str, Any]:
+def fetch_forecast5_jsonld(token: str | None = None, *, location: dict[str, Any] | None = None) -> dict[str, Any]:
     _require_openweather_key()
-    location = _get_location_params()
+    location = _get_location_params(location)
     payload = _authorized_get(
         "/api/linkeddata/forecast5",
         token=token,
@@ -347,9 +360,9 @@ def fetch_forecast5_jsonld(token: str | None = None) -> dict[str, Any]:
     return payload if isinstance(payload, dict) else {"data": payload}
 
 
-def fetch_thi(token: str | None = None) -> dict[str, Any]:
+def fetch_thi(token: str | None = None, *, location: dict[str, Any] | None = None) -> dict[str, Any]:
     _require_openweather_key()
-    location = _get_location_params()
+    location = _get_location_params(location)
     payload = _authorized_get(
         "/api/data/thi",
         token=token,
@@ -359,9 +372,9 @@ def fetch_thi(token: str | None = None) -> dict[str, Any]:
     return payload if isinstance(payload, dict) else {"data": payload}
 
 
-def fetch_thi_jsonld(token: str | None = None) -> dict[str, Any]:
+def fetch_thi_jsonld(token: str | None = None, *, location: dict[str, Any] | None = None) -> dict[str, Any]:
     _require_openweather_key()
-    location = _get_location_params()
+    location = _get_location_params(location)
     payload = _authorized_get(
         "/api/linkeddata/thi",
         token=token,
@@ -375,9 +388,11 @@ def fetch_uav_flight_forecast5(
     uav_model: str,
     status_filter: str | None = None,
     token: str | None = None,
+    *,
+    location: dict[str, Any] | None = None,
 ) -> dict[str, Any]:
     _require_openweather_key()
-    location = _get_location_params()
+    location = _get_location_params(location)
     params: dict[str, Any] = {"lat": location["lat"], "lon": location["lon"]}
     endpoint = f"/api/data/flight_forecast5/{uav_model}"
     if status_filter:
@@ -388,9 +403,9 @@ def fetch_uav_flight_forecast5(
     return payload if isinstance(payload, dict) else {"data": payload}
 
 
-def fetch_spray_forecast(token: str | None = None) -> dict[str, Any]:
+def fetch_spray_forecast(token: str | None = None, *, location: dict[str, Any] | None = None) -> dict[str, Any]:
     _require_openweather_key()
-    location = _get_location_params()
+    location = _get_location_params(location)
     payload = _authorized_get(
         "/api/data/spray_forecast",
         token=token,
@@ -400,9 +415,9 @@ def fetch_spray_forecast(token: str | None = None) -> dict[str, Any]:
     return payload if isinstance(payload, dict) else {"data": payload}
 
 
-def fetch_spray_forecast_jsonld(token: str | None = None) -> dict[str, Any]:
+def fetch_spray_forecast_jsonld(token: str | None = None, *, location: dict[str, Any] | None = None) -> dict[str, Any]:
     _require_openweather_key()
-    location = _get_location_params()
+    location = _get_location_params(location)
     payload = _authorized_get(
         "/api/linkeddata/spray_forecast",
         token=token,
@@ -416,9 +431,11 @@ def fetch_history_daily(
     start_date: str,
     end_date: str,
     token: str | None = None,
+    *,
+    location: dict[str, Any] | None = None,
 ) -> dict[str, Any]:
     _require_openweather_key()
-    location = _get_location_params()
+    location = _get_location_params(location)
     payload = _authorized_post(
         "/api/v1/history/daily",
         token=token,
@@ -446,9 +463,11 @@ def fetch_history_hourly(
     start_date: str,
     end_date: str,
     token: str | None = None,
+    *,
+    location: dict[str, Any] | None = None,
 ) -> dict[str, Any]:
     _require_openweather_key()
-    location = _get_location_params()
+    location = _get_location_params(location)
     payload = _authorized_post(
         "/api/v1/history/hourly",
         token=token,
@@ -489,9 +508,10 @@ def collect_weather_summary(
     status_filter: str | None = None,
     history_start_date: str | None = None,
     history_end_date: str | None = None,
+    location: dict[str, Any] | None = None,
 ) -> dict[str, Any]:
     notes: list[str] = []
-    location = _get_location_params()
+    location = _get_location_params(location)
     now = datetime.now(UTC)
     if history_start_date is None or history_end_date is None:
         history_end_date = now.date().isoformat()
@@ -520,14 +540,14 @@ def collect_weather_summary(
     try:
         _require_openweather_key()
         token = get_token()
-        _validate_weather_runtime(token)
+        _validate_weather_runtime(token, location)
     except Exception as exc:
         notes.append(f"Weather authentication/runtime validation failed: {exc}")
         summary["enabled"] = False
         return summary
 
     try:
-        current = fetch_current_weather(token=token)
+        current = fetch_current_weather(token=token, location=location)
         summary["current_weather"] = {
             "location_name": current.location_name,
             "timestamp": current.timestamp.isoformat() if current.timestamp else None,
@@ -542,23 +562,23 @@ def collect_weather_summary(
         notes.append(f"Current weather fetch failed: {exc}")
 
     try:
-        forecast_points = fetch_forecast5(token=token)
+        forecast_points = fetch_forecast5(token=token, location=location)
         summary["forecast5_points"] = _forecast_points_preview(forecast_points)
     except Exception as exc:
         notes.append(f"Forecast5 fetch failed: {exc}")
 
     try:
-        summary["forecast5_jsonld"] = fetch_forecast5_jsonld(token=token)
+        summary["forecast5_jsonld"] = fetch_forecast5_jsonld(token=token, location=location)
     except Exception as exc:
         notes.append(f"Forecast5 JSON-LD fetch failed: {exc}")
 
     try:
-        summary["thi"] = fetch_thi(token=token)
+        summary["thi"] = fetch_thi(token=token, location=location)
     except Exception:
         pass
 
     try:
-        summary["thi_jsonld"] = fetch_thi_jsonld(token=token)
+        summary["thi_jsonld"] = fetch_thi_jsonld(token=token, location=location)
     except Exception:
         pass
 
@@ -567,17 +587,18 @@ def collect_weather_summary(
             uav_model=uav_model,
             status_filter=status_filter,
             token=token,
+            location=location,
         )
     except Exception:
         pass
 
     try:
-        summary["spray_forecast"] = fetch_spray_forecast(token=token)
+        summary["spray_forecast"] = fetch_spray_forecast(token=token, location=location)
     except Exception:
         pass
 
     try:
-        summary["spray_forecast_jsonld"] = fetch_spray_forecast_jsonld(token=token)
+        summary["spray_forecast_jsonld"] = fetch_spray_forecast_jsonld(token=token, location=location)
     except Exception:
         pass
 
@@ -586,6 +607,7 @@ def collect_weather_summary(
             history_start_date,
             history_end_date,
             token=token,
+            location=location,
         )
     except Exception:
         pass
@@ -595,6 +617,7 @@ def collect_weather_summary(
             history_start_date,
             history_end_date,
             token=token,
+            location=location,
         )
     except Exception:
         pass

@@ -40,13 +40,15 @@ def bootstrap_pdm_context(
     weather_summary: dict[str, Any] | None = None,
     *,
     artifact_dir: Path | None = None,
+    parcel_wkt: str | None = None,
+    parcel_source: str = 'irrigation.default_parcel_wkt',
 ) -> dict[str, Any]:
     settings = get_settings()
     model = get_pdm_model(selected_model_key)
     client = PdmClient(get_pdm_service_config())
     runtime = ensure_pdm_service_available(timeout_seconds=max(settings.pdm.timeout_seconds, 120))
     service = client.probe()
-    parcel_wkt = settings.irrigation.default_parcel_wkt
+    parcel_wkt = parcel_wkt or settings.irrigation.default_parcel_wkt
 
     client.login()
     parcel_state = ensure_remote_parcel(client, model_key=model['key'], geo_wkt=parcel_wkt)
@@ -72,7 +74,7 @@ def bootstrap_pdm_context(
         'runtime': runtime,
         'service': service,
         'parcel': {
-            'source': 'irrigation.default_parcel_wkt',
+            'source': parcel_source,
             'wkt': parcel_wkt,
             **parcel_state,
         },

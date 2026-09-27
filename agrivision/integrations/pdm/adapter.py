@@ -290,6 +290,8 @@ def collect_pdm_snapshot(
     crop: str | None = None,
     model_key: str | None = None,
     artifact_dir: Path | None = None,
+    parcel_wkt: str | None = None,
+    parcel_source: str = 'irrigation.default_parcel_wkt',
 ) -> dict[str, Any]:
     resolved_model = get_pdm_model(model_key)
     resolved_crop = (crop or resolved_model['crop']).strip().lower()
@@ -339,6 +341,8 @@ def collect_pdm_snapshot(
         resolved_crop,
         weather_summary,
         artifact_dir=artifact_dir,
+        parcel_wkt=parcel_wkt,
+        parcel_source=parcel_source,
     )
     base_summary['service_status'] = bootstrap.get('service', {})
     base_summary['runtime_status'] = bootstrap.get('runtime', {})

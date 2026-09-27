@@ -26,10 +26,12 @@ def default_weather_summary(location_name: str) -> dict[str, Any]:
     }
 
 
-def run_weather_enrichment(output_root: Path, location_name: str) -> dict[str, Any]:
+def run_weather_enrichment(
+    output_root: Path, location_name: str, *, location: dict[str, Any] | None = None
+) -> dict[str, Any]:
     weather_summary = default_weather_summary(location_name)
     try:
-        weather_summary = collect_weather_snapshot(uav_model='dji_phantom4')
+        weather_summary = collect_weather_snapshot(uav_model='dji_phantom4', location=location)
         weather_summary = persist_weather_artifacts(weather_summary, output_root)
         return weather_summary
     except Exception as exc:  # noqa: BLE001

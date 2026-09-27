@@ -3,6 +3,7 @@ from __future__ import annotations
 from pathlib import Path
 from typing import Callable
 
+from agrivision.pipeline.io.geolocation import resolve_orthophoto_location
 from agrivision.pipeline.io.paths import resolve_pipeline_paths
 from agrivision.pipeline.stages.disease_risk import run_disease_risk
 from agrivision.pipeline.stages.grid import run_grid_report
@@ -177,6 +178,23 @@ def run_full_pipeline(
     elif odm_failures and not pixel_fallback_used:
         raise RuntimeError(odm_failures[0])
 
+    location_context = resolve_orthophoto_location(
+        path for path in (ortho_rgb, ortho_mapir, ortho_thermal) if isinstance(path, Path)
+    )
+    if location_context:
+        print(
+            '[AgriVision] Run location resolved from orthophoto: '
+            f"{location_context['label']} ({location_context['latitude']:.5f}, {location_context['longitude']:.5f})"
+        )
+    else:
+        print('[AgriVision] No georeferenced orthophoto found; using configured location fallback.')
+    run_location_name = str((location_context or {}).get('label') or config.get('location', {}).get('name', 'Unknown location'))
+    run_parcel_wkt = (
+        f"POINT ({location_context['latitude']:.7f} {location_context['longitude']:.7f})"
+        if location_context
+        else None
+    )
+
     if skip_vegetation_index:
         print('\nStep 3/5: Skipping Vegetation Index (--skip-vegetation-index).')
         if not skip_grid and not _vegetation_index_exists(vegetation_index_tif):
@@ -211,7 +229,7 @@ def run_full_pipeline(
             progress_callback('fetch_weather', 'Fetching weather data', 'running')
         print('\n[AgriVision] Running Weather integration ...')
         weather_summary = run_weather_enrichment(
-            output_root, config.get('location', {}).get('name', 'Unknown location')
+            output_root, run_location_name, location=location_context
         )
         if weather_summary.get('enabled'):
             print('[AgriVision] âœ… Weather integration completed')
@@ -257,6 +275,8 @@ def run_full_pipeline(
             crop=resolved_pdm_crop,
             model_key=resolved_pdm_model_key,
             artifact_dir=output_root / 'pdm',
+            parcel_wkt=run_parcel_wkt,
+            parcel_source='orthophoto centroid' if run_parcel_wkt else 'irrigation.default_parcel_wkt',
         )
         if pdm_summary.get('status') == 'success':
             print('[AgriVision] âœ… Pest & Disease integration completed')

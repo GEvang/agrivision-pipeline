@@ -212,6 +212,18 @@ def test_collect_weather_summary_disables_weather_without_openweather_key(monkey
     assert any("Missing weather.openweather_api_key" in note for note in summary["notes"])
 
 
+def test_weather_location_override_uses_orthophoto_centroid():
+    location = weather_client._get_location_params(
+        {"label": "Vederi, Rethymno", "latitude": 35.30123, "longitude": 24.61234}
+    )
+
+    assert location == {
+        "lat": 35.30123,
+        "lon": 24.61234,
+        "location_name": "Vederi, Rethymno",
+    }
+
+
 def test_load_local_env_prefers_runtime_env_file(monkeypatch, tmp_path):
     config_path = tmp_path / "config.yaml"
     runtime_settings_path = tmp_path / "runtime" / "settings.json"
