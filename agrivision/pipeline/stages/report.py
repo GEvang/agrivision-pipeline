@@ -128,10 +128,17 @@ def _load_disease_risk_summary(
     return load_json(summary_path)
 
 
-def _selected_risk_layer(summary: dict[str, Any]) -> dict[str, Any] | None:
+def _selected_risk_layer(
+    summary: dict[str, Any], pdm_summary: Optional[Dict[str, Any]] = None
+) -> dict[str, Any] | None:
     layers = summary.get("layers")
     if not isinstance(layers, list):
         return None
+    model_key = str((pdm_summary or {}).get("selected_model_key") or "")
+    profile_key = model_key.removesuffix("_risk_v1")
+    for layer in layers:
+        if isinstance(layer, dict) and layer.get("profile_key") == profile_key:
+            return layer
     selected_key = summary.get("selected_layer_key")
     for layer in layers:
         if isinstance(layer, dict) and layer.get("profile_key") == selected_key:
@@ -200,11 +207,18 @@ def _risk_alert_html(selected: dict[str, Any] | None) -> str:
         ]
     else:
         high_count = int(selected.get("high_or_above_cells") or 0)
+        valid_cells = int(selected.get("valid_cells") or 0)
+        affected_percent = (100 * high_count / valid_cells) if valid_cells else None
         mean_risk = selected.get("mean_risk")
         mean_text = f"{float(mean_risk):.2f}" if isinstance(mean_risk, (float, int)) else "N/A"
         label = str(selected.get("profile_label") or "selected profile")
         messages = [
-            f"{high_count} grid cells are high risk or above for {label}.",
+            (
+                f"{high_count} of {valid_cells} valid grid cells "
+                f"({affected_percent:.1f}%) are high risk or above for {label}."
+                if affected_percent is not None
+                else f"{high_count} grid cells are high risk or above for {label}."
+            ),
             f"Average final cell risk for the selected layer is {mean_text}.",
             "Prioritize scouting in red and orange cells, then adjacent yellow cells.",
             "Thermal, historical pressure, and field evidence can refine this model when available.",
@@ -230,6 +244,52 @@ def _risk_copy(selected: dict[str, Any] | None) -> str:
     return (
         "No-input risk score using biological seasonality, weather suitability, Vegetation Index cell anomaly, "
         f"and available context. Missing inputs reduce confidence rather than being renormalized: {missing_text}."
+    )
+
+
+def _field_assessment_html(assessment: dict[str, Any] | None) -> str:
+    if not assessment:
+        return ""
+    status = str(assessment.get("status") or "Unavailable")
+    color = {
+        "Very Low": "#2768d9",
+        "Low": "#1fa447",
+        "Medium": "#d18c00",
+        "High": "#ef1d16",
+        "Very High": "#b91c1c",
+        "Critical": "#8b0000",
+    }.get(status, "#64748b")
+    score = assessment.get("score")
+    score_text = f"{float(score):.2f}" if isinstance(score, (int, float)) else "N/A"
+    affected = assessment.get("affected_area_percent")
+    affected_text = f"{float(affected):.1f}% of valid grid cells" if isinstance(affected, (int, float)) else "area estimate unavailable"
+    return (
+        '<section class="field-status" style="border-left-color:{color};">'
+        '<div><p class="eyebrow">Field status</p><h2>{status} risk — {target}</h2>'
+        '<p><strong>What to do:</strong> {action}</p>{guidance}</div>'
+        '<div class="field-status-metrics"><strong style="color:{color};">{score}</strong><span>field risk score</span>'
+        '<span>{affected}</span><span>{timeframe}</span></div>'
+        '<p class="field-status-note">Confidence: {confidence}. Evidence: {evidence}. Missing context: {missing}. Method: {method}</p>'
+        '</section>'
+    ).format(
+        color=color,
+        status=safe_html(status),
+        target=safe_html(assessment.get("target") or "Selected crop risk"),
+        action=safe_html(assessment.get("recommended_action") or "Review the field evidence."),
+        guidance=(
+            '<p><strong>Disease-specific guidance:</strong> '
+            + safe_html(assessment.get("disease_specific_guidance"))
+            + '</p>'
+            if assessment.get("disease_specific_guidance")
+            else ""
+        ),
+        score=safe_html(score_text),
+        affected=safe_html(affected_text),
+        timeframe=safe_html(assessment.get("recommended_timeframe") or "timeframe unavailable"),
+        confidence=safe_html(assessment.get("confidence") or "Unavailable"),
+        evidence=safe_html(", ".join(str(item) for item in assessment.get("evidence", []) or []) or "no completed risk source"),
+        missing=safe_html(", ".join(str(item).replace("_", " ") for item in assessment.get("missing_inputs", []) or []) or "none"),
+        method=safe_html(assessment.get("method") or "not available"),
     )
 
 
@@ -294,7 +354,8 @@ def run_report(
     generated_at = datetime.now(UTC).strftime("%Y-%m-%d %H:%M UTC")
     report_quality = _quality_summary(vegetation_index_meta, grid_meta)
     risk_summary = _load_disease_risk_summary(disease_risk_summary, disease_risk_summary_path)
-    selected_risk = _selected_risk_layer(risk_summary)
+    field_assessment = risk_summary.get("field_assessment") if isinstance(risk_summary.get("field_assessment"), dict) else None
+    selected_risk = _selected_risk_layer(risk_summary, pdm_summary)
     risk_overlay_png = _report_artifact_path(selected_risk.get("overlay_png")) if selected_risk else None
     if risk_overlay_png is None:
         risk_overlay_png = grid_overlay_png
@@ -352,6 +413,7 @@ def run_report(
         risk_layers_html=_risk_target_html(risk_summary, selected_risk),
         risk_alert_html=_risk_alert_html(selected_risk),
         risk_legend_html=risk_legend_html,
+        field_assessment_html=_field_assessment_html(field_assessment),
     )
 
     report_path.write_text(html_doc, encoding="utf-8")

@@ -42,6 +42,7 @@ def run_pdm_enrichment(
     artifact_dir: Path | None = None,
     parcel_wkt: str | None = None,
     parcel_source: str = 'irrigation.default_parcel_wkt',
+    location: dict[str, Any] | None = None,
 ) -> dict[str, Any]:
     pdm_summary = default_pdm_summary(base_url, crop, model_key, enabled)
     try:
@@ -53,6 +54,7 @@ def run_pdm_enrichment(
             artifact_dir=artifact_dir,
             parcel_wkt=parcel_wkt,
             parcel_source=parcel_source,
+            location=location,
         )
     except Exception as exc:  # noqa: BLE001
         pdm_summary['status'] = 'failed'

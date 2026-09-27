@@ -15,6 +15,22 @@ from agrivision.services.pdm.bootstrap import bootstrap_pdm_context
 from agrivision.services.pdm.catalog import get_models_for_crop, get_pdm_model
 
 RISK_ORDER = {'low': 1, 'moderate': 2, 'medium': 2, 'high': 3, 'critical': 4}
+_RISK_LABELS = {'low', 'moderate', 'medium', 'high', 'critical'}
+
+
+def _normalize_risk_level(value: Any) -> str:
+    label = str(value or '').strip().casefold()
+    if label == 'medium':
+        label = 'moderate'
+    return label.title() if label in _RISK_LABELS else ''
+
+
+def _risk_score(value: Any) -> str:
+    """Keep numeric fuzzy scores, without misrepresenting textual PDM levels as numbers."""
+    try:
+        return f'{float(value):g}'
+    except (TypeError, ValueError):
+        return ''
 
 
 def _artifact_dir() -> Path:
@@ -54,14 +70,17 @@ def _extract_risk_entries(payload: dict[str, Any]) -> list[dict[str, Any]]:
             or item.get('label')
             or ''
         )
+        simple_result = item.get('hasSimpleResult')
+        if not _normalize_risk_level(risk_level) and _normalize_risk_level(simple_result):
+            risk_level = simple_result
         if not timestamp and not risk_level:
             return
         parent = parent or {}
         entries.append(
             {
                 'timestamp': str(timestamp or ''),
-                'risk_level': str(risk_level or ''),
-                'risk_score': item.get('hasSimpleResult') or item.get('risk_score') or item.get('score') or '',
+                'risk_level': _normalize_risk_level(risk_level),
+                'risk_score': _risk_score(simple_result or item.get('risk_score') or item.get('score')),
                 'meta': item.get('meta') or '',
                 'model_id': parent.get('@id') or parent.get('id') or item.get('model_id') or '',
                 'eppo_code': parent.get('fsm:eppoCode') or parent.get('eppo_code') or item.get('eppo_code') or '',
@@ -121,8 +140,7 @@ def _summarize_risks(entries: list[dict[str, Any]], model: dict[str, Any], raw_p
     highest = None
     latest_ts = None
     for item in entries:
-        level = str(item.get('risk_level') or '').strip() or 'Unknown'
-        normalized = 'Moderate' if level.lower() == 'medium' else level.title()
+        normalized = _normalize_risk_level(item.get('risk_level')) or 'Unknown'
         counts[normalized] = counts.get(normalized, 0) + 1
         ts = item.get('timestamp')
         if ts and (latest_ts is None or str(ts) > str(latest_ts)):
@@ -143,7 +161,7 @@ def _summarize_risks(entries: list[dict[str, Any]], model: dict[str, Any], raw_p
     if highest and highest.get('timestamp'):
         reasons.append(f"Highest remote risk observed at {highest['timestamp']}.")
     if highest and highest.get('risk_score') not in (None, ''):
-        reasons.append(f"Highest fuzzy risk score: {highest['risk_score']}/100.")
+        reasons.append(f"Highest PDM fuzzy risk score: {highest['risk_score']}/100.")
     recommendation = model.get('default_recommendation', 'Maintain routine monitoring.')
     for rule in model.get('risk_rules', []):
         if str(rule.get('label', '')).lower() == str(risk_level or '').lower():
@@ -183,14 +201,26 @@ def _find_threat_model(threat_models: list[dict[str, Any]], model: dict[str, Any
     return None
 
 
-def _location_lat_lon() -> tuple[float, float]:
+def _location_lat_lon(location: dict[str, Any] | None = None) -> tuple[float, float]:
+    if isinstance(location, dict):
+        try:
+            return (
+                float(location.get('latitude', location.get('lat'))),
+                float(location.get('longitude', location.get('lon'))),
+            )
+        except (TypeError, ValueError):
+            pass
     location = load_config().get('location', {})
     return float(location.get('lat', 0.0)), float(location.get('lon', 0.0))
 
 
-def _ensure_fuzzy_parcel(client: PdmClient, *, model_key: str) -> dict[str, Any]:
-    lat, lon = _location_lat_lon()
-    name = f'agrivision-fuzzy-{model_key}-parcel'
+def _ensure_fuzzy_parcel(
+    client: PdmClient, *, model_key: str, location: dict[str, Any] | None = None
+) -> dict[str, Any]:
+    lat, lon = _location_lat_lon(location)
+    # The service identifies parcels by name. Include the centroid so a later
+    # run for another field cannot silently reuse this field's weather context.
+    name = f'agrivision-fuzzy-{model_key}-{lat:.5f}-{lon:.5f}-parcel'
     for parcel in client.list_parcels():
         if str(parcel.get('name') or '') == name:
             return {'parcel': parcel, 'parcel_id': str(parcel.get('id')), 'source': 'existing', 'latitude': lat, 'longitude': lon}
@@ -212,16 +242,20 @@ def _collect_fuzzy_snapshot(
     base_summary: dict[str, Any],
     resolved_model: dict[str, Any],
     resolved_crop: str,
+    artifact_dir: Path | None = None,
+    location: dict[str, Any] | None = None,
 ) -> dict[str, Any]:
     service_crop_name = _service_crop_name(resolved_model, resolved_crop)
     crop = _find_crop(client.list_crops(), service_crop_name)
     if not crop:
         raise RuntimeError(f'PDM fuzzy crop {service_crop_name!r} is not available.')
     threat_models = client.list_threat_models(crop_id=str(crop['id']))
-    threat_model = _find_threat_model(threat_models, resolved_model) or (threat_models[0] if threat_models else None)
+    threat_model = _find_threat_model(threat_models, resolved_model)
     if not threat_model:
-        raise RuntimeError(f'No PDM fuzzy threat models are available for {service_crop_name}.')
-    parcel = _ensure_fuzzy_parcel(client, model_key=resolved_model['key'])
+        raise RuntimeError(
+            f"No PDM fuzzy threat model matched {resolved_model['label']!r} for {service_crop_name}."
+        )
+    parcel = _ensure_fuzzy_parcel(client, model_key=resolved_model['key'], location=location)
 
     start = str((weather_summary or {}).get('history_start_date') or '')
     end = str((weather_summary or {}).get('history_end_date') or '')
@@ -267,6 +301,7 @@ def _collect_fuzzy_snapshot(
             'raw_payload': {
                 'crop': crop,
                 'threat_model': threat_model,
+                'available_threat_models': threat_models,
                 'remote_result': raw_payload,
                 'risk_entries': entries,
                 'risk_stats': stats,
@@ -279,8 +314,10 @@ def _collect_fuzzy_snapshot(
             'remote_highest_timestamp': stats.get('highest_timestamp'),
         }
     )
-    base_summary['raw_payload_artifact'] = write_pdm_artifact('fuzzy-result', base_summary['raw_payload'])
-    _write_json('summary.json', base_summary)
+    base_summary['raw_payload_artifact'] = write_pdm_artifact(
+        'fuzzy-result', base_summary['raw_payload'], artifact_dir=artifact_dir
+    )
+    _write_json('summary.json', base_summary, artifact_dir=artifact_dir)
     return base_summary
 
 def collect_pdm_snapshot(
@@ -292,6 +329,7 @@ def collect_pdm_snapshot(
     artifact_dir: Path | None = None,
     parcel_wkt: str | None = None,
     parcel_source: str = 'irrigation.default_parcel_wkt',
+    location: dict[str, Any] | None = None,
 ) -> dict[str, Any]:
     resolved_model = get_pdm_model(model_key)
     resolved_crop = (crop or resolved_model['crop']).strip().lower()
@@ -308,6 +346,7 @@ def collect_pdm_snapshot(
         'organism_name': resolved_model['organism_name'],
         'eppo_code': resolved_model['eppo_code'],
         'calculation_type': resolved_model['calculation_type'],
+        'risk_engine': 'legacy',
         'parcel_reference': {},
         'remote_parcel_id': '',
         'remote_model_id': '',
@@ -319,6 +358,7 @@ def collect_pdm_snapshot(
             'observed_at': ((weather_summary or {}).get('current_weather') or {}).get('timestamp'),
         },
         'risk_level': None,
+        'risk_score': None,
         'triggered_conditions': [],
         'recommendation': '',
         'notes': [],
@@ -335,6 +375,34 @@ def collect_pdm_snapshot(
         base_summary['notes'] = ['PDM disabled for this run.']
         base_summary['raw_payload_artifact'] = _write_json('summary.json', base_summary, artifact_dir=artifact_dir)
         return base_summary
+
+    pdm_cfg = load_config().get('pdm', {})
+    risk_engine = str(pdm_cfg.get('risk_engine', 'legacy')).strip().lower()
+    fuzzy_fallback_note = ''
+    if risk_engine in {'auto', 'fuzzy'}:
+        fuzzy_client = PdmClient(get_pdm_service_config())
+        fuzzy_service = fuzzy_client.probe()
+        supports_fuzzy_risk = getattr(fuzzy_client, 'supports_fuzzy_risk', lambda: False)
+        if fuzzy_service.get('reachable') and supports_fuzzy_risk():
+            base_summary['service_status'] = fuzzy_service
+            base_summary['runtime_status'] = {'ready': True, 'risk_engine': 'fuzzy'}
+            base_summary['risk_engine'] = 'fuzzy'
+            try:
+                return _collect_fuzzy_snapshot(
+                    fuzzy_client,
+                    weather_summary,
+                    base_summary,
+                    resolved_model,
+                    resolved_crop,
+                    artifact_dir=artifact_dir,
+                    location=location,
+                )
+            except Exception as exc:  # noqa: BLE001
+                if risk_engine == 'fuzzy':
+                    raise
+                fuzzy_fallback_note = f'Fuzzy-risk execution failed; used legacy PDM risk index instead: {exc}'
+        elif risk_engine == 'fuzzy':
+            raise RuntimeError('The connected PDM service does not expose the requested fuzzy-risk API.')
 
     bootstrap = bootstrap_pdm_context(
         resolved_model['key'],
@@ -379,6 +447,7 @@ def collect_pdm_snapshot(
     base_summary['status'] = 'success' if remote_completed else ('success' if upload_succeeded else 'partial')
     base_summary['warning_state'] = None if remote_completed or upload_succeeded else 'no_remote_results'
     base_summary['risk_level'] = risk_level
+    base_summary['risk_score'] = stats.get('highest_score')
     base_summary['triggered_conditions'] = reasons
     base_summary['recommendation'] = recommendation
     base_summary['notes'] = [
@@ -386,6 +455,8 @@ def collect_pdm_snapshot(
         f"Remote model id: {base_summary['remote_model_id']}",
         f"Remote parcel id: {base_summary['remote_parcel_id']}",
     ]
+    if fuzzy_fallback_note:
+        base_summary['notes'].append(fuzzy_fallback_note)
     if bootstrap.get('dataset_upload_succeeded'):
         uploaded_count = int((bootstrap.get('dataset_upload') or {}).get('record_count') or 0)
         base_summary['notes'].append(f'Weather data upload to PDM succeeded for {uploaded_count} record(s) before risk-index execution.')

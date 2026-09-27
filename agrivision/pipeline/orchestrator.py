@@ -277,6 +277,7 @@ def run_full_pipeline(
             artifact_dir=output_root / 'pdm',
             parcel_wkt=run_parcel_wkt,
             parcel_source='orthophoto centroid' if run_parcel_wkt else 'irrigation.default_parcel_wkt',
+            location=location_context,
         )
         if pdm_summary.get('status') == 'success':
             print('[AgriVision] âœ… Pest & Disease integration completed')
@@ -295,6 +296,9 @@ def run_full_pipeline(
                 crop=resolved_pdm_crop,
                 weather_summary=weather_summary,
                 irrigation_summary=irrigation_summary,
+                pdm_summary=pdm_summary,
+                workspace_root=workspace_root,
+                config=config,
             )
         except Exception as exc:
             disease_risk_summary = {

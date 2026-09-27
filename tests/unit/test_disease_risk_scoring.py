@@ -5,6 +5,7 @@ import json
 from pathlib import Path
 
 from agrivision.pipeline.risk.scoring import run_disease_risk_scoring
+from agrivision.pipeline.stages.disease_risk import run_disease_risk
 
 
 def _write_grid(vegetation_index_dir: Path) -> None:
@@ -72,3 +73,32 @@ def test_disease_risk_scoring_writes_layers(tmp_path: Path) -> None:
     assert "vegetation_index_anomaly" in selected["used_inputs"]
     assert Path(selected["cells_csv"]).exists()
     assert Path(selected["overlay_png"]).exists()
+
+
+def test_disease_risk_stage_uses_the_current_run_workspace(tmp_path: Path) -> None:
+    _write_grid(tmp_path / "output" / "vegetation_index")
+    config = {
+        "paths": {
+            "output_root": "output",
+            "vegetation_index_output": "output/vegetation_index",
+            "images_full": "data/rgb",
+            "images_full_mapir": "data/mapir",
+            "images_full_thermal": "data/thermal",
+            "odm_project_root_rgb": "data/odm_rgb",
+            "odm_project_root_mapir": "data/odm_mapir",
+            "odm_project_root_thermal": "data/odm_thermal",
+        }
+    }
+
+    summary = run_disease_risk(
+        crop="grapevine",
+        weather_summary={"current_weather": {"timestamp": "2026-05-18T10:00:00Z", "temperature": 22, "humidity": 72, "wind_speed": 2.5, "raw": {"rain": {"1h": 0.4}}}},
+        irrigation_summary=None,
+        pdm_summary={"risk_level": "Moderate", "selected_model_key": "grapevine_powdery_mildew_risk_v1"},
+        workspace_root=tmp_path,
+        config=config,
+    )
+
+    assert len(summary["layers"]) == 3
+    assert summary["field_assessment"]["status"] == "Medium"
+    assert (tmp_path / "output" / "vegetation_index" / "disease_risk" / "summary.json").exists()

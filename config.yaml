@@ -91,5 +91,8 @@ pdm:
   verify_ssl: false
   default_crop: "grapevine"
   default_model_key: "grapevine_powdery_mildew_risk_v1"
+  # Prefer the newer PDM fuzzy-risk API when the connected service supports it.
+  # The legacy risk-index endpoint remains the automatic fallback.
+  risk_engine: "auto"
   timeout_seconds: 20
   service_dir: "OpenAgri-PestAndDiseaseManagement"

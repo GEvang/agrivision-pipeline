@@ -113,6 +113,7 @@ def build_report_html(
     risk_layers_html: str | None = None,
     risk_alert_html: str | None = None,
     risk_legend_html: str | None = None,
+    field_assessment_html: str = "",
 ) -> str:
     quality = quality or {}
     quality_state = quality.get("quality_state", "N/A")
@@ -180,6 +181,13 @@ def build_report_html(
       --panel: #ffffff;
       --soft: #f8fafc;
     }}
+    .field-status {{ margin: 18px 0; padding: 18px 20px; border: 1px solid #d7dee9; border-left: 7px solid #64748b; border-radius: 10px; background: #fff; display: grid; grid-template-columns: 1fr auto; gap: 16px; }}
+    .field-status h2 {{ margin: 2px 0 8px; font-size: 1.25rem; }}
+    .field-status p {{ margin: 4px 0; }}
+    .field-status .eyebrow {{ color: #475569; font-size: .76rem; font-weight: 700; letter-spacing: .06em; text-transform: uppercase; }}
+    .field-status-metrics {{ display: grid; align-content: start; justify-items: end; gap: 2px; color: #475569; font-size: .84rem; }}
+    .field-status-metrics strong {{ font-size: 1.7rem; line-height: 1; }}
+    .field-status-note {{ grid-column: 1 / -1; color: #475569; font-size: .83rem; }}
     * {{ box-sizing: border-box; }}
     body {{
       font-family: "Inter", "Segoe UI", Arial, sans-serif;
@@ -637,6 +645,8 @@ def build_report_html(
       </div>
     </div>
   </header>
+
+  {field_assessment_html}
 
   <section class="report-grid">
     <aside class="side-stack">

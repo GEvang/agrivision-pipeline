@@ -30,10 +30,6 @@ DRIVER_WEIGHTS = {
     "historical_pressure": 0.10,
     "soil_irrigation": 0.10,
 }
-SPATIAL_DRIVER_WEIGHTS = {
-    "vegetation_index_anomaly": 0.50,
-    "thermal_anomaly": 0.50,
-}
 
 
 def _to_float(value: Any) -> float | None:
@@ -182,15 +178,6 @@ def _vegetation_index_anomaly_scores(cells: list[dict[str, Any]]) -> dict[str, f
     return scores
 
 
-def _irrigation_score(irrigation_summary: dict[str, Any] | None) -> float | None:
-    if not irrigation_summary or not irrigation_summary.get("authenticated"):
-        return None
-    eto = irrigation_summary.get("eto", {})
-    if isinstance(eto, dict) and eto.get("ok"):
-        return 0.4
-    return None
-
-
 def _capture_month(vegetation_index_meta: dict[str, Any], grid_meta: dict[str, Any], weather_summary: dict[str, Any]) -> int:
     candidates = [
         weather_summary.get("current_weather", {}).get("timestamp") if isinstance(weather_summary.get("current_weather"), dict) else None,
@@ -212,11 +199,12 @@ def _score_profile(
     irrigation_summary: dict[str, Any] | None,
 ) -> tuple[list[dict[str, Any]], dict[str, Any]]:
     seasonality = float(profile["seasonality"].get(month, 0.0))
-    phenology = 1.0
-    biological_gate = seasonality * phenology
+    # A2 phenology has intentionally not been inferred. Until a validated source
+    # is connected, A1 is the only biological gate available to this layer.
+    phenology = None
+    biological_gate = seasonality
     weather_score, weather_components = _weather_suitability(profile, weather_summary)
     vegetation_index_scores = _vegetation_index_anomaly_scores(cells)
-    soil_irrigation = _irrigation_score(irrigation_summary)
 
     scored: list[dict[str, Any]] = []
     for row in cells:
@@ -247,23 +235,22 @@ def _score_profile(
             "vegetation_index_anomaly": vegetation_index_scores.get(cell_id),
             "thermal_anomaly": None,
             "historical_pressure": None,
-            "soil_irrigation": soil_irrigation,
+            "soil_irrigation": None,
         }
-        spatial_weighted_sum = sum(
-            SPATIAL_DRIVER_WEIGHTS[key] * components[key]
-            for key in SPATIAL_DRIVER_WEIGHTS
+        # Use the scoring-sheet weights exactly as configured for the inputs we
+        # actually have. Missing A2/C1/C2/C4 are omitted (zero contribution),
+        # never substituted or re-normalised into a stronger risk signal.
+        available_weight = sum(
+            DRIVER_WEIGHTS[key]
+            for key in ("weather", "vegetation_index_anomaly")
             if components.get(key) is not None
         )
-        spatial_weight = sum(
-            SPATIAL_DRIVER_WEIGHTS[key]
-            for key in SPATIAL_DRIVER_WEIGHTS
+        driver = sum(
+            DRIVER_WEIGHTS[key] * float(components[key])
+            for key in ("weather", "vegetation_index_anomaly")
             if components.get(key) is not None
         )
-        spatial_signal = spatial_weighted_sum / spatial_weight if spatial_weight else None
-        context_multiplier = 0.25 + (0.75 * weather_score) if weather_score is not None else 0.5
-        available_weight = sum(DRIVER_WEIGHTS[key] for key, value in components.items() if value is not None)
-        driver = spatial_signal * context_multiplier if spatial_signal is not None else None
-        final = biological_gate * driver if driver is not None else None
+        final = biological_gate * driver if available_weight else None
         scored.append(
             {
                 **row,
@@ -298,13 +285,21 @@ def _score_profile(
         "mean_risk": float(np.mean(valid_scores)) if valid_scores else None,
         "max_risk": float(np.max(valid_scores)) if valid_scores else None,
         "high_or_above_cells": sum(1 for value in valid_scores if value >= 0.5),
-        "used_inputs": sorted(
+        "valid_cells": len(valid_scores),
+        "used_inputs": [
             key
-            for key in DRIVER_WEIGHTS
-            if (key == "weather" and weather_score is not None)
-            or any(row.get(key) is not None for row in scored)
-        ),
-        "missing_inputs": ["thermal_anomaly", "historical_pressure"] + ([] if soil_irrigation is not None else ["soil_irrigation"]),
+            for key, value in (
+                ("weather", weather_score),
+                ("vegetation_index_anomaly", next(iter(vegetation_index_scores.values()), None)),
+            )
+            if value is not None
+        ],
+        "missing_inputs": [
+            "phenology",
+            "thermal_anomaly",
+            "historical_pressure",
+            "soil_irrigation",
+        ],
     }
     return scored, summary
 
@@ -449,13 +444,13 @@ def run_disease_risk_scoring(
         "crop": crop or "grapevine",
         "capture_month_used": month,
         "formula": {
-            "biological_gate": "seasonality_score * phenology_score",
+            "biological_gate": "seasonality_score (A1; phenology/A2 not yet configured)",
             "risk_driver": {
-                "spatial_signal": SPATIAL_DRIVER_WEIGHTS,
-                "context_multiplier": "0.25 + (0.75 * weather_suitability)",
+                "weather": DRIVER_WEIGHTS["weather"],
+                "vegetation_index_anomaly": DRIVER_WEIGHTS["vegetation_index_anomaly"],
             },
-            "missing_inputs": "Missing inputs are not renormalized; unavailable evidence lowers confidence instead of amplifying available signals.",
-            "final_cell_risk": "biological_gate * spatial_signal * context_multiplier",
+            "missing_inputs": "A2 phenology, C1 historical pressure, C2 soil/irrigation, and C4 thermal anomaly are omitted; they are neither inferred nor re-normalized.",
+            "final_cell_risk": "seasonality_score * (0.40 * weather_suitability + 0.20 * vegetation_index_anomaly)",
         },
         "selected_layer_key": selected.get("profile_key") if selected else None,
         "selected_layer_label": selected.get("profile_label") if selected else None,
