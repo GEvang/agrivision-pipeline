@@ -8,6 +8,7 @@ from pathlib import Path
 from typing import Any, Dict, Optional, cast
 
 from agrivision.config.settings import get_project_root
+from agrivision.pipeline.io.geolocation import resolve_orthophoto_location
 from agrivision.pipeline.report.assets import (
     ensure_report_preview,
     get_report_settings,
@@ -268,9 +269,20 @@ def run_report(
     visible_preview = ensure_report_preview(orthophoto_rgb, orthophoto_rgb_preview)
     mapir_preview = ensure_report_preview(orthophoto_mapir, orthophoto_mapir_preview)
     thermal_preview = ensure_report_preview(orthophoto_thermal, orthophoto_thermal_preview)
+    orthophoto_location = resolve_orthophoto_location(
+        (orthophoto_rgb, orthophoto_mapir, orthophoto_thermal)
+    )
+    location_label = (
+        str(orthophoto_location["label"])
+        if orthophoto_location
+        else _location_label(config, weather_summary)
+    )
+    report_weather_summary = dict(weather_summary) if weather_summary else weather_summary
+    if report_weather_summary and orthophoto_location:
+        report_weather_summary["location_name"] = location_label
 
     index_title = "Vegetation Index"
-    weather_html = render_weather_section(weather_summary, output_dir)
+    weather_html = render_weather_section(report_weather_summary, output_dir)
     methodology_html = render_methodology_section(vegetation_index_meta)
     grid_meta_html = render_grid_metadata_section(grid_meta)
 
@@ -313,7 +325,7 @@ def run_report(
     html_doc = build_report_html(
         generated_at=generated_at,
         index_title=index_title,
-        location_label=_location_label(config, weather_summary),
+        location_label=location_label,
         quality=report_quality,
         weather_html=weather_html,
         methodology_html=methodology_html,

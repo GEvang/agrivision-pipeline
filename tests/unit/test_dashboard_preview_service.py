@@ -20,6 +20,21 @@ def test_preview_service_creates_preview(tmp_path: Path) -> None:
     assert preview.exists()
 
 
+def test_preview_service_reuses_current_preview(tmp_path: Path, monkeypatch) -> None:
+    source = tmp_path / 'source.png'
+    preview = tmp_path / 'preview.png'
+    Image.new('RGB', (64, 64)).save(source)
+    service = PreviewService()
+    service.ensure_preview(source, preview)
+
+    def should_not_open(*_args, **_kwargs):
+        raise AssertionError('A current preview must not be regenerated.')
+
+    monkeypatch.setattr('agrivision.services.preview_service.Image.open', should_not_open)
+
+    assert service.ensure_preview(source, preview) == preview
+
+
 def test_preview_service_creates_geotiff_preview_with_rasterio(tmp_path: Path) -> None:
     source = tmp_path / 'ortho.tif'
     preview = tmp_path / 'preview.png'

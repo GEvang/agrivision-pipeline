@@ -12,6 +12,12 @@ class PreviewService:
         if not artifact_path.exists():
             return None
         preview_path.parent.mkdir(parents=True, exist_ok=True)
+        if preview_path.exists():
+            try:
+                if preview_path.stat().st_mtime_ns >= artifact_path.stat().st_mtime_ns:
+                    return preview_path
+            except OSError:
+                pass
         if artifact_path.suffix.lower() in {'.tif', '.tiff'}:
             generated = self._ensure_raster_preview(artifact_path, preview_path)
             if generated is not None:

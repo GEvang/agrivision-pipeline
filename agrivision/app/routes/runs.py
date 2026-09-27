@@ -359,7 +359,7 @@ def list_runs(request: Request, status: str = 'all', q: str = '', run_mode: str 
     if 'text/html' in request.headers.get('accept', ''):
         report_lookup = {
             item.run_id: item
-            for item in deps.report_service.list_reports(generate_previews=True)
+            for item in deps.report_service.list_reports(generate_previews=False)
         }
         report_cards = [
             _report_card(run, report_lookup.get(run.run_id))

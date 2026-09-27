@@ -287,9 +287,15 @@ def dashboard(request: Request) -> HTMLResponse:
     status_summary: dict[str, int] = {}
     for run in runs:
         status_summary[run.status] = status_summary.get(run.status, 0) + 1
-    reports = deps.report_service.list_reports(generate_previews=True)
+    reports = deps.report_service.list_reports(generate_previews=False)
     report_lookup = {item.run_id: item for item in reports}
     latest_report = next((item for item in reports if item.report_path), None)
+    if latest_report:
+        latest_report = deps.report_service.get_report(
+            latest_report.run_id,
+            generate_preview=True,
+        )
+        report_lookup[latest_report.run_id] = latest_report
     latest_run = deps.run_service.load_run(latest_report.run_id) if latest_report else None
     latest_card = _report_card(latest_run, latest_report) if latest_run and latest_report else None
     recent_run_cards = [_report_card(run, report_lookup.get(run.run_id)) for run in runs[:10]]
