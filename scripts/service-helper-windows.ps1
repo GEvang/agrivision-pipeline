@@ -36,7 +36,13 @@ function Get-RepoDir([string]$serviceKey) {
 function Get-ComposeFile([string]$serviceKey, [string]$repoDir) {
   $candidates = @()
   switch ($serviceKey) {
-    "weather" { $candidates = @("docker-compose-x86_64.yml", "docker-compose-arm64.yml", "docker-compose.yml", "docker-compose.yaml") }
+    "weather" {
+      if ($env:PROCESSOR_ARCHITECTURE -eq "ARM64") {
+        $candidates = @("docker-compose-arm64.yml", "docker-compose-x86_64.yml", "docker-compose.yml", "docker-compose.yaml")
+      } else {
+        $candidates = @("docker-compose-x86_64.yml", "docker-compose-arm64.yml", "docker-compose.yml", "docker-compose.yaml")
+      }
+    }
     default { $candidates = @("compose.yaml", "compose.yml", "docker-compose.yml", "docker-compose.yaml") }
   }
   foreach ($candidate in $candidates) {
@@ -110,7 +116,22 @@ function Invoke-Docker([string[]]$ArgumentList, [string]$LogPath) {
   return $process.ExitCode
 }
 
+function Get-DashboardImage() {
+  # Reuse whatever image docker compose started, so the tag lives only in
+  # docker-compose.yml.
+  try {
+    $image = (& docker inspect --format "{{.Config.Image}}" agrivision-pipeline 2>$null | Out-String).Trim()
+  } catch {
+    $image = ""
+  }
+  if ($LASTEXITCODE -ne 0 -or -not $image) {
+    throw "The agrivision-pipeline container is not available; start AgriVision with the launcher first."
+  }
+  return $image
+}
+
 function Invoke-Prepare([string]$serviceKey, [string]$LogPath) {
+  $image = Get-DashboardImage
   $dockerArgs = @(
     "run", "--rm",
     "-v", "${RootDir}:/workspace",
@@ -118,7 +139,7 @@ function Invoke-Prepare([string]$serviceKey, [string]$LogPath) {
     "-e", "AGRIVISION_PROJECT_ROOT=/workspace",
     "-e", "AGRIVISION_CONFIG_PATH=/workspace/config.yaml",
     "-e", "AGRIVISION_RUNTIME_SETTINGS_PATH=/workspace/runtime/settings.json",
-    "agrivision-pipeline:phase5",
+    $image,
     "python", "run.py", "--service-control", "--service-key", $serviceKey, "--service-action", "prepare"
   )
   $exitCode = Invoke-Docker -ArgumentList $dockerArgs -LogPath $LogPath
@@ -216,7 +237,7 @@ function Process-Command([string]$commandPath) {
   } catch {
     $ok = "0"
     $message = "Host helper failed while running $action $serviceKey."
-    $_ | Out-String | Set-Content -Path $logPath
+    $_ | Out-String | Out-File -FilePath $logPath -Append -Encoding utf8
   }
 
   foreach ($name in @("weather", "irrigation", "pdm")) {
@@ -235,10 +256,26 @@ foreach ($serviceKey in @("weather", "irrigation", "pdm")) {
   Write-ServiceState $serviceKey
 }
 
+# Keep the heartbeat fresh while long first-time clones and image builds run;
+# the dashboard treats a heartbeat older than 15 seconds as a missing helper.
+Write-HelperStatus
+$null = Start-Job -ArgumentList (Join-Path $HelperDir "helper.env"), $PID -ScriptBlock {
+  param([string]$StatusPath, [int]$ParentPid)
+  while (Get-Process -Id $ParentPid -ErrorAction SilentlyContinue) {
+    try {
+      @(
+        "TIMESTAMP_EPOCH=$([DateTimeOffset]::UtcNow.ToUnixTimeSeconds())"
+        "MODE=host-launcher"
+      ) | Set-Content -Path $StatusPath
+    } catch {
+    }
+    Start-Sleep -Seconds 2
+  }
+}
+
 Prepare-AllServices
 
 while ($true) {
-  Write-HelperStatus
   foreach ($serviceKey in @("weather", "irrigation", "pdm")) {
     Write-ServiceState $serviceKey
   }

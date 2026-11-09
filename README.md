@@ -10,10 +10,16 @@ Use one of the provided start files:
 - Linux: `Start AgriVision Linux.sh`
 - macOS: `Start AgriVision macOS.command`
 
-Or start with Docker:
+The start files also launch the host service helper that installs and controls the OpenAgri services, so prefer them over plain Docker Compose. To start only the dashboard with Docker:
 
 ```bash
 docker compose up --build -d
+```
+
+On Linux with a standard Docker daemon, pass your user so files under `data/`, `output/` and `runtime/` stay yours (the Linux start file does this automatically):
+
+```bash
+AGRIVISION_UID=$(id -u) AGRIVISION_GID=$(id -g) AGRIVISION_DOCKER_GID=$(stat -c %g /var/run/docker.sock) docker compose up --build -d
 ```
 
 Open:

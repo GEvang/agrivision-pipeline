@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import os
+import re
 from pathlib import Path
 
 from agrivision.config.settings import get_settings
@@ -18,7 +19,13 @@ from agrivision.services.runtime import (
     update_env_file,
 )
 
-IRRIGATION_REPO_URL = "https://github.com/openagri-eu/OpenAgri-IrrigationManagement.git"
+IRRIGATION_REPO_URL = "https://github.com/agstack/OpenAgri-IrrigationManagement.git"
+# Last upstream commit verified with AgriVision. Bump deliberately after testing.
+IRRIGATION_REPO_REF = "bda60269bec1eaa9d07d756165613d90717a3116"
+# Upstream leaves SQLAlchemy unpinned. SQLAlchemy 2.1 maps ``postgresql://`` to
+# the psycopg v3 driver, but the image only installs psycopg2, so a fresh build
+# crashes during its first migration.
+IRRIGATION_SQLALCHEMY_REQUIREMENT = "SQLAlchemy==2.0.49"
 DEFAULT_SERVICE_USERNAME = "dummy@email.com"
 DEFAULT_SERVICE_PASSWORD = "StrongPass1@"
 
@@ -28,7 +35,31 @@ def _service_dir() -> Path:
     return project_service_dir(settings.irrigation.service_dir or "OpenAgri-IrrigationManagement")
 
 
+def _pin_sqlalchemy_requirement(repo_dir: Path) -> None:
+    requirements_path = repo_dir / "requirements.txt"
+    if not requirements_path.exists():
+        return
+    lines = requirements_path.read_text(encoding="utf-8").splitlines()
+    pin_comment = "  # pinned by AgriVision: SQLAlchemy 2.1 needs psycopg v3"
+    patched: list[str] = []
+    found = False
+    for line in lines:
+        requirement = line.split("#", 1)[0].strip()
+        name = re.split(r"[<>=!~\[ ;]", requirement, maxsplit=1)[0].lower()
+        if name == "sqlalchemy":
+            found = True
+            if "==" not in requirement:
+                line = IRRIGATION_SQLALCHEMY_REQUIREMENT + pin_comment
+        patched.append(line)
+    if not found:
+        patched.append(IRRIGATION_SQLALCHEMY_REQUIREMENT + pin_comment)
+    if patched != lines:
+        requirements_path.write_text("\n".join(patched) + "\n", encoding="utf-8")
+
+
 def _apply_compatibility_patches(repo_dir: Path) -> None:
+    _pin_sqlalchemy_requirement(repo_dir)
+
     entrypoint_path = repo_dir / "entrypoint.sh"
     if entrypoint_path.exists():
         entrypoint = entrypoint_path.read_bytes()
@@ -93,11 +124,12 @@ def ensure_repo_and_env(timeout_seconds: int = 90) -> ServiceRuntimeState:
             readiness_urls=health_urls,
             timeout_seconds=timeout_seconds,
         )
-    clone_repo_if_missing(repo_dir, IRRIGATION_REPO_URL)
+    clone_repo_if_missing(repo_dir, IRRIGATION_REPO_URL, IRRIGATION_REPO_REF)
     _apply_compatibility_patches(repo_dir)
     return reconcile_service_runtime(
         repo_dir=repo_dir,
         repo_url=IRRIGATION_REPO_URL,
+        repo_ref=IRRIGATION_REPO_REF,
         env_values=_env_values(),
         compose_candidates=None,
         readiness_urls=health_urls,
@@ -108,7 +140,7 @@ def ensure_repo_and_env(timeout_seconds: int = 90) -> ServiceRuntimeState:
 
 def prepare_repo_and_env() -> EnvSyncResult:
     repo_dir = _service_dir()
-    clone_repo_if_missing(repo_dir, IRRIGATION_REPO_URL)
+    clone_repo_if_missing(repo_dir, IRRIGATION_REPO_URL, IRRIGATION_REPO_REF)
     _apply_compatibility_patches(repo_dir)
     env_path = ensure_env_file(repo_dir)
     return update_env_file(env_path, _env_values())

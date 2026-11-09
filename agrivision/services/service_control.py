@@ -9,6 +9,7 @@ from typing import Callable
 
 from agrivision.config.settings import get_settings
 from agrivision.services.host_service_helper import (
+    INSTALL_TIMEOUT_SECONDS,
     installed_service_state,
 )
 from agrivision.services.host_service_helper import (
@@ -337,7 +338,7 @@ def _require_controls_available() -> None:
 def ensure_missing_services(*, timeout_seconds: int = 90) -> None:
     _require_controls_available()
     if os.getenv("APP_CONTAINER_PROJECT_ROOT", "").strip():
-        submit_host_helper_command(action="install_missing", timeout_seconds=max(timeout_seconds, 240))
+        submit_host_helper_command(action="install_missing", timeout_seconds=max(timeout_seconds, INSTALL_TIMEOUT_SECONDS))
         return
     errors: list[str] = []
     for descriptor in service_descriptors().values():
@@ -352,7 +353,7 @@ def ensure_missing_services(*, timeout_seconds: int = 90) -> None:
 def ensure_service(key: str, *, timeout_seconds: int = 90) -> None:
     _require_controls_available()
     if os.getenv("APP_CONTAINER_PROJECT_ROOT", "").strip():
-        submit_host_helper_command(action="ensure", service_key=key, timeout_seconds=max(timeout_seconds, 240))
+        submit_host_helper_command(action="ensure", service_key=key, timeout_seconds=max(timeout_seconds, INSTALL_TIMEOUT_SECONDS))
         return
     descriptor = service_descriptors()[key]
     descriptor.ensure(timeout_seconds=timeout_seconds)
@@ -371,7 +372,7 @@ def stop_service(key: str) -> None:
 def restart_service(key: str, *, timeout_seconds: int = 90) -> None:
     _require_controls_available()
     if os.getenv("APP_CONTAINER_PROJECT_ROOT", "").strip():
-        submit_host_helper_command(action="restart", service_key=key, timeout_seconds=max(timeout_seconds, 240))
+        submit_host_helper_command(action="restart", service_key=key, timeout_seconds=max(timeout_seconds, INSTALL_TIMEOUT_SECONDS))
         return
     descriptor = service_descriptors()[key]
     descriptor.ensure(timeout_seconds=timeout_seconds)

@@ -18,7 +18,9 @@ from agrivision.services.runtime import (
     update_env_file,
 )
 
-PDM_REPO_URL = "https://github.com/openagri-eu/OpenAgri-PestAndDiseaseManagement.git"
+PDM_REPO_URL = "https://github.com/agstack/OpenAgri-PestAndDiseaseManagement.git"
+# Last upstream commit verified with AgriVision. Bump deliberately after testing.
+PDM_REPO_REF = "3aa67a9ad3de6ff8a772dc635db041ec53845aa4"
 DEFAULT_SERVICE_USERNAME = "dummy@email.com"
 DEFAULT_SERVICE_PASSWORD = "StrongPass1@"
 
@@ -75,6 +77,7 @@ def ensure_repo_and_env(timeout_seconds: int = 120) -> ServiceRuntimeState:
     return reconcile_service_runtime(
         repo_dir=_service_dir(),
         repo_url=PDM_REPO_URL,
+        repo_ref=PDM_REPO_REF,
         env_values=_env_values(),
         compose_candidates=['compose.yaml', 'docker-compose.yml', 'docker-compose.yaml'],
         readiness_urls=health_urls,
@@ -85,7 +88,7 @@ def ensure_repo_and_env(timeout_seconds: int = 120) -> ServiceRuntimeState:
 
 def prepare_repo_and_env() -> EnvSyncResult:
     repo_dir = _service_dir()
-    clone_repo_if_missing(repo_dir, PDM_REPO_URL)
+    clone_repo_if_missing(repo_dir, PDM_REPO_URL, PDM_REPO_REF)
     env_path = ensure_env_file(repo_dir)
     return update_env_file(env_path, _env_values())
 

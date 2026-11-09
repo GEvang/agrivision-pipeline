@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import re
 import time
 import uuid
 from pathlib import Path
@@ -9,6 +10,9 @@ from agrivision.services.runtime import ServiceBootstrapError
 
 _HEARTBEAT_TTL_SECONDS = 15
 _COMMAND_TIMEOUT_SECONDS = 240
+# A first install clones the service repo, pulls its images and builds
+# Irrigation from source, which can take well over 4 minutes on a slow link.
+INSTALL_TIMEOUT_SECONDS = 900
 
 
 def helper_root() -> Path:
@@ -64,6 +68,21 @@ def helper_state() -> dict[str, object]:
     }
 
 
+def _local_log_path(reported: str) -> Path | None:
+    """Map the helper's host log path to this process's view of the helper folder.
+
+    The helper reports host paths (``C:\\...`` on Windows), which do not exist
+    inside the dashboard container, so fall back to the same file name under
+    the bind-mounted helper logs folder.
+    """
+    if not reported:
+        return None
+    reported_path = Path(reported)
+    if reported_path.exists():
+        return reported_path
+    return helper_root() / "logs" / re.split(r"[\\/]", reported)[-1]
+
+
 def installed_service_state(service_key: str) -> dict[str, str]:
     return _parse_env_file(_service_file(service_key))
 
@@ -97,7 +116,7 @@ def submit_command(
         if response_file.exists():
             payload = _parse_env_file(response_file)
             ok = payload.get("OK", "").lower() in {"1", "true", "yes", "ok"}
-            log_path = Path(payload["LOG_PATH"]) if payload.get("LOG_PATH") else None
+            log_path = _local_log_path(payload.get("LOG_PATH", ""))
             message = payload.get("MESSAGE", "Host helper did not return a message.")
             if not ok:
                 if log_path and log_path.exists():

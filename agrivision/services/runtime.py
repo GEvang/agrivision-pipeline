@@ -76,11 +76,34 @@ def service_control_state() -> ServiceControlState:
     return ServiceControlState(available=True, reason="")
 
 
-def clone_repo_if_missing(repo_dir: Path, repo_url: str) -> None:
+def clone_repo_if_missing(repo_dir: Path, repo_url: str, repo_ref: str | None = None) -> None:
+    """Clone a sibling service repo, checked out at ``repo_ref`` when given.
+
+    Pinning keeps fresh installs on a service version AgriVision was tested
+    with instead of whatever upstream ``main`` holds that day. Existing clones
+    are left untouched so local changes are never discarded.
+    """
     if repo_dir.exists():
         return
     repo_dir.parent.mkdir(parents=True, exist_ok=True)
     subprocess.run(["git", "clone", repo_url, str(repo_dir)], check=True)
+    if not repo_ref:
+        return
+    git = ["git", "-C", str(repo_dir)]
+    try:
+        try:
+            subprocess.run([*git, "checkout", "--quiet", repo_ref], check=True)
+        except subprocess.CalledProcessError:
+            # The pinned commit may not be on any branch the clone fetched.
+            subprocess.run([*git, "fetch", "--quiet", "origin", repo_ref], check=True)
+            subprocess.run([*git, "checkout", "--quiet", "FETCH_HEAD"], check=True)
+    except subprocess.CalledProcessError as exc:
+        # Never leave an unpinned clone behind: later runs would skip cloning
+        # and silently use upstream main.
+        shutil.rmtree(repo_dir, ignore_errors=True)
+        raise ServiceBootstrapError(
+            f"Could not check out pinned commit {repo_ref} from {repo_url}."
+        ) from exc
 
 
 def ensure_env_file(repo_dir: Path) -> Path:
@@ -305,8 +328,9 @@ def reconcile_service_runtime(
     readiness_urls: Sequence[str],
     timeout_seconds: int = 90,
     build_on_recreate: bool = False,
+    repo_ref: str | None = None,
 ) -> ServiceRuntimeState:
-    clone_repo_if_missing(repo_dir, repo_url)
+    clone_repo_if_missing(repo_dir, repo_url, repo_ref)
     env_path = ensure_env_file(repo_dir)
     env_sync = update_env_file(env_path, env_values)
     compose_file = detect_compose_file(repo_dir, compose_candidates)

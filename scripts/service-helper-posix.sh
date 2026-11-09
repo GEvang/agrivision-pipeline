@@ -22,15 +22,33 @@ fi
 echo "$$" >"$PID_FILE"
 trap 'rm -f "$PID_FILE"' EXIT
 
+dashboard_image() {
+  # Reuse whatever image docker compose started, so the tag lives only in
+  # docker-compose.yml.
+  docker inspect --format '{{.Config.Image}}' agrivision-pipeline
+}
+
 docker_run_prepare() {
   local service_key="$1"
+  local image
+  image="$(dashboard_image)" || {
+    echo "The agrivision-pipeline container is not available; start AgriVision with the launcher first." >&2
+    return 1
+  }
+  # The Linux launcher exports AGRIVISION_UID/GID so cloned service repos
+  # belong to the host user instead of root.
+  local user_args=()
+  if [[ -n "${AGRIVISION_UID:-}" ]]; then
+    user_args=(-u "${AGRIVISION_UID}:${AGRIVISION_GID:-$AGRIVISION_UID}" -e HOME=/tmp)
+  fi
   docker run --rm \
+    ${user_args[@]+"${user_args[@]}"} \
     -v "$ROOT_DIR:/workspace" \
     -w /workspace \
     -e AGRIVISION_PROJECT_ROOT=/workspace \
     -e AGRIVISION_CONFIG_PATH=/workspace/config.yaml \
     -e AGRIVISION_RUNTIME_SETTINGS_PATH=/workspace/runtime/settings.json \
-    agrivision-pipeline:phase5 \
+    "$image" \
     python run.py --service-control --service-key "$service_key" --service-action prepare
 }
 
@@ -226,10 +244,20 @@ for service_key in weather irrigation pdm; do
   write_service_state "$service_key"
 done
 
+# Keep the heartbeat fresh while long first-time clones and image builds run;
+# the dashboard treats a heartbeat older than 15 seconds as a missing helper.
+(
+  while kill -0 "$$" 2>/dev/null; do
+    write_helper_status
+    sleep 2
+  done
+) &
+HEARTBEAT_PID=$!
+trap 'kill "$HEARTBEAT_PID" 2>/dev/null; rm -f "$PID_FILE"' EXIT
+
 prepare_all_services_host
 
 while true; do
-  write_helper_status
   for service_key in weather irrigation pdm; do
     write_service_state "$service_key"
   done

@@ -3,9 +3,15 @@ services:
     build:
       context: .
       dockerfile: Dockerfile
-    image: agrivision-pipeline:phase5
+    # Keep the tag equal to the version in pyproject.toml.
+    image: agrivision-pipeline:1.0.0
     container_name: agrivision-pipeline
     working_dir: /app
+    # The Linux launcher sets these so files in data/, output/ and runtime/
+    # belong to the host user. Docker Desktop (Windows/macOS) leaves them unset.
+    user: "${AGRIVISION_UID:-0}:${AGRIVISION_GID:-0}"
+    group_add:
+      - "${AGRIVISION_DOCKER_GID:-0}"
     ports:
       - "8008:8008"
     extra_hosts:
@@ -15,6 +21,7 @@ services:
       AGRIVISION_RUNTIME_SETTINGS_PATH: /app/runtime/settings.json
       APP_CONTAINER_PROJECT_ROOT: /app
       AGRIVISION_APP_CONTAINER_NAME: agrivision-pipeline
+      HOME: /tmp
     volumes:
       - ./agrivision:/app/agrivision
       - ./data:/app/data

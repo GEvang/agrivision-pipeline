@@ -15,12 +15,14 @@ if ! docker info >/dev/null 2>&1; then
   exit 1
 fi
 
+mkdir -p data output runtime/service-helper/logs
+
 echo "Starting AgriVision dashboard..."
 docker compose up --build -d
 
 echo "Starting host service helper..."
 chmod +x "$PWD/scripts/service-helper-posix.sh"
-nohup "$PWD/scripts/service-helper-posix.sh" >/dev/null 2>&1 &
+nohup "$PWD/scripts/service-helper-posix.sh" >>"$PWD/runtime/service-helper/logs/helper.log" 2>&1 &
 
 echo "AgriVision is available at http://127.0.0.1:8008"
 open "http://127.0.0.1:8008"

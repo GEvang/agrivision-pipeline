@@ -31,6 +31,8 @@ from agrivision.services.runtime import (
 )
 
 WEATHER_REPO_URL = "https://github.com/agstack/OpenAgri-WeatherService.git"
+# Last upstream commit verified with AgriVision. Bump deliberately after testing.
+WEATHER_REPO_REF = "923ecb049932b4958762d0e8e8a859505995dff7"
 DEFAULT_SERVICE_USERNAME = "dummy@email.com"
 DEFAULT_SERVICE_PASSWORD = "StrongPass1@"
 
@@ -149,6 +151,7 @@ def ensure_weather_repo_and_env(timeout_seconds: int = 90) -> ServiceRuntimeStat
     return reconcile_service_runtime(
         repo_dir=_service_dir(),
         repo_url=WEATHER_REPO_URL,
+        repo_ref=WEATHER_REPO_REF,
         env_values=_weather_env_values(),
         compose_candidates=[
             "docker-compose-x86_64.yml",
@@ -163,7 +166,7 @@ def ensure_weather_repo_and_env(timeout_seconds: int = 90) -> ServiceRuntimeStat
 
 def prepare_weather_repo_and_env() -> EnvSyncResult:
     repo_dir = _service_dir()
-    clone_repo_if_missing(repo_dir, WEATHER_REPO_URL)
+    clone_repo_if_missing(repo_dir, WEATHER_REPO_URL, WEATHER_REPO_REF)
     env_path = ensure_env_file(repo_dir)
     return update_env_file(env_path, _weather_env_values())
 

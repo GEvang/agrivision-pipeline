@@ -3,7 +3,7 @@ PIP ?= pip
 RUFF ?= ruff
 PYTEST ?= pytest
 
-.PHONY: install-dev lint format test smoke-config run serve-dashboard verify-phase5
+.PHONY: install-dev lint format test smoke-config run serve-dashboard verify
 
 install-dev:
 	$(PYTHON) -m pip install -r requirements.txt
@@ -21,7 +21,7 @@ test:
 smoke-config:
 	$(PYTHON) -c "from agrivision.config.settings import load_config; load_config(); print('config smoke check passed')"
 
-verify-phase5:
+verify:
 	$(PYTHON) -m pytest tests
 	$(PYTHON) -m ruff check .
 

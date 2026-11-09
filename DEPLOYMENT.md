@@ -11,17 +11,20 @@ AgriVision supports two operator deployment methods:
 - Linux: `Start AgriVision Linux.sh`
 - macOS: `Start AgriVision macOS.command`
 
-Linux and macOS launchers may need execute permission first:
+The start files launch the dashboard and the host service helper, which clones, configures and starts the OpenAgri services. The Linux start file also runs the containers as your user, so `data/`, `output/`, `runtime/` and the service repos are not owned by root. Helper output goes to `runtime/service-helper/logs/helper.log`.
 
-```bash
-chmod +x "Start AgriVision Linux.sh"
-chmod +x "Start AgriVision macOS.command"
-```
+The OpenAgri services are cloned at commits pinned in AgriVision (`*_REPO_REF` in `agrivision/services/{weather,irrigation,pdm}`). Update a pin only after testing the new upstream version.
 
 ## Docker Compose
 
 ```bash
 docker compose up --build -d
+```
+
+On Linux with a standard Docker daemon, run Compose as your user so bind-mounted files stay yours:
+
+```bash
+AGRIVISION_UID=$(id -u) AGRIVISION_GID=$(id -g) AGRIVISION_DOCKER_GID=$(stat -c %g /var/run/docker.sock) docker compose up --build -d
 ```
 
 Open:

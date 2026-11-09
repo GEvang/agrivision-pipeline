@@ -3,7 +3,7 @@ from pathlib import Path
 
 import pytest
 
-from agrivision.services import runtime
+from agrivision.services import host_service_helper, runtime
 from agrivision.services.irrigation.runtime import _apply_compatibility_patches
 from agrivision.services.runtime import (
     ServiceBootstrapError,
@@ -122,3 +122,110 @@ def test_irrigation_compatibility_patch_adds_missing_imports(tmp_path: Path) -> 
     text = main_path.read_text(encoding="utf-8")
     assert "import logging\n" in text
     assert "import time\n" in text
+
+
+def test_clone_repo_checks_out_pinned_ref(monkeypatch, tmp_path: Path) -> None:
+    calls: list[list[str]] = []
+    monkeypatch.setattr(runtime.subprocess, "run", lambda cmd, **kwargs: calls.append(cmd))
+    repo_dir = tmp_path / "OpenAgri-Service"
+
+    runtime.clone_repo_if_missing(repo_dir, "https://example.test/repo.git", "abc123")
+
+    assert calls == [
+        ["git", "clone", "https://example.test/repo.git", str(repo_dir)],
+        ["git", "-C", str(repo_dir), "checkout", "--quiet", "abc123"],
+    ]
+
+
+def test_clone_repo_leaves_existing_checkout_untouched(monkeypatch, tmp_path: Path) -> None:
+    calls: list[list[str]] = []
+    monkeypatch.setattr(runtime.subprocess, "run", lambda cmd, **kwargs: calls.append(cmd))
+
+    runtime.clone_repo_if_missing(tmp_path, "https://example.test/repo.git", "abc123")
+
+    assert calls == []
+
+
+def test_irrigation_compatibility_patch_pins_unpinned_sqlalchemy(tmp_path: Path) -> None:
+    requirements = tmp_path / "requirements.txt"
+    requirements.write_text("alembic==1.13.1 # DB migrations\nsqlalchemy\npsycopg2==2.9.9\n", encoding="utf-8")
+
+    _apply_compatibility_patches(tmp_path)
+    _apply_compatibility_patches(tmp_path)
+
+    lines = requirements.read_text(encoding="utf-8").splitlines()
+    assert lines[0] == "alembic==1.13.1 # DB migrations"
+    assert lines[1].startswith("SQLAlchemy==2.0.49")
+    assert lines[2] == "psycopg2==2.9.9"
+    assert len(lines) == 3
+
+
+def test_irrigation_compatibility_patch_adds_missing_sqlalchemy_pin(tmp_path: Path) -> None:
+    requirements = tmp_path / "requirements.txt"
+    requirements.write_text("alembic==1.13.1\npsycopg2==2.9.9 # PSQL driver\n", encoding="utf-8")
+
+    _apply_compatibility_patches(tmp_path)
+
+    lines = requirements.read_text(encoding="utf-8").splitlines()
+    assert [line for line in lines if line.lower().startswith("sqlalchemy")] == [
+        lines[-1]
+    ]
+    assert lines[-1].startswith("SQLAlchemy==2.0.49")
+
+
+def test_irrigation_compatibility_patch_keeps_exact_sqlalchemy_pin(tmp_path: Path) -> None:
+    requirements = tmp_path / "requirements.txt"
+    requirements.write_text("SQLAlchemy==2.0.31\n", encoding="utf-8")
+
+    _apply_compatibility_patches(tmp_path)
+
+    assert requirements.read_text(encoding="utf-8") == "SQLAlchemy==2.0.31\n"
+
+
+@pytest.mark.parametrize(
+    "reported",
+    [
+        "/home/user/agrivision/runtime/service-helper/logs/req-1.log",
+        r"C:\Users\user\agrivision\runtime\service-helper\logs\req-1.log",
+    ],
+)
+def test_helper_log_path_maps_host_path_into_helper_folder(monkeypatch, tmp_path: Path, reported: str) -> None:
+    monkeypatch.setattr(host_service_helper, "helper_root", lambda: tmp_path)
+
+    assert host_service_helper._local_log_path(reported) == tmp_path / "logs" / "req-1.log"
+
+
+def test_clone_repo_fetches_pinned_ref_missing_from_branches(monkeypatch, tmp_path: Path) -> None:
+    calls: list[list[str]] = []
+
+    def fake_run(cmd: list[str], **kwargs: object) -> None:
+        calls.append(cmd)
+        if cmd[-1] == "abc123" and "checkout" in cmd:
+            raise subprocess.CalledProcessError(128, cmd)
+
+    monkeypatch.setattr(runtime.subprocess, "run", fake_run)
+    repo_dir = tmp_path / "OpenAgri-Service"
+
+    runtime.clone_repo_if_missing(repo_dir, "https://example.test/repo.git", "abc123")
+
+    assert calls[-2:] == [
+        ["git", "-C", str(repo_dir), "fetch", "--quiet", "origin", "abc123"],
+        ["git", "-C", str(repo_dir), "checkout", "--quiet", "FETCH_HEAD"],
+    ]
+
+
+def test_clone_repo_removes_clone_when_pinned_ref_is_unavailable(monkeypatch, tmp_path: Path) -> None:
+    repo_dir = tmp_path / "OpenAgri-Service"
+
+    def fake_run(cmd: list[str], **kwargs: object) -> None:
+        if cmd[1] == "clone":
+            repo_dir.mkdir()
+            return
+        raise subprocess.CalledProcessError(128, cmd)
+
+    monkeypatch.setattr(runtime.subprocess, "run", fake_run)
+
+    with pytest.raises(ServiceBootstrapError, match="abc123"):
+        runtime.clone_repo_if_missing(repo_dir, "https://example.test/repo.git", "abc123")
+
+    assert not repo_dir.exists()
