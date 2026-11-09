@@ -1,8 +1,22 @@
+"""Run the AgriVision pipeline stages in order for one workspace.
+
+Each stage is a small function that reads and updates a shared
+:class:`PipelineRun`. Integration stages (weather, irrigation, pest & disease,
+disease risk) degrade instead of failing the run; orthophoto and vegetation
+index problems stop it.
+"""
+
 from __future__ import annotations
 
+import logging
+import sys
+from dataclasses import dataclass, field
+from datetime import date
 from pathlib import Path
-from typing import Callable
+from typing import Any, Callable
 
+from agrivision.config.settings import parse_bool
+from agrivision.integrations.common.geometry import openagri_point_wkt
 from agrivision.pipeline.io.geolocation import resolve_orthophoto_location
 from agrivision.pipeline.io.paths import resolve_pipeline_paths
 from agrivision.pipeline.stages.disease_risk import run_disease_risk
@@ -16,13 +30,336 @@ from agrivision.pipeline.stages.vegetation_index import run_vegetation_index
 from agrivision.pipeline.stages.weather_enrichment import run_weather_enrichment
 from agrivision.pipeline.state import folder_has_images
 
-
-def _orthophoto_exists(path: Path) -> bool:
-    return path.exists()
+ProgressCallback = Callable[[str, str, str], None]
 
 
-def _vegetation_index_exists(path: Path) -> bool:
-    return path.exists()
+class _CurrentStdoutHandler(logging.StreamHandler):
+    """Write to whatever ``sys.stdout`` is at emit time.
+
+    Dashboard runs route each pipeline thread's stdout to its own run log, so
+    resolving the stream per record keeps log lines in the right file; the CLI
+    simply gets the console.
+    """
+
+    @property  # type: ignore[override]
+    def stream(self):
+        return sys.stdout
+
+    @stream.setter
+    def stream(self, value) -> None:
+        pass
+
+
+logger = logging.getLogger(__name__)
+if not any(isinstance(handler, _CurrentStdoutHandler) for handler in logger.handlers):
+    _handler = _CurrentStdoutHandler()
+    _handler.setFormatter(logging.Formatter("%(message)s"))
+    logger.addHandler(_handler)
+    logger.setLevel(logging.INFO)
+    logger.propagate = False
+
+
+@dataclass(frozen=True)
+class _Camera:
+    key: str
+    label: str
+    images_key: str
+    ortho_key: str
+
+
+_CAMERAS = (
+    _Camera("rgb", "RGB", "images_full_rgb", "ortho_rgb"),
+    _Camera("mapir", "MAPIR", "images_full_mapir", "ortho_mapir"),
+    _Camera("thermal", "Thermal", "images_full_thermal", "ortho_thermal"),
+)
+
+
+def _odm_runner(camera: _Camera) -> Callable[..., None]:
+    # Looked up at call time so tests can monkeypatch the module attributes.
+    return {"rgb": run_odm_rgb, "mapir": run_odm_mapir, "thermal": run_odm_thermal}[camera.key]
+
+
+@dataclass
+class PipelineRun:
+    """Settings and intermediate results shared by the stages of one run."""
+
+    paths: dict[str, Any]
+    config: dict[str, Any]
+    skip: dict[str, bool]
+    orthophoto_resolution_cm: int | None
+    pdm_crop: str
+    pdm_model_key: str
+    flight_date: date | None
+    run_id: str | None
+    workspace_root: Path | None
+    progress_callback: ProgressCallback | None
+    pixel_fallback_used: bool = False
+    odm_failures: list[str] = field(default_factory=list)
+    location_context: dict[str, Any] | None = None
+    weather_summary: dict[str, Any] = field(default_factory=dict)
+    irrigation_summary: dict[str, Any] = field(default_factory=dict)
+    pdm_summary: dict[str, Any] = field(default_factory=dict)
+    disease_risk_summary: dict[str, Any] = field(default_factory=dict)
+
+    def progress(self, stage_key: str, message: str, state: str = "running") -> None:
+        if self.progress_callback:
+            self.progress_callback(stage_key, message, state)
+
+    def path(self, key: str) -> Path | None:
+        value = self.paths.get(key)
+        return value if isinstance(value, Path) else None
+
+    def has_images(self, camera: _Camera) -> bool:
+        folder = self.path(camera.images_key)
+        return folder is not None and folder_has_images(folder)
+
+    def has_demo_inputs(self) -> bool:
+        return any(self.has_images(camera) for camera in _CAMERAS)
+
+    def has_analysis_orthophoto(self) -> bool:
+        """RGB or MAPIR orthophoto present; thermal alone cannot feed the index."""
+        return any(path is not None and path.exists() for path in (self.path("ortho_rgb"), self.path("ortho_mapir")))
+
+    @property
+    def location_name(self) -> str:
+        return str(
+            (self.location_context or {}).get("label")
+            or self.config.get("location", {}).get("name", "Unknown location")
+        )
+
+    @property
+    def parcel_wkt(self) -> str | None:
+        if not self.location_context:
+            return None
+        return openagri_point_wkt(self.location_context["latitude"], self.location_context["longitude"])
+
+
+def _run_pixel_fallback(run: PipelineRun, reason: str) -> None:
+    if run.pixel_fallback_used:
+        return
+    if not run.has_demo_inputs():
+        raise RuntimeError(reason)
+    run.progress("run_odm_rgb", "Falling back to pixel-space demo alignment")
+    logger.info("\n[Demo Alignment] %s", reason)
+    run_pixel_alignment_fallback(workspace_root=run.workspace_root, config=run.config)
+    run.pixel_fallback_used = True
+    for camera in _CAMERAS:
+        run.progress(f"run_odm_{camera.key}", f"{camera.label} fallback analysis image ready", "completed")
+
+
+def _orthophoto_stage(run: PipelineRun) -> None:
+    logger.info("Step 1/5: ODM will use full-resolution images.")
+    if run.skip["odm"]:
+        logger.info("\nStep 2/5: Skipping ODM (--skip-odm).")
+
+    for camera in _CAMERAS:
+        tag = f"[ODM-{camera.label.upper()}]"
+        orthophoto = run.path(camera.ortho_key)
+        if run.skip["odm"] or run.skip[f"odm_{camera.key}"]:
+            logger.info("\n%s Skipping %s ODM (skip flag active).", tag, camera.label)
+            if orthophoto is not None and orthophoto.exists():
+                logger.info("%s Reusing existing %s orthophoto: %s", tag, camera.label, orthophoto)
+            continue
+        if run.pixel_fallback_used:
+            logger.info("\n%s Demo fallback already created the %s analysis image.", tag, camera.label)
+            continue
+        if not run.has_images(camera):
+            logger.info("\n%s No %s images found. Skipping %s ODM.", tag, camera.label, camera.label)
+            run.progress(f"run_odm_{camera.key}", f"No {camera.label} images found", "completed")
+            continue
+
+        run.progress(f"run_odm_{camera.key}", f"Running ODM for {camera.label} images")
+        logger.info("\n%s Running %s ODM...", tag, camera.label)
+        try:
+            _odm_runner(camera)(
+                ortho_resolution_cm=run.orthophoto_resolution_cm,
+                workspace_root=run.workspace_root,
+                config=run.config,
+                run_id=run.run_id,
+            )
+            run.progress(f"run_odm_{camera.key}", f"{camera.label} orthophoto complete", "completed")
+        except Exception as exc:
+            message = f"{camera.label} ODM failed ({exc}); using pixel-space demo fallback instead."
+            run.odm_failures.append(message)
+            _run_pixel_fallback(run, message)
+
+    if not run.has_analysis_orthophoto() and run.has_demo_inputs():
+        _run_pixel_fallback(run, "No orthophoto outputs were generated; using pixel-space demo fallback.")
+    elif run.odm_failures and not run.pixel_fallback_used:
+        raise RuntimeError(run.odm_failures[0])
+
+
+def _location_stage(run: PipelineRun) -> None:
+    orthophotos = [path for path in (run.path(c.ortho_key) for c in _CAMERAS) if path is not None]
+    run.location_context = resolve_orthophoto_location(
+        orthophotos,
+        reverse_geocode=parse_bool(run.config.get("location", {}).get("reverse_geocode"), True),
+    )
+    if run.location_context:
+        logger.info(
+            "[AgriVision] Run location resolved from orthophoto: %s (%.5f, %.5f)",
+            run.location_context["label"],
+            run.location_context["latitude"],
+            run.location_context["longitude"],
+        )
+    else:
+        logger.info("[AgriVision] No georeferenced orthophoto found; using configured location fallback.")
+
+
+def _vegetation_index_stage(run: PipelineRun) -> None:
+    vegetation_index_tif = run.paths["vegetation_index_output"] / "vegetation_index.tif"
+    if run.skip["vegetation_index"]:
+        logger.info("\nStep 3/5: Skipping Vegetation Index (--skip-vegetation-index).")
+        if not run.skip["grid"] and not vegetation_index_tif.exists():
+            raise RuntimeError(
+                f"\n[ERROR] Vegetation Index skipped but Vegetation Index output missing:\n  {vegetation_index_tif}\n"
+            )
+        return
+    run.progress("compute_vegetation_index", "Computing Vegetation Index")
+    logger.info("\nStep 3/5: Computing Vegetation Index...")
+    if not run.has_analysis_orthophoto():
+        raise RuntimeError("\n[ERROR] No orthophoto available for Vegetation Index.\n")
+    run_vegetation_index(workspace_root=run.workspace_root, config=run.config)
+    run.progress("compute_vegetation_index", "Vegetation Index complete", "completed")
+
+
+def _grid_stage(run: PipelineRun) -> None:
+    if run.skip["grid"]:
+        logger.info("\nStep 4/5: Skipping Vegetation Index grid (--skip-grid).")
+        return
+    run.progress("generate_grid", "Generating Vegetation Index grid")
+    logger.info("\nStep 4/5: Generating Vegetation Index grid...")
+    run_grid_report(workspace_root=run.workspace_root, config=run.config)
+    run.progress("generate_grid", "Vegetation Index grid complete", "completed")
+
+
+def _first_note(summary: dict[str, Any]) -> str:
+    notes = summary.get("notes") or [""]
+    return str(summary.get("error_message") or notes[0])
+
+
+def _weather_stage(run: PipelineRun) -> None:
+    if run.skip["weather"]:
+        logger.info("\n[AgriVision] Skipping Weather integration (--skip-weather).")
+        run.weather_summary = {"enabled": False, "notes": ["Skipped by configuration."]}
+        return
+    run.progress("fetch_weather", "Fetching weather data")
+    logger.info("\n[AgriVision] Running Weather integration ...")
+    run.weather_summary = run_weather_enrichment(
+        run.paths["output_root"],
+        run.location_name,
+        location=run.location_context,
+        flight_date=run.flight_date,
+    )
+    if run.weather_summary.get("enabled"):
+        logger.info("[AgriVision] Weather integration completed")
+    else:
+        logger.info("[AgriVision] Weather integration failed (continuing pipeline).")
+        logger.info("[AgriVision] Reason: %s", _first_note(run.weather_summary))
+    run.progress("fetch_weather", "Weather enrichment complete", "completed")
+
+
+def _irrigation_stage(run: PipelineRun) -> None:
+    if run.skip["irrigation"]:
+        logger.info("\n[AgriVision] Skipping Irrigation integration (--skip-irrigation).")
+        run.irrigation_summary = {"enabled": False, "notes": ["Skipped by configuration."]}
+        return
+    run.progress("irrigation_enrichment", "Running irrigation enrichment")
+    logger.info("\n[AgriVision] Running Irrigation integration (config-driven ETo) ...")
+    run.irrigation_summary = run_irrigation_enrichment(
+        run.config.get("irrigation", {}).get("base_url", ""),
+        output_dir=run.paths["output_root"] / "irrigation",
+    )
+    if run.irrigation_summary.get("authenticated") or run.irrigation_summary.get("enabled"):
+        logger.info("[AgriVision] Irrigation integration completed")
+    else:
+        logger.info("[AgriVision] Irrigation integration failed (continuing pipeline).")
+        logger.info("[AgriVision] Reason: %s", _first_note(run.irrigation_summary))
+    run.progress("irrigation_enrichment", "Irrigation enrichment complete", "completed")
+
+
+def _pdm_stage(run: PipelineRun) -> None:
+    if run.skip["pdm"]:
+        logger.info("\n[AgriVision] Skipping PDM integration (--skip-pdm).")
+        run.pdm_summary = {"enabled": False, "status": "disabled", "notes": ["Skipped by configuration."]}
+        return
+    run.progress("pdm_enrichment", "Running pest & disease enrichment")
+    logger.info("\n[AgriVision] Running Pest & Disease integration ...")
+    pdm_cfg = run.config.get("pdm", {}) if isinstance(run.config.get("pdm"), dict) else {}
+    parcel_wkt = run.parcel_wkt
+    run.pdm_summary = run_pdm_enrichment(
+        base_url=pdm_cfg.get("base_url", ""),
+        weather_summary=run.weather_summary,
+        enabled=True,
+        crop=run.pdm_crop,
+        model_key=run.pdm_model_key,
+        artifact_dir=run.paths["output_root"] / "pdm",
+        parcel_wkt=parcel_wkt,
+        parcel_source="orthophoto centroid" if parcel_wkt else "irrigation.default_parcel_wkt",
+        location=run.location_context,
+    )
+    if run.pdm_summary.get("status") == "success":
+        logger.info("[AgriVision] Pest & Disease integration completed")
+    else:
+        logger.info("[AgriVision] Pest & Disease integration failed or degraded (continuing pipeline).")
+        logger.info("[AgriVision] Reason: %s", _first_note(run.pdm_summary))
+    run.progress("pdm_enrichment", "Pest & disease enrichment complete", "completed")
+
+
+def _disease_risk_stage(run: PipelineRun) -> None:
+    run.disease_risk_summary = {"enabled": False, "notes": ["Disease risk scoring skipped."]}
+    if run.skip["grid"]:
+        return
+    run.progress("disease_risk", "Scoring disease risk layers")
+    try:
+        run.disease_risk_summary = run_disease_risk(
+            crop=run.pdm_crop,
+            weather_summary=run.weather_summary,
+            irrigation_summary=run.irrigation_summary,
+            pdm_summary=run.pdm_summary,
+            workspace_root=run.workspace_root,
+            config=run.config,
+            flight_date=run.flight_date,
+        )
+    except Exception as exc:
+        run.disease_risk_summary = {
+            "enabled": False,
+            "status": "failed",
+            "error_message": str(exc),
+            "notes": ["Disease risk scoring failed; report will use the standard grid overlay."],
+        }
+        logger.info("[AgriVision] Disease risk scoring failed (continuing pipeline): %s", exc)
+    run.progress("disease_risk", "Disease risk scoring complete", "completed")
+
+
+def _report_stage(run: PipelineRun) -> None:
+    if run.skip["report"]:
+        logger.info("\nStep 5/5: Skipping report generation (--skip-report).")
+        return
+    run.progress("generate_report", "Generating report")
+    logger.info("\nStep 5/5: Creating report...")
+    run_report(
+        irrigation_summary=run.irrigation_summary,
+        weather_summary=run.weather_summary,
+        pdm_summary=run.pdm_summary,
+        workspace_root=run.workspace_root,
+        config=run.config,
+        disease_risk_summary=run.disease_risk_summary,
+    )
+    run.progress("generate_report", "Report generated", "completed")
+
+
+_STAGES = (
+    _orthophoto_stage,
+    _location_stage,
+    _vegetation_index_stage,
+    _grid_stage,
+    _weather_stage,
+    _irrigation_stage,
+    _pdm_stage,
+    _disease_risk_stage,
+    _report_stage,
+)
 
 
 def run_full_pipeline(
@@ -39,292 +376,45 @@ def run_full_pipeline(
     orthophoto_resolution_cm: int | None = None,
     pdm_crop: str | None = None,
     pdm_model_key: str | None = None,
-    progress_callback: Callable[[str, str, str], None] | None = None,
+    flight_date: date | None = None,
+    progress_callback: ProgressCallback | None = None,
+    run_id: str | None = None,
     workspace_root: Path | None = None,
     config: dict | None = None,
 ) -> None:
-    print("\n================== AgriVision Pipeline Start ==================\n")
-    print("Configuration:")
-    print(f"  skip_odm        = {skip_odm}")
-    print(f"  skip_odm_rgb    = {skip_odm_rgb}")
-    print(f"  skip_odm_mapir  = {skip_odm_mapir}")
-    print(f"  skip_odm_thermal= {skip_odm_thermal}")
-    print(f"  skip_vegetation_index       = {skip_vegetation_index}")
-    print(f"  skip_grid       = {skip_grid}")
-    print(f"  skip_weather    = {skip_weather}")
-    print(f"  skip_irrigation = {skip_irrigation}")
-    print(f"  skip_pdm        = {skip_pdm}")
-    print(f"  skip_report     = {skip_report}")
-    print()
+    skip = {
+        "odm": skip_odm,
+        "odm_rgb": skip_odm_rgb,
+        "odm_mapir": skip_odm_mapir,
+        "odm_thermal": skip_odm_thermal,
+        "vegetation_index": skip_vegetation_index,
+        "grid": skip_grid,
+        "weather": skip_weather,
+        "irrigation": skip_irrigation,
+        "pdm": skip_pdm,
+        "report": skip_report,
+    }
+    logger.info("\n================== AgriVision Pipeline Start ==================\n")
+    logger.info("Configuration:")
+    for name, value in skip.items():
+        logger.info("  skip_%-18s= %s", name, value)
+    logger.info("")
 
-    resolved = resolve_pipeline_paths(workspace_root=workspace_root, config=config)
-    config = resolved['config']
-    ortho_rgb = resolved['ortho_rgb']
-    ortho_mapir = resolved['ortho_mapir']
-    ortho_thermal = resolved.get('ortho_thermal')
-    vegetation_index_tif = resolved['vegetation_index_output'] / 'vegetation_index.tif'
-    images_full_rgb = resolved.get('images_full_rgb')
-    images_full_mapir = resolved.get('images_full_mapir')
-    images_full_thermal = resolved.get('images_full_thermal')
-    output_root = resolved['output_root']
-    pixel_fallback_used = False
-    odm_failures: list[str] = []
-
-    def _available_demo_inputs() -> bool:
-        return any(
-            isinstance(path, Path) and folder_has_images(path)
-            for path in (images_full_rgb, images_full_mapir, images_full_thermal)
-        )
-
-    def _run_pixel_fallback(reason: str) -> None:
-        nonlocal pixel_fallback_used
-        if pixel_fallback_used:
-            return
-        if not _available_demo_inputs():
-            raise RuntimeError(reason)
-        if progress_callback:
-            progress_callback('run_odm_rgb', 'Falling back to pixel-space demo alignment', 'running')
-        print(f"\n[Demo Alignment] {reason}")
-        run_pixel_alignment_fallback(workspace_root=workspace_root, config=config)
-        pixel_fallback_used = True
-        if progress_callback:
-            for stage_key, label in (
-                ('run_odm_rgb', 'RGB fallback analysis image ready'),
-                ('run_odm_mapir', 'MAPIR fallback analysis image ready'),
-                ('run_odm_thermal', 'Thermal fallback analysis image ready'),
-            ):
-                progress_callback(stage_key, label, 'completed')
-
-    print('Step 1/5: ODM will use full-resolution images.')
-
-    if skip_odm:
-        skip_odm_rgb = True
-        skip_odm_mapir = True
-        skip_odm_thermal = True
-        print('\nStep 2/5: Skipping ODM (--skip-odm).')
-
-    if skip_odm_rgb:
-        print('\n[ODM-RGB] Skipping RGB ODM step.')
-        if _orthophoto_exists(ortho_rgb):
-            print(f'[ODM-RGB] Reusing existing RGB orthophoto: {ortho_rgb}')
-        else:
-            print(f'[ODM-RGB] No existing RGB orthophoto found at: {ortho_rgb}')
-    else:
-        if isinstance(images_full_rgb, Path) and folder_has_images(images_full_rgb):
-            if progress_callback:
-                progress_callback('run_odm_rgb', 'Running ODM for RGB images', 'running')
-            print('\n[ODM-RGB] Running RGB ODM...')
-            try:
-                run_odm_rgb(ortho_resolution_cm=orthophoto_resolution_cm, workspace_root=workspace_root, config=config)
-                if progress_callback:
-                    progress_callback('run_odm_rgb', 'RGB orthophoto complete', 'completed')
-            except Exception as exc:
-                message = f'RGB ODM failed ({exc}); using pixel-space demo fallback instead.'
-                odm_failures.append(message)
-                _run_pixel_fallback(message)
-        else:
-            print('\n[ODM-RGB] No RGB images found. Skipping RGB ODM.')
-            if progress_callback:
-                progress_callback('run_odm_rgb', 'No RGB images found', 'completed')
-
-    if skip_odm_mapir:
-        print('\n[ODM-MAPIR] Skipping MAPIR ODM (skip flag active).')
-    else:
-        if pixel_fallback_used:
-            print('\n[ODM-MAPIR] Demo fallback already created MAPIR analysis image.')
-        elif isinstance(images_full_mapir, Path) and folder_has_images(images_full_mapir):
-            if progress_callback:
-                progress_callback('run_odm_mapir', 'Running ODM for MAPIR images', 'running')
-            print('\n[ODM-MAPIR] MAPIR images detected â€“ running MAPIR ODM...')
-            try:
-                run_odm_mapir(ortho_resolution_cm=orthophoto_resolution_cm, workspace_root=workspace_root, config=config)
-                if progress_callback:
-                    progress_callback('run_odm_mapir', 'MAPIR orthophoto complete', 'completed')
-            except Exception as exc:
-                message = f'MAPIR ODM failed ({exc}); using pixel-space demo fallback instead.'
-                odm_failures.append(message)
-                _run_pixel_fallback(message)
-        else:
-            print('\n[ODM-MAPIR] No MAPIR images found. Skipping MAPIR ODM.')
-            if progress_callback:
-                progress_callback('run_odm_mapir', 'No MAPIR images found', 'completed')
-
-    if skip_odm_thermal:
-        print('\n[ODM-THERMAL] Skipping thermal ODM (skip flag active).')
-        if isinstance(ortho_thermal, Path) and _orthophoto_exists(ortho_thermal):
-            print(f'[ODM-THERMAL] Reusing existing thermal orthophoto: {ortho_thermal}')
-    else:
-        if pixel_fallback_used:
-            print('\n[ODM-THERMAL] Demo fallback already created thermal analysis image.')
-        elif isinstance(images_full_thermal, Path) and folder_has_images(images_full_thermal):
-            if progress_callback:
-                progress_callback('run_odm_thermal', 'Running ODM for thermal images', 'running')
-            print('\n[ODM-THERMAL] Thermal images detected - running thermal ODM...')
-            try:
-                run_odm_thermal(ortho_resolution_cm=orthophoto_resolution_cm, workspace_root=workspace_root, config=config)
-                if progress_callback:
-                    progress_callback('run_odm_thermal', 'Thermal orthophoto complete', 'completed')
-            except Exception as exc:
-                message = f'Thermal ODM failed ({exc}); using pixel-space demo fallback instead.'
-                odm_failures.append(message)
-                _run_pixel_fallback(message)
-        else:
-            print('\n[ODM-THERMAL] No thermal images found. Skipping thermal ODM.')
-            if progress_callback:
-                progress_callback('run_odm_thermal', 'No thermal images found', 'completed')
-
-    if not _orthophoto_exists(ortho_rgb) and not _orthophoto_exists(ortho_mapir) and _available_demo_inputs():
-        _run_pixel_fallback('No orthophoto outputs were generated; using pixel-space demo fallback.')
-    elif odm_failures and not pixel_fallback_used:
-        raise RuntimeError(odm_failures[0])
-
-    location_context = resolve_orthophoto_location(
-        path for path in (ortho_rgb, ortho_mapir, ortho_thermal) if isinstance(path, Path)
+    paths = resolve_pipeline_paths(workspace_root=workspace_root, config=config)
+    resolved_config = paths["config"]
+    pdm_cfg = resolved_config.get("pdm", {}) if isinstance(resolved_config.get("pdm"), dict) else {}
+    run = PipelineRun(
+        paths=paths,
+        config=resolved_config,
+        skip=skip,
+        orthophoto_resolution_cm=orthophoto_resolution_cm,
+        pdm_crop=pdm_crop or pdm_cfg.get("default_crop") or "grapevine",
+        pdm_model_key=pdm_model_key or pdm_cfg.get("default_model_key") or "grapevine_powdery_mildew_risk_v1",
+        flight_date=flight_date,
+        run_id=run_id,
+        workspace_root=workspace_root,
+        progress_callback=progress_callback,
     )
-    if location_context:
-        print(
-            '[AgriVision] Run location resolved from orthophoto: '
-            f"{location_context['label']} ({location_context['latitude']:.5f}, {location_context['longitude']:.5f})"
-        )
-    else:
-        print('[AgriVision] No georeferenced orthophoto found; using configured location fallback.')
-    run_location_name = str((location_context or {}).get('label') or config.get('location', {}).get('name', 'Unknown location'))
-    run_parcel_wkt = (
-        f"POINT ({location_context['latitude']:.7f} {location_context['longitude']:.7f})"
-        if location_context
-        else None
-    )
-
-    if skip_vegetation_index:
-        print('\nStep 3/5: Skipping Vegetation Index (--skip-vegetation-index).')
-        if not skip_grid and not _vegetation_index_exists(vegetation_index_tif):
-            raise RuntimeError(
-                f'\n[ERROR] Vegetation Index skipped but Vegetation Index output missing:\n  {vegetation_index_tif}\n'
-            )
-    else:
-        if progress_callback:
-            progress_callback('compute_vegetation_index', 'Computing Vegetation Index', 'running')
-        print('\nStep 3/5: Computing Vegetation Index...')
-        if not _orthophoto_exists(ortho_rgb) and not _orthophoto_exists(ortho_mapir):
-            raise RuntimeError('\n[ERROR] No orthophoto available for Vegetation Index.\n')
-        run_vegetation_index(workspace_root=workspace_root, config=config)
-        if progress_callback:
-            progress_callback('compute_vegetation_index', 'Vegetation Index complete', 'completed')
-
-    if skip_grid:
-        print('\nStep 4/5: Skipping Vegetation Index grid (--skip-grid).')
-    else:
-        if progress_callback:
-            progress_callback('generate_grid', 'Generating Vegetation Index grid', 'running')
-        print('\nStep 4/5: Generating Vegetation Index grid...')
-        run_grid_report(workspace_root=workspace_root, config=config)
-        if progress_callback:
-            progress_callback('generate_grid', 'Vegetation Index grid complete', 'completed')
-
-    if skip_weather:
-        print('\n[AgriVision] Skipping Weather integration (--skip-weather).')
-        weather_summary = {'enabled': False, 'notes': ['Skipped by configuration.']}
-    else:
-        if progress_callback:
-            progress_callback('fetch_weather', 'Fetching weather data', 'running')
-        print('\n[AgriVision] Running Weather integration ...')
-        weather_summary = run_weather_enrichment(
-            output_root, run_location_name, location=location_context
-        )
-        if weather_summary.get('enabled'):
-            print('[AgriVision] âœ… Weather integration completed')
-        else:
-            print('[AgriVision] âš ï¸ Weather integration failed (continuing pipeline).')
-            print(f"[AgriVision] Reason: {weather_summary.get('notes', [''])[0]}")
-        if progress_callback:
-            progress_callback('fetch_weather', 'Weather enrichment complete', 'completed')
-
-    if skip_irrigation:
-        print('\n[AgriVision] Skipping Irrigation integration (--skip-irrigation).')
-        irrigation_summary = {'enabled': False, 'notes': ['Skipped by configuration.']}
-    else:
-        if progress_callback:
-            progress_callback('irrigation_enrichment', 'Running irrigation enrichment', 'running')
-        print('\n[AgriVision] Running Irrigation integration (config-driven ETo) ...')
-        irrigation_summary = run_irrigation_enrichment(
-            config.get('irrigation', {}).get('base_url', ''),
-            output_dir=output_root / 'irrigation',
-        )
-        if irrigation_summary.get('authenticated') or irrigation_summary.get('enabled'):
-            print('[AgriVision] Irrigation integration completed')
-        else:
-            print('[AgriVision] Irrigation integration failed (continuing pipeline).')
-            print(f"[AgriVision] Reason: {irrigation_summary.get('notes', [''])[0]}")
-        if progress_callback:
-            progress_callback('irrigation_enrichment', 'Irrigation enrichment complete', 'completed')
-
-    pdm_cfg = config.get('pdm', {}) if isinstance(config.get('pdm'), dict) else {}
-    resolved_pdm_crop = (pdm_crop or pdm_cfg.get('default_crop') or 'grapevine')
-    resolved_pdm_model_key = (pdm_model_key or pdm_cfg.get('default_model_key') or 'grapevine_powdery_mildew_risk_v1')
-    if skip_pdm:
-        print('\n[AgriVision] Skipping PDM integration (--skip-pdm).')
-        pdm_summary = {'enabled': False, 'status': 'disabled', 'notes': ['Skipped by configuration.']}
-    else:
-        if progress_callback:
-            progress_callback('pdm_enrichment', 'Running pest & disease enrichment', 'running')
-        print('\n[AgriVision] Running Pest & Disease integration ...')
-        pdm_summary = run_pdm_enrichment(
-            base_url=pdm_cfg.get('base_url', ''),
-            weather_summary=weather_summary,
-            enabled=True,
-            crop=resolved_pdm_crop,
-            model_key=resolved_pdm_model_key,
-            artifact_dir=output_root / 'pdm',
-            parcel_wkt=run_parcel_wkt,
-            parcel_source='orthophoto centroid' if run_parcel_wkt else 'irrigation.default_parcel_wkt',
-            location=location_context,
-        )
-        if pdm_summary.get('status') == 'success':
-            print('[AgriVision] âœ… Pest & Disease integration completed')
-        else:
-            print('[AgriVision] âš ï¸ Pest & Disease integration failed or degraded (continuing pipeline).')
-            print(f"[AgriVision] Reason: {pdm_summary.get('error_message') or (pdm_summary.get('notes', [''])[0] if pdm_summary.get('notes') else '')}")
-        if progress_callback:
-            progress_callback('pdm_enrichment', 'Pest & disease enrichment complete', 'completed')
-
-    disease_risk_summary = {'enabled': False, 'notes': ['Disease risk scoring skipped.']}
-    if not skip_grid:
-        if progress_callback:
-            progress_callback('disease_risk', 'Scoring disease risk layers', 'running')
-        try:
-            disease_risk_summary = run_disease_risk(
-                crop=resolved_pdm_crop,
-                weather_summary=weather_summary,
-                irrigation_summary=irrigation_summary,
-                pdm_summary=pdm_summary,
-                workspace_root=workspace_root,
-                config=config,
-            )
-        except Exception as exc:
-            disease_risk_summary = {
-                'enabled': False,
-                'status': 'failed',
-                'error_message': str(exc),
-                'notes': ['Disease risk scoring failed; report will use the standard grid overlay.'],
-            }
-            print(f'[AgriVision] Disease risk scoring failed (continuing pipeline): {exc}')
-        if progress_callback:
-            progress_callback('disease_risk', 'Disease risk scoring complete', 'completed')
-
-    if skip_report:
-        print('\nStep 5/5: Skipping report generation (--skip-report).')
-    else:
-        if progress_callback:
-            progress_callback('generate_report', 'Generating report', 'running')
-        print('\nStep 5/5: Creating report...')
-        run_report(
-            irrigation_summary=irrigation_summary,
-            weather_summary=weather_summary,
-            pdm_summary=pdm_summary,
-            workspace_root=workspace_root,
-            config=config,
-            disease_risk_summary=disease_risk_summary,
-        )
-        if progress_callback:
-            progress_callback('generate_report', 'Report generated', 'completed')
-    print('\n================== Pipeline Complete ==================\n')
+    for stage in _STAGES:
+        stage(run)
+    logger.info("\n================== Pipeline Complete ==================\n")

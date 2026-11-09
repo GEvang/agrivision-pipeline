@@ -32,3 +32,13 @@ def test_make_grid_returns_expected_cell_ids_and_means() -> None:
     assert [cell["cell_id"] for cell in cells] == ["A1", "A2", "B1", "B2"]
     assert cells[0]["class"] == "poor"
     assert cells[3]["class"] == "good"
+
+
+def test_pseudo_index_uses_rgb_profile_thresholds() -> None:
+    from agrivision.pipeline.stages.grid import _thresholds_for_index
+
+    rgb_profile = {"poor_max": 0.0, "medium_max": 0.08}
+
+    assert _thresholds_for_index("pseudo", rgb_profile, 0.25, 0.4) == (0.0, 0.08)
+    assert _thresholds_for_index("nir_red", rgb_profile, 0.25, 0.4) == (0.25, 0.4)
+    assert _thresholds_for_index("pseudo", {}, 0.25, 0.4) == (0.25, 0.4)

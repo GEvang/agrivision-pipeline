@@ -3,7 +3,7 @@ from __future__ import annotations
 from pathlib import Path
 from typing import Any
 
-from agrivision.app.schemas.runs import ReportItem, RunRecord
+from agrivision.schemas.runs import ReportItem, RunRecord
 from agrivision.services.preview_service import PreviewService
 from agrivision.services.run_service import RunService
 
@@ -36,10 +36,11 @@ class ReportService:
         orthophoto_path = run.outputs.get('orthophoto_rgb') or run.outputs.get('orthophoto_mapir')
         preview_source = run.outputs.get('vegetation_index_color_png') or orthophoto_path
         if preview_source and generate_preview:
-            artifact = Path(preview_source)
-            preview_file = Path(run.run_dir) / 'previews' / self.preview_service.preview_name_for(artifact)
+            storage = self.run_service.storage
+            artifact = storage.resolve_recorded_path(preview_source)
+            preview_file = storage.run_dir(run.run_id) / 'previews' / self.preview_service.preview_name_for(artifact)
             generated = self.preview_service.ensure_preview(artifact, preview_file)
-            preview_path = str(generated) if generated else None
+            preview_path = storage.to_recorded_path(generated) if generated else None
         return ReportItem(
             run_id=run.run_id,
             created_at=run.created_at,
@@ -109,7 +110,7 @@ class ReportService:
     def _metadata_path(self, run: RunRecord, output_key: str, filename: str) -> Path | None:
         configured = run.outputs.get(output_key)
         if configured:
-            return Path(configured)
+            return self.run_service.storage.resolve_recorded_path(configured)
         return None
 
     def _read_json(self, path: Path | None) -> tuple[dict[str, Any], str | None]:

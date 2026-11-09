@@ -8,7 +8,9 @@ from pathlib import Path
 from typing import Any
 from uuid import uuid4
 
+from agrivision.config.paths import resolve_project_path, to_project_path
 from agrivision.config.settings import get_project_root
+from agrivision.schemas.ids import validate_storage_id
 
 JSONDict = dict[str, Any]
 
@@ -47,12 +49,12 @@ class StorageService:
         return datetime.now(timezone.utc).strftime('%Y%m%dT%H%M%SZ') + '-' + uuid4().hex[:8]
 
     def upload_dir(self, run_id: str) -> Path:
-        path = self.layout.uploads_root / run_id
+        path = self.layout.uploads_root / validate_storage_id(run_id, label="upload ID")
         path.mkdir(parents=True, exist_ok=True)
         return path
 
     def run_dir(self, run_id: str) -> Path:
-        path = self.layout.runs_root / run_id
+        path = self.layout.runs_root / validate_storage_id(run_id)
         (path / 'previews').mkdir(parents=True, exist_ok=True)
         return path
 
@@ -71,6 +73,14 @@ class StorageService:
         if dst.exists():
             shutil.rmtree(dst)
         shutil.copytree(src, dst)
+
+    def resolve_recorded_path(self, value: str | Path) -> Path:
+        """Return where a path stored in a run record lives in this project."""
+        return resolve_project_path(value, self.layout.project_root)
+
+    def to_recorded_path(self, path: str | Path) -> str:
+        """Return the project-relative form of ``path`` for storing in a record."""
+        return to_project_path(path, self.layout.project_root)
 
     def safe_resolve_within(self, root: Path, relative_path: str) -> Path:
         candidate = (root / relative_path).resolve()

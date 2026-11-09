@@ -36,7 +36,7 @@ class RunExportService:
         with zipfile.ZipFile(package_path, 'w', compression=zipfile.ZIP_DEFLATED) as archive:
             report_html = run.outputs.get('report_html')
             if report_html:
-                report_path = Path(report_html)
+                report_path = self.storage.resolve_recorded_path(report_html)
                 if report_path.exists() and report_path.is_file():
                     archive.writestr('report/report.html', self._packaged_report_html(report_path))
                     manifest['files'].append('report/report.html')  # type: ignore[union-attr]
@@ -151,13 +151,13 @@ class RunExportService:
     def _artifact_candidates(self, run_id: str) -> list[tuple[Path, str]]:
         run = self.run_service.load_run(run_id)
         workspace = self.run_service.workspace_for_run(run_id)
-        run_dir = self.storage.layout.runs_root / run_id
+        run_dir = self.storage.run_dir(run_id)
         candidates: list[tuple[Path, str]] = [
             (run_dir / 'status.json', 'run/status.json'),
             (run_dir / 'params.json', 'run/params.json'),
             (run_dir / 'outputs.json', 'run/outputs.json'),
             (run_dir / 'artifacts.json', 'run/artifacts.json'),
-            (Path(run.logs_path), 'run/run.log'),
+            (self.storage.resolve_recorded_path(run.logs_path), 'run/run.log'),
         ]
 
         for key, arcname in (
@@ -171,7 +171,7 @@ class RunExportService:
         ):
             value = run.outputs.get(key)
             if value:
-                candidates.append((Path(value), arcname))
+                candidates.append((self.storage.resolve_recorded_path(value), arcname))
 
         candidates.extend(
             [

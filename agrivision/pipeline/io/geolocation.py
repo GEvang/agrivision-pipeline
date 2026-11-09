@@ -9,6 +9,8 @@ import rasterio
 import requests
 from rasterio.warp import transform
 
+from agrivision.config.paths import to_project_path
+
 _NOMINATIM_URL = "https://nominatim.openstreetmap.org/reverse"
 _USER_AGENT = "AgriVision-OpenAgri/1.0 (orthophoto-report-location)"
 
@@ -74,8 +76,14 @@ def _centroid_wgs84(path: Path) -> tuple[float, float] | None:
     return float(latitude[0]), float(longitude[0])
 
 
-def resolve_orthophoto_location(paths: Iterable[Path]) -> dict[str, Any] | None:
-    """Return the first georeferenced orthophoto's place label and centroid."""
+def resolve_orthophoto_location(
+    paths: Iterable[Path], *, reverse_geocode: bool = True
+) -> dict[str, Any] | None:
+    """Return the first georeferenced orthophoto's place label and centroid.
+
+    With ``reverse_geocode`` off, the label is the coordinates and nothing is
+    sent to Nominatim.
+    """
     for path in paths:
         if not path.exists():
             continue
@@ -84,12 +92,12 @@ def resolve_orthophoto_location(paths: Iterable[Path]) -> dict[str, Any] | None:
             continue
         latitude, longitude = centroid
         coordinate_label = f"{latitude:.5f}, {longitude:.5f}"
-        place_label = _reverse_geocode(latitude, longitude)
+        place_label = _reverse_geocode(latitude, longitude) if reverse_geocode else None
         return {
             "label": place_label or coordinate_label,
             "latitude": latitude,
             "longitude": longitude,
-            "source_path": str(path),
+            "source_path": to_project_path(path),
             "geocoded": bool(place_label),
         }
     return None

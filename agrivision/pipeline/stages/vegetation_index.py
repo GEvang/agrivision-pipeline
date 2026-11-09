@@ -19,7 +19,7 @@ This helps SIP7-style auditability and makes results reproducible.
 from __future__ import annotations
 
 import json
-from datetime import datetime
+from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any, Dict, Tuple
 
@@ -29,6 +29,7 @@ import rasterio
 from rasterio.enums import Resampling
 from rasterio.windows import Window
 
+from agrivision.config.paths import to_project_path
 from agrivision.pipeline.io.paths import resolve_pipeline_paths
 
 
@@ -103,20 +104,20 @@ def _read_band(src: rasterio.io.DatasetReader, band_idx: int) -> np.ndarray:
 
 def _valid_source_mask(
     src: rasterio.io.DatasetReader,
-    *bands: np.ndarray,
+    band_indexes: tuple[int, ...],
+    bands: tuple[np.ndarray, ...],
+    window: Window | None = None,
 ) -> np.ndarray:
+    """Valid pixels: finite values that GDAL's band masks mark as data.
+
+    GDAL derives each band mask from a real alpha band, the nodata value or an
+    internal mask, so a fourth spectral band is never mistaken for alpha.
+    """
     mask = np.ones(bands[0].shape, dtype=bool)
     for band in bands:
         mask &= np.isfinite(band)
-
-    if src.nodata is not None:
-        for band in bands:
-            mask &= band != src.nodata
-
-    if src.count >= 4:
-        alpha = src.read(4)
-        mask &= alpha > 0
-
+    for band_index in band_indexes:
+        mask &= src.read_masks(band_index, window=window) > 0
     return mask
 
 
@@ -191,60 +192,12 @@ def compute_index(
       - band_mapping
       - index_mode
     """
-    mode = (profile.get("index_mode") or "").strip().lower()
-
-    if mode == "nir_red":
-        nir_idx = int(profile["nir_band"])
-        red_idx = int(profile["red_band"])
-        nir = _read_band(src, nir_idx)
-        red = _read_band(src, red_idx)
-        valid_mask = _valid_source_mask(src, nir, red)
-
-        meta = {
-            "index_mode": "nir_red",
-            "index_name": "Vegetation Index",
-            "formula": "(NIR - RED) / (NIR + RED)",
-            "band_mapping": {"nir_band": nir_idx, "red_band": red_idx},
-        }
-        print(f"[VI] {label} index_mode=nir_red â†’ computing Vegetation Index (a true vegetation index)")
-        return _normalized_diff(nir, red, valid_mask), meta
-
-    if mode == "nir_green":
-        nir_idx = int(profile["nir_band"])
-        green_idx = int(profile["green_band"])
-        nir = _read_band(src, nir_idx)
-        green = _read_band(src, green_idx)
-        valid_mask = _valid_source_mask(src, nir, green)
-
-        meta = {
-            "index_mode": "nir_green",
-            "index_name": "Vegetation Index",
-            "formula": "(NIR - GREEN) / (NIR + GREEN)",
-            "band_mapping": {"nir_band": nir_idx, "green_band": green_idx},
-        }
-        print(f"[VI] {label} index_mode=nir_green â†’ computing Vegetation Index")
-        return _normalized_diff(nir, green, valid_mask), meta
-
-    if mode == "pseudo":
-        nir_idx = int(profile["nir_band"])
-        red_idx = int(profile["red_band"])
-        nir = _read_band(src, nir_idx)
-        red = _read_band(src, red_idx)
-        valid_mask = _valid_source_mask(src, nir, red)
-
-        meta = {
-            "index_mode": "pseudo",
-            "index_name": "Pseudo Vegetation Index",
-            "formula": "(B2 - B1) / (B2 + B1)  (configured bands)",
-            "band_mapping": {"band_a": nir_idx, "band_b": red_idx},
-        }
-        print(f"[VI] {label} index_mode=pseudo â†’ computing pseudo vegetation index")
-        return _normalized_diff(nir, red, valid_mask), meta
-
-    raise ValueError(
-        f"[VI] Unsupported index_mode '{mode}' for {label} profile. "
-        "Supported: 'nir_red', 'nir_green', 'pseudo'."
-    )
+    mode, first_idx, second_idx, meta = _index_definition(label, profile)
+    first = _read_band(src, first_idx)
+    second = _read_band(src, second_idx)
+    valid_mask = _valid_source_mask(src, (first_idx, second_idx), (first, second))
+    print(f"[VI] {label} index_mode={mode} -> computing {meta['index_name']}")
+    return _normalized_diff(first, second, valid_mask), meta
 
 
 # ---------------------------------------------------------------------
@@ -442,12 +395,7 @@ def compute_index_streaming(
                 window = Window(col, row, width, height)
                 first = src.read(first_idx, window=window).astype("float32")
                 second = src.read(second_idx, window=window).astype("float32")
-                valid_mask = np.isfinite(first) & np.isfinite(second)
-                if src.nodata is not None:
-                    valid_mask &= first != src.nodata
-                    valid_mask &= second != src.nodata
-                if src.count >= 4:
-                    valid_mask &= src.read(4, window=window) > 0
+                valid_mask = _valid_source_mask(src, (first_idx, second_idx), (first, second), window=window)
                 idx = _normalized_diff(first, second, valid_mask)
                 dst.write(idx, 1, window=window)
 
@@ -518,24 +466,24 @@ def run_vegetation_index(
             save_png(idx, out_png, title=idx_meta["index_name"], out_dir=out_dir)
 
         meta = {
-            "generated_at_utc": datetime.utcnow().replace(microsecond=0).isoformat() + "Z",
+            "generated_at_utc": datetime.now(UTC).replace(microsecond=0).isoformat().replace("+00:00", "Z"),
             "source": {
                 "dataset": label,
-                "orthophoto_path": str(src_path),
+                "orthophoto_path": to_project_path(src_path),
                 "band_count": int(src.count),
             },
             "index": idx_meta,
             "classification_thresholds": {
-                "poor_max": poor_max,
-                "medium_max": medium_max,
+                "poor_max": float(profile.get("poor_max", poor_max)) if idx_meta["index_mode"] == "pseudo" else poor_max,
+                "medium_max": float(profile.get("medium_max", medium_max)) if idx_meta["index_mode"] == "pseudo" else medium_max,
             },
             "valid_pixels": quality["valid_pixels"],
             "distribution": quality["distribution"],
             "quality_flags": quality["quality_flags"],
             "artifacts": {
-                "geotiff": str(out_tif),
-                "png": str(out_png),
-                "metadata": str(out_meta),
+                "geotiff": to_project_path(out_tif),
+                "png": to_project_path(out_png),
+                "metadata": to_project_path(out_meta),
             },
             "notes": [
                 "If index_mode is 'nir_green', this vegetation index is computed from NIR and green bands.",

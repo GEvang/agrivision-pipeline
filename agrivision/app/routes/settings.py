@@ -12,11 +12,12 @@ from fastapi.responses import RedirectResponse
 
 from agrivision.app import dependencies as deps
 from agrivision.app.health import docker_health
-from agrivision.app.schemas.settings import (
+from agrivision.config import get_project_root, load_config
+from agrivision.config.settings import parse_bool
+from agrivision.schemas.settings import (
     CredentialsUpdateRequest,
     SettingsUpdateRequest,
 )
-from agrivision.config import get_project_root, load_config
 from agrivision.services.service_control import service_controls, service_statuses
 
 router = APIRouter()
@@ -38,7 +39,7 @@ def deployment_status() -> dict[str, object]:
     app_cfg = config.get('app', {}) if isinstance(config.get('app'), dict) else {}
     deployment_mode = str(app_cfg.get('deployment_mode') or 'local')
     public_url = str(app_cfg.get('public_url') or '').rstrip('/')
-    access_confirmed = _as_bool(app_cfg.get('external_access_protection_confirmed'), False)
+    access_confirmed = parse_bool(app_cfg.get('external_access_protection_confirmed'), False)
     min_free_gb = _as_int(app_cfg.get('min_free_disk_gb'), 50)
     max_active_odm = max(1, _as_int(app_cfg.get('max_active_odm_runs'), 1))
     active_odm_runs = [
@@ -211,19 +212,6 @@ def _as_int(value: object, fallback: int) -> int:
         return max(0, int(value))
     except (TypeError, ValueError):
         return fallback
-
-
-def _as_bool(value: object, fallback: bool) -> bool:
-    if isinstance(value, bool):
-        return value
-    if value is None:
-        return fallback
-    normalized = str(value).strip().lower()
-    if normalized in {'1', 'true', 'yes', 'on'}:
-        return True
-    if normalized in {'0', 'false', 'no', 'off'}:
-        return False
-    return fallback
 
 
 @router.post('/settings')

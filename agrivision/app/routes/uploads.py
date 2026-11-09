@@ -15,8 +15,8 @@ from PIL import Image, UnidentifiedImageError
 from rasterio.errors import RasterioIOError
 
 from agrivision.app import dependencies as deps
-from agrivision.app.schemas.runs import RunCreateRequest, StageStatus, UploadManifest
 from agrivision.config import load_config
+from agrivision.schemas.runs import RunCreateRequest, StageStatus, UploadManifest
 from agrivision.services.run_service import RunStartBlocked
 
 router = APIRouter()
@@ -73,7 +73,7 @@ def _log_run_event(run_id: str, message: str) -> None:
     try:
         record = deps.run_service.load_run(run_id)
         timestamp = datetime.now(timezone.utc).isoformat()
-        with Path(record.logs_path).open('a', encoding='utf-8') as handle:
+        with deps.storage_service.resolve_recorded_path(record.logs_path).open('a', encoding='utf-8') as handle:
             handle.write(f'[{timestamp}] {message}\n')
     except Exception:
         pass
@@ -168,7 +168,7 @@ def _expire_pending_upload_if_idle(run_id: str, *, timeout_seconds: int = PENDIN
         return
     if record.current_stage != UPLOAD_VALIDATE_STAGE or record.stage_message != 'Waiting for upload':
         return
-    upload_dir = Path(record.input_path)
+    upload_dir = deps.storage_service.resolve_recorded_path(record.input_path)
     if _has_pending_upload_content(upload_dir, run_id):
         return
     message = f'Upload did not start within {timeout_seconds} seconds.'
@@ -291,7 +291,7 @@ def _manifest_payload(upload_run_id: str, dataset_name: str, upload_dir: Path, s
     return UploadManifest(
         run_id=upload_run_id,
         dataset_name=dataset_name,
-        upload_dir=str(upload_dir),
+        upload_dir=deps.storage_service.to_recorded_path(upload_dir),
         files=sorted(
             f'{kind}/{name}'
             for kind in CAMERA_KINDS

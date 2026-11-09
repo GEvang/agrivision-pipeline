@@ -97,5 +97,6 @@ def build_field_assessment(
         "recommended_timeframe": timeframe,
         "disease_specific_guidance": pdm_guidance,
         "missing_inputs": missing,
+        "limitations": [str(note) for note in risk_summary.get("notes", []) if note],
         "method": "Higher of the available PDM and UAV spatial risk signals; the sources are retained separately for review.",
     }

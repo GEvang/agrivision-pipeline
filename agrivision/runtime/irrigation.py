@@ -5,7 +5,7 @@ import re
 from pathlib import Path
 
 from agrivision.config.settings import get_settings
-from agrivision.services.runtime import (
+from agrivision.runtime.service_runtime import (
     EnvSyncResult,
     ServiceBootstrapError,
     ServiceRuntimeState,

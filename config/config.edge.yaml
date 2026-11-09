@@ -4,6 +4,8 @@ location:
   name: "Neapolis, Agios Nikolaos, Crete"
   lat: 35.2600
   lon: 25.6000
+  # Edge/offline installs must not send field coordinates to OpenStreetMap.
+  reverse_geocode: false
 
 paths:
   data_root: "data"
@@ -58,6 +60,9 @@ vegetation_index:
     index_mode: "pseudo"
     red_band: 1
     nir_band: 2
+    # (G - R) / (G + R) has a much smaller range than NDVI; calibrate per camera.
+    poor_max: 0.0
+    medium_max: 0.08
 
 weather:
   base_url: "http://127.0.0.1:8010"

@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import pytest
 
-from agrivision.app.schemas.runs import RunCreateRequest
+from agrivision.schemas.runs import RunCreateRequest
 
 
 def test_run_schema_requires_non_blank_names() -> None:

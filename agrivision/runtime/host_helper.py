@@ -6,7 +6,7 @@ import uuid
 from pathlib import Path
 
 from agrivision.config.settings import get_project_root
-from agrivision.services.runtime import ServiceBootstrapError
+from agrivision.runtime.service_runtime import ServiceBootstrapError
 
 _HEARTBEAT_TTL_SECONDS = 15
 _COMMAND_TIMEOUT_SECONDS = 240

@@ -3,9 +3,10 @@ from pathlib import Path
 
 import pytest
 
-from agrivision.services import host_service_helper, runtime
-from agrivision.services.irrigation.runtime import _apply_compatibility_patches
-from agrivision.services.runtime import (
+from agrivision.runtime import host_helper as host_service_helper
+from agrivision.runtime import service_runtime as runtime
+from agrivision.runtime.irrigation import _apply_compatibility_patches
+from agrivision.runtime.service_runtime import (
     ServiceBootstrapError,
     base_env_values,
     update_env_file,

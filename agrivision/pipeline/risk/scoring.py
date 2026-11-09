@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import csv
 import json
-from datetime import UTC, datetime
+from datetime import UTC, date, datetime, timedelta
 from pathlib import Path
 from typing import Any
 
@@ -13,6 +13,7 @@ import matplotlib.pyplot as plt
 import numpy as np
 from matplotlib.patches import Rectangle
 
+from agrivision.config.paths import to_project_path
 from agrivision.pipeline.grid.render import _read_rgb_background
 from agrivision.pipeline.risk.profiles import profiles_for_crop
 
@@ -103,6 +104,15 @@ def _risk_category(score: float | None) -> str:
     return "very_high"
 
 
+def _first_number(*values: Any) -> float | None:
+    """Return the first value that parses as a number; 0.0 counts as a value."""
+    for value in values:
+        parsed = _to_float(value)
+        if parsed is not None:
+            return parsed
+    return None
+
+
 def _extract_weather_values(weather_summary: dict[str, Any]) -> dict[str, float | None]:
     current = weather_summary.get("current_weather", {})
     if not isinstance(current, dict):
@@ -113,13 +123,72 @@ def _extract_weather_values(weather_summary: dict[str, Any]) -> dict[str, float 
     rain = raw.get("rain", {})
     precipitation = None
     if isinstance(rain, dict):
-        precipitation = _to_float(rain.get("1h")) or _to_float(rain.get("3h"))
+        precipitation = _first_number(rain.get("1h"), rain.get("3h"))
+    if precipitation is None:
+        precipitation = _recent_precipitation(weather_summary)
     return {
         "temperature": _to_float(current.get("temperature")),
         "humidity": _to_float(current.get("humidity")),
         "wind_speed": _to_float(current.get("wind_speed")),
-        "precipitation": precipitation or _recent_precipitation(weather_summary),
+        "precipitation": precipitation,
     }
+
+
+def _hourly_observations(weather_summary: dict[str, Any]) -> list[tuple[datetime, dict[str, Any]]]:
+    """Read the Weather service's hourly history: ``{"data": [{"timestamp", "values"}]}``."""
+    hourly = weather_summary.get("historical_hourly", {})
+    items = hourly.get("data", []) if isinstance(hourly, dict) else hourly
+    observations: list[tuple[datetime, dict[str, Any]]] = []
+    for item in items if isinstance(items, list) else []:
+        if not isinstance(item, dict) or not isinstance(item.get("values"), dict):
+            continue
+        timestamp = _parse_datetime(item.get("timestamp"))
+        if timestamp is not None:
+            observations.append((timestamp, item["values"]))
+    return observations
+
+
+def _history_weather_values(weather_summary: dict[str, Any], flight_date: date) -> dict[str, float | None] | None:
+    """Weather on the flight day from hourly history, or None if it was not fetched."""
+    observations = _hourly_observations(weather_summary)
+    flight_day = [values for timestamp, values in observations if timestamp.date() == flight_date]
+    if not flight_day:
+        return None
+    previous_day = flight_date - timedelta(days=1)
+    rain_window = [
+        values
+        for timestamp, values in observations
+        if timestamp.date() in (previous_day, flight_date)
+    ]
+
+    def _mean(key: str) -> float | None:
+        numbers = [number for number in (_to_float(values.get(key)) for values in flight_day) if number is not None]
+        return float(np.mean(numbers)) if numbers else None
+
+    rain = [number for number in (_to_float(values.get("precipitation")) for values in rain_window) if number is not None]
+    return {
+        "temperature": _mean("temperature_2m"),
+        "humidity": _mean("relative_humidity_2m"),
+        "wind_speed": None,
+        "precipitation": float(sum(rain)) if rain else None,
+    }
+
+
+def resolve_weather_values(
+    weather_summary: dict[str, Any], flight_date: date | None
+) -> tuple[dict[str, float | None], str]:
+    """Pick the weather that applies to the flight and say where it came from.
+
+    Current conditions only describe a flight made today. For an earlier flight
+    the hourly history of the flight day is used; when that is missing, weather
+    is reported as unavailable rather than substituted with today's weather.
+    """
+    if flight_date is None or flight_date >= datetime.now(UTC).date():
+        return _extract_weather_values(weather_summary), "current"
+    history = _history_weather_values(weather_summary, flight_date)
+    if history is None:
+        return {"temperature": None, "humidity": None, "wind_speed": None, "precipitation": None}, "unavailable"
+    return history, "history"
 
 
 def _recent_precipitation(weather_summary: dict[str, Any]) -> float | None:
@@ -146,8 +215,9 @@ def _walk_values(value: Any):
             yield from _walk_values(child)
 
 
-def _weather_suitability(profile: dict[str, Any], weather_summary: dict[str, Any]) -> tuple[float | None, dict[str, float | None]]:
-    values = _extract_weather_values(weather_summary)
+def _weather_suitability(
+    profile: dict[str, Any], values: dict[str, float | None]
+) -> tuple[float | None, dict[str, float | None]]:
     components = {
         "temperature": _score_range(values["temperature"], profile["temperature"]),
         "humidity": _score_range(values["humidity"], profile["humidity"]),
@@ -188,14 +258,14 @@ def _capture_month(vegetation_index_meta: dict[str, Any], grid_meta: dict[str, A
         parsed = _parse_datetime(candidate)
         if parsed is not None:
             return parsed.month
-    return datetime.utcnow().month
+    return datetime.now(UTC).month
 
 
 def _score_profile(
     profile: dict[str, Any],
     cells: list[dict[str, Any]],
     month: int,
-    weather_summary: dict[str, Any],
+    weather_values: dict[str, float | None],
     irrigation_summary: dict[str, Any] | None,
 ) -> tuple[list[dict[str, Any]], dict[str, Any]]:
     seasonality = float(profile["seasonality"].get(month, 0.0))
@@ -203,7 +273,7 @@ def _score_profile(
     # is connected, A1 is the only biological gate available to this layer.
     phenology = None
     biological_gate = seasonality
-    weather_score, weather_components = _weather_suitability(profile, weather_summary)
+    weather_score, weather_components = _weather_suitability(profile, weather_values)
     vegetation_index_scores = _vegetation_index_anomaly_scores(cells)
 
     scored: list[dict[str, Any]] = []
@@ -272,6 +342,8 @@ def _score_profile(
         )
 
     valid_scores = [row["final_risk"] for row in scored if row["final_risk"] is not None]
+    max_available_weight = max((float(row["available_weight"]) for row in scored), default=0.0)
+    max_reachable = biological_gate * max_available_weight if max_available_weight else None
     summary = {
         "profile_key": profile["key"],
         "profile_label": profile["label"],
@@ -288,12 +360,17 @@ def _score_profile(
         "valid_cells": len(valid_scores),
         "used_inputs": [
             key
-            for key, value in (
-                ("weather", weather_score),
-                ("vegetation_index_anomaly", next(iter(vegetation_index_scores.values()), None)),
+            for key, available in (
+                ("weather", weather_score is not None),
+                ("vegetation_index_anomaly", any(value is not None for value in vegetation_index_scores.values())),
             )
-            if value is not None
+            if available
         ],
+        # Missing drivers contribute nothing, so with only weather and the index
+        # anomaly a cell can never reach the top categories. Report that ceiling
+        # instead of re-normalising the missing inputs into a stronger signal.
+        "max_reachable_risk": max_reachable,
+        "max_reachable_category": _risk_category(max_reachable),
         "missing_inputs": [
             "phenology",
             "thermal_anomaly",
@@ -393,6 +470,25 @@ def _save_risk_overlay(rows: list[dict[str, Any]], row_edges: np.ndarray, col_ed
     plt.close()
 
 
+def _scoring_notes(weather_basis: str, flight_date: date | None, layers: list[dict[str, Any]]) -> list[str]:
+    notes: list[str] = []
+    if weather_basis == "unavailable":
+        notes.append(
+            f"Weather history for the flight date {flight_date} was not available, so the weather driver "
+            "was left out instead of using today's conditions."
+        )
+    elif weather_basis == "history":
+        notes.append(f"Weather driver uses the hourly history of the flight date {flight_date}.")
+    reachable = [layer["max_reachable_risk"] for layer in layers if layer.get("max_reachable_risk") is not None]
+    if reachable and max(reachable) < 0.70:
+        notes.append(
+            "With the inputs available, the spatial risk cannot exceed "
+            f"{_risk_category(max(reachable)).replace('_', ' ')} ({max(reachable):.2f}); missing drivers "
+            "contribute nothing rather than being estimated."
+        )
+    return notes
+
+
 def run_disease_risk_scoring(
     *,
     crop: str | None,
@@ -400,6 +496,7 @@ def run_disease_risk_scoring(
     rgb_orthophoto: Path,
     weather_summary: dict[str, Any],
     irrigation_summary: dict[str, Any] | None,
+    flight_date: date | None = None,
 ) -> dict[str, Any]:
     grid_csv = vegetation_index_dir / "vegetation_index_grid_cells.csv"
     grid_meta_path = vegetation_index_dir / "grid_metadata.json"
@@ -422,19 +519,23 @@ def run_disease_risk_scoring(
         }
     row_edges = np.linspace(0, max_row_edge, rows + 1, dtype=int)
     col_edges = np.linspace(0, max_col_edge, cols + 1, dtype=int)
-    month = _capture_month(vegetation_index_meta, grid_meta, weather_summary)
+    if flight_date is not None:
+        month, month_source = flight_date.month, "flight_date"
+    else:
+        month, month_source = _capture_month(vegetation_index_meta, grid_meta, weather_summary), "processing_time"
+    weather_values, weather_basis = resolve_weather_values(weather_summary, flight_date)
     out_dir = vegetation_index_dir / "disease_risk"
     out_dir.mkdir(parents=True, exist_ok=True)
 
     layers: list[dict[str, Any]] = []
     for profile in profiles_for_crop(crop):
-        scored_rows, summary = _score_profile(profile, cells, month, weather_summary, irrigation_summary)
+        scored_rows, summary = _score_profile(profile, cells, month, weather_values, irrigation_summary)
         csv_path = out_dir / f"{profile['key']}_cells.csv"
         png_path = out_dir / f"{profile['key']}_overlay.png"
         _save_profile_csv(scored_rows, csv_path)
         _save_risk_overlay(scored_rows, row_edges, col_edges, png_path, rgb_orthophoto)
-        summary["cells_csv"] = str(csv_path)
-        summary["overlay_png"] = str(png_path)
+        summary["cells_csv"] = to_project_path(csv_path)
+        summary["overlay_png"] = to_project_path(png_path)
         layers.append(summary)
 
     selected = max(layers, key=lambda item: item.get("mean_risk") or 0.0) if layers else None
@@ -443,6 +544,10 @@ def run_disease_risk_scoring(
         "generated_at_utc": datetime.now(UTC).replace(microsecond=0).isoformat().replace("+00:00", "Z"),
         "crop": crop or "grapevine",
         "capture_month_used": month,
+        "capture_month_source": month_source,
+        "flight_date": flight_date.isoformat() if flight_date else None,
+        "weather_basis": weather_basis,
+        "weather_values": weather_values,
         "formula": {
             "biological_gate": "seasonality_score (A1; phenology/A2 not yet configured)",
             "risk_driver": {
@@ -452,11 +557,12 @@ def run_disease_risk_scoring(
             "missing_inputs": "A2 phenology, C1 historical pressure, C2 soil/irrigation, and C4 thermal anomaly are omitted; they are neither inferred nor re-normalized.",
             "final_cell_risk": "seasonality_score * (0.40 * weather_suitability + 0.20 * vegetation_index_anomaly)",
         },
+        "notes": _scoring_notes(weather_basis, flight_date, layers),
         "selected_layer_key": selected.get("profile_key") if selected else None,
         "selected_layer_label": selected.get("profile_label") if selected else None,
         "layers": layers,
     }
     summary_path = out_dir / "summary.json"
     summary_path.write_text(json.dumps(payload, indent=2), encoding="utf-8")
-    payload["summary_json"] = str(summary_path)
+    payload["summary_json"] = to_project_path(summary_path)
     return payload

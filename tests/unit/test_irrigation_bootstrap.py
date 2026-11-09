@@ -1,4 +1,4 @@
-from agrivision.services.irrigation.bootstrap import (
+from agrivision.integrations.irrigation.bootstrap import (
     _count_eto_values,
     _extract_lat_lon_from_wkt,
     _summarize_eto_values,

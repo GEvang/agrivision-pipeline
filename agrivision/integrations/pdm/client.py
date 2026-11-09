@@ -9,9 +9,10 @@ from typing import Any
 import requests
 from requests import Response, Session
 
+from agrivision.config.paths import to_project_path
 from agrivision.config.settings import get_project_root, load_config
-from agrivision.services.pdm.catalog import get_pdm_model
-from agrivision.services.pdm.runtime import ensure_service_available
+from agrivision.integrations.pdm.catalog import get_pdm_model
+from agrivision.runtime.pdm import ensure_service_available
 
 FIELD_TO_UNIT_ID = {
     'temperature_c': 1,
@@ -342,8 +343,8 @@ def probe_pdm_service() -> dict[str, Any]:
 def ensure_pdm_service_available(timeout_seconds: int = 120) -> dict[str, Any]:
     state = ensure_service_available(timeout_seconds=timeout_seconds, verbose=True)
     return {
-        'repo_dir': str(state.repo_dir),
-        'compose_file': str(state.compose_file),
+        'repo_dir': to_project_path(state.repo_dir),
+        'compose_file': to_project_path(state.compose_file),
         'ready': state.ready,
         'was_reachable': state.was_reachable,
         'restarted': state.restarted,
@@ -365,7 +366,7 @@ def _artifact_dir(artifact_dir: Path | None = None) -> Path:
 def write_pdm_artifact(prefix: str, payload: dict[str, Any], *, artifact_dir: Path | None = None) -> str:
     path = _artifact_dir(artifact_dir=artifact_dir) / _safe_filename(prefix)
     path.write_text(json.dumps(payload, indent=2), encoding='utf-8')
-    return str(path)
+    return to_project_path(path)
 
 
 def parcel_name_for_model(model_key: str) -> str:

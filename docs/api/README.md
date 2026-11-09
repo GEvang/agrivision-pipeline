@@ -1,6 +1,6 @@
 # AgriVision API And Dashboard Contract
 
-The dashboard is a thin FastAPI adapter over the pipeline core. Route handlers delegate to service-layer modules so HTTP concerns stay out of `pipeline/`, `integrations/`, and `domain/`.
+The dashboard is a thin FastAPI adapter over the pipeline core. Route handlers delegate to service-layer modules so HTTP concerns stay out of `pipeline/`, `integrations/`, and `runtime/`.
 
 ## Core Endpoints
 

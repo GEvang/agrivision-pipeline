@@ -2,10 +2,9 @@ from __future__ import annotations
 
 import json
 import os
-import warnings
-from dataclasses import dataclass
+from dataclasses import dataclass, field, fields, is_dataclass
 from pathlib import Path
-from typing import Any, Mapping
+from typing import Any, Mapping, get_args, get_origin, get_type_hints
 from urllib.parse import urlsplit, urlunsplit
 
 import yaml
@@ -93,6 +92,9 @@ DEFAULT_CONFIG: dict[str, Any] = {
         "name": "Neapolis, Agios Nikolaos, Crete",
         "lat": 35.2600,
         "lon": 25.6000,
+        # Look up a place name for the orthophoto centroid on OpenStreetMap
+        # Nominatim. This sends the field's coordinates to an external service.
+        "reverse_geocode": True,
     },
     "paths": {
         "data_root": "data",
@@ -125,6 +127,11 @@ DEFAULT_CONFIG: dict[str, Any] = {
             "index_mode": "pseudo",
             "red_band": 1,
             "nir_band": 2,
+            # RGB-only runs compute (G - R) / (G + R), which spans a much smaller
+            # range than NDVI: below 0 is bare soil or stressed canopy, around
+            # 0.08 and above is dense green canopy. Calibrate per camera.
+            "poor_max": 0.0,
+            "medium_max": 0.08,
         },
     },
     "weather": {
@@ -141,6 +148,7 @@ DEFAULT_CONFIG: dict[str, Any] = {
             "password": "",
         },
         "token": "",
+        # OpenAgri services read WKT as (lat lon); see integrations/common/geometry.py.
         "default_parcel_wkt": "POINT (35.2600 25.6000)",
         "eto": {
             "location_id": 1,
@@ -225,9 +233,9 @@ class OrthophotoSettings:
 class ApplicationSettings:
     deployment_mode: str
     public_url: str
-    min_free_disk_gb: int
-    max_active_odm_runs: int
-    external_access_protection_confirmed: bool
+    min_free_disk_gb: int = field(metadata={"minimum": 0})
+    max_active_odm_runs: int = field(metadata={"minimum": 1})
+    external_access_protection_confirmed: bool = False
 
 
 @dataclass(frozen=True)
@@ -244,6 +252,7 @@ class LocationSettings:
     name: str
     lat: float
     lon: float
+    reverse_geocode: bool
 
 
 @dataclass(frozen=True)
@@ -379,30 +388,6 @@ def _set_if_env_exists(config: dict[str, Any], path: tuple[str, ...], env_name: 
     current[path[-1]] = value
 
 
-def _read_nested(config: Mapping[str, Any], path: tuple[str, ...]) -> Any:
-    current: Any = config
-    for key in path:
-        if not isinstance(current, Mapping) or key not in current:
-            return None
-        current = current[key]
-    return current
-
-
-def _warn_if_yaml_secret_used(config: Mapping[str, Any], path: tuple[str, ...], env_name: str, label: str) -> None:
-    env_value = os.getenv(env_name)
-    if env_value is not None and env_value != "":
-        return
-
-    value = _read_nested(config, path)
-    if value not in (None, ""):
-        warnings.warn(
-            f"{label} is being read from config.yaml. "
-            f"Set {env_name} in .env or the environment instead.",
-            UserWarning,
-            stacklevel=2,
-        )
-
-
 def _apply_env_overrides(config: dict[str, Any]) -> dict[str, Any]:
     for path, env_name, _label in _ENV_SECRET_OVERRIDES:
         _set_if_env_exists(config, path, env_name)
@@ -494,7 +479,7 @@ def _as_float(value: Any, fallback: float) -> float:
         return fallback
 
 
-def _as_bool(value: Any, fallback: bool) -> bool:
+def parse_bool(value: Any, fallback: bool) -> bool:
     if isinstance(value, bool):
         return value
     if value is None:
@@ -507,184 +492,45 @@ def _as_bool(value: Any, fallback: bool) -> bool:
     return fallback
 
 
+def _coerce(annotation: Any, value: Any, default: Any) -> Any:
+    """Coerce one config value to its declared type, falling back to the default."""
+    if is_dataclass(annotation):
+        return _build_settings(annotation, _as_dict(value), _as_dict(default))
+    if annotation is bool:
+        return parse_bool(value, bool(default))
+    if annotation is int:
+        return _as_int(value, _as_int(default, 0))
+    if annotation is float:
+        return _as_float(value, _as_float(default, 0.0))
+    if annotation is str:
+        return _as_str(value, _as_str(default))
+    origin = get_origin(annotation)
+    if origin is list:
+        (item_type,) = get_args(annotation) or (Any,)
+        source = value if isinstance(value, list) and value else default
+        items = list(source or [])
+        if item_type is float:
+            fallback = list(default or [])
+            return [_as_float(item, fallback[idx] if idx < len(fallback) else 0.0) for idx, item in enumerate(items)]
+        return items
+    if origin is dict or annotation is dict:
+        return _deep_copy(_as_dict(value) or _as_dict(default))
+    return value if value is not None else default
+
+
+def _build_settings(settings_type: type, cfg: Mapping[str, Any], defaults: Mapping[str, Any]) -> Any:
+    """Build a settings dataclass from config, with DEFAULT_CONFIG as the only defaults."""
+    hints = get_type_hints(settings_type)
+    values: dict[str, Any] = {}
+    for item in fields(settings_type):
+        value = _coerce(hints[item.name], cfg.get(item.name), defaults.get(item.name))
+        minimum = item.metadata.get("minimum")
+        if minimum is not None:
+            value = max(minimum, value)
+        values[item.name] = value
+    return settings_type(**values)
+
+
 def get_settings() -> AppSettings:
     """Build typed settings from merged config without import-time caching."""
-    cfg = load_config()
-
-    defaults = DEFAULT_CONFIG
-    paths_cfg = _as_dict(cfg.get("paths"))
-    weather_cfg = _as_dict(cfg.get("weather"))
-    location_cfg = _as_dict(cfg.get("location"))
-    irrigation_cfg = _as_dict(cfg.get("irrigation"))
-    irrigation_auth_cfg = _as_dict(irrigation_cfg.get("auth"))
-    irrigation_eto_cfg = _as_dict(irrigation_cfg.get("eto"))
-    pdm_cfg = _as_dict(cfg.get("pdm"))
-    pdm_auth_cfg = _as_dict(pdm_cfg.get("auth"))
-    vegetation_index_cfg = _as_dict(cfg.get("vegetation_index"))
-    orthophoto_cfg = _as_dict(cfg.get("orthophoto"))
-    app_cfg = _as_dict(cfg.get("app"))
-
-    paths_defaults = _as_dict(defaults.get("paths"))
-    weather_defaults = _as_dict(defaults.get("weather"))
-    location_defaults = _as_dict(defaults.get("location"))
-    irrigation_defaults = _as_dict(defaults.get("irrigation"))
-    irrigation_auth_defaults = _as_dict(irrigation_defaults.get("auth"))
-    irrigation_eto_defaults = _as_dict(irrigation_defaults.get("eto"))
-    pdm_defaults = _as_dict(defaults.get("pdm"))
-    pdm_auth_defaults = _as_dict(pdm_defaults.get("auth"))
-    vegetation_index_defaults = _as_dict(defaults.get("vegetation_index"))
-    orthophoto_defaults = _as_dict(defaults.get("orthophoto"))
-    app_defaults = _as_dict(defaults.get("app"))
-
-    return AppSettings(
-        app=ApplicationSettings(
-            deployment_mode=_as_str(
-                app_cfg.get("deployment_mode"),
-                _as_str(app_defaults.get("deployment_mode"), "local"),
-            ),
-            public_url=_as_str(app_cfg.get("public_url"), _as_str(app_defaults.get("public_url"))),
-            min_free_disk_gb=max(
-                0,
-                _as_int(app_cfg.get("min_free_disk_gb"), _as_int(app_defaults.get("min_free_disk_gb"), 50)),
-            ),
-            max_active_odm_runs=max(
-                1,
-                _as_int(
-                    app_cfg.get("max_active_odm_runs"),
-                    _as_int(app_defaults.get("max_active_odm_runs"), 1),
-                ),
-            ),
-            external_access_protection_confirmed=_as_bool(
-                app_cfg.get("external_access_protection_confirmed"),
-                _as_bool(app_defaults.get("external_access_protection_confirmed"), False),
-            ),
-        ),
-        paths=PathsSettings(
-            data_root=_as_str(paths_cfg.get("data_root"), _as_str(paths_defaults.get("data_root"))),
-            output_root=_as_str(paths_cfg.get("output_root"), _as_str(paths_defaults.get("output_root"))),
-            images_full=_as_str(paths_cfg.get("images_full"), _as_str(paths_defaults.get("images_full"))),
-            odm_project_root=_as_str(paths_cfg.get("odm_project_root"), _as_str(paths_defaults.get("odm_project_root"))),
-            odm_project_root_rgb=_as_str(
-                paths_cfg.get("odm_project_root_rgb"),
-                _as_str(paths_defaults.get("odm_project_root_rgb")),
-            ),
-            odm_project_root_mapir=_as_str(
-                paths_cfg.get("odm_project_root_mapir"),
-                _as_str(paths_defaults.get("odm_project_root_mapir")),
-            ),
-            odm_project_root_thermal=_as_str(
-                paths_cfg.get("odm_project_root_thermal"),
-                _as_str(paths_defaults.get("odm_project_root_thermal")),
-            ),
-            vegetation_index_output=_as_str(paths_cfg.get("vegetation_index_output"), _as_str(paths_defaults.get("vegetation_index_output"))),
-            runs_output=_as_str(paths_cfg.get("runs_output"), _as_str(paths_defaults.get("runs_output"))),
-            images_full_mapir=_as_str(
-                paths_cfg.get("images_full_mapir"),
-                _as_str(paths_defaults.get("images_full_mapir")),
-            ),
-            images_full_thermal=_as_str(
-                paths_cfg.get("images_full_thermal"),
-                _as_str(paths_defaults.get("images_full_thermal")),
-            ),
-        ),
-        weather=WeatherSettings(
-            base_url=_as_str(weather_cfg.get("base_url"), _as_str(weather_defaults.get("base_url"))),
-            username=_as_str(weather_cfg.get("username"), _as_str(weather_defaults.get("username"))),
-            password=_as_str(weather_cfg.get("password"), _as_str(weather_defaults.get("password"))),
-            openweather_api_key=_as_str(
-                weather_cfg.get("openweather_api_key"),
-                _as_str(weather_defaults.get("openweather_api_key")),
-            ),
-            service_dir=_as_str(weather_cfg.get("service_dir"), _as_str(weather_defaults.get("service_dir"), "OpenAgri-WeatherService")),
-        ),
-        location=LocationSettings(
-            name=_as_str(location_cfg.get("name"), _as_str(location_defaults.get("name"))),
-            lat=_as_float(location_cfg.get("lat"), _as_float(location_defaults.get("lat"), 0.0)),
-            lon=_as_float(location_cfg.get("lon"), _as_float(location_defaults.get("lon"), 0.0)),
-        ),
-        irrigation=IrrigationSettings(
-            base_url=_as_str(irrigation_cfg.get("base_url"), _as_str(irrigation_defaults.get("base_url"))),
-            auth=IrrigationAuthSettings(
-                email=_as_str(
-                    irrigation_auth_cfg.get("email"),
-                    _as_str(irrigation_auth_defaults.get("email")),
-                ),
-                password=_as_str(
-                    irrigation_auth_cfg.get("password"),
-                    _as_str(irrigation_auth_defaults.get("password")),
-                ),
-            ),
-            eto=IrrigationEtoSettings(
-                location_id=_as_int(
-                    irrigation_eto_cfg.get("location_id"),
-                    _as_int(irrigation_eto_defaults.get("location_id"), 1),
-                ),
-                days_back=_as_int(
-                    irrigation_eto_cfg.get("days_back"),
-                    _as_int(irrigation_eto_defaults.get("days_back"), 1),
-                ),
-            ),
-            default_parcel_wkt=_as_str(
-                irrigation_cfg.get("default_parcel_wkt"),
-                _as_str(irrigation_defaults.get("default_parcel_wkt")),
-            ),
-            token=_as_str(irrigation_cfg.get("token"), _as_str(irrigation_defaults.get("token"))),
-            timeout_seconds=_as_int(irrigation_cfg.get("timeout_seconds"), _as_int(irrigation_defaults.get("timeout_seconds"), 20)),
-            service_dir=_as_str(irrigation_cfg.get("service_dir"), _as_str(irrigation_defaults.get("service_dir"), "OpenAgri-IrrigationManagement")),
-
-        ),
-        pdm=PdmSettings(
-            enabled_by_default=bool(pdm_cfg.get("enabled_by_default", pdm_defaults.get("enabled_by_default", True))),
-            base_url=_as_str(pdm_cfg.get("base_url"), _as_str(pdm_defaults.get("base_url"))),
-            auth=PdmAuthSettings(
-                username=_as_str(pdm_auth_cfg.get("username"), _as_str(pdm_auth_defaults.get("username"))),
-                password=_as_str(pdm_auth_cfg.get("password"), _as_str(pdm_auth_defaults.get("password"))),
-            ),
-            token=_as_str(pdm_cfg.get("token"), _as_str(pdm_defaults.get("token"))),
-            timeout_seconds=_as_int(pdm_cfg.get("timeout_seconds"), _as_int(pdm_defaults.get("timeout_seconds"), 12)),
-            verify_ssl=bool(pdm_cfg.get("verify_ssl", pdm_defaults.get("verify_ssl", False))),
-            default_crop=_as_str(pdm_cfg.get("default_crop"), _as_str(pdm_defaults.get("default_crop"), "grapevine")),
-            default_model_key=_as_str(pdm_cfg.get("default_model_key"), _as_str(pdm_defaults.get("default_model_key"), "grapevine_powdery_mildew_risk_v1")),
-            allow_per_run_override=bool(pdm_cfg.get("allow_per_run_override", pdm_defaults.get("allow_per_run_override", True))),
-            service_dir=_as_str(pdm_cfg.get("service_dir"), _as_str(pdm_defaults.get("service_dir"), "OpenAgri-PestAndDiseaseManagement")),
-        ),
-        vegetation_index=VegetationIndexSettings(
-            poor_max=_as_float(vegetation_index_cfg.get("poor_max"), _as_float(vegetation_index_defaults.get("poor_max"), 0.25)),
-            medium_max=_as_float(
-                vegetation_index_cfg.get("medium_max"),
-                _as_float(vegetation_index_defaults.get("medium_max"), 0.4),
-            ),
-            threshold_mode=_as_str(
-                vegetation_index_cfg.get("threshold_mode"),
-                _as_str(vegetation_index_defaults.get("threshold_mode"), "fixed"),
-            ),
-            calibration_percentiles=[
-                _as_float(value, fallback)
-                for value, fallback in zip(
-                    vegetation_index_cfg.get(
-                        "calibration_percentiles",
-                        vegetation_index_defaults.get("calibration_percentiles", [33, 66]),
-                    ),
-                    [33, 66],
-                )
-            ],
-            min_cell_valid_fraction=_as_float(
-                vegetation_index_cfg.get("min_cell_valid_fraction"),
-                _as_float(vegetation_index_defaults.get("min_cell_valid_fraction"), 0.2),
-            ),
-            grid_rows=_as_int(vegetation_index_cfg.get("grid_rows"), _as_int(vegetation_index_defaults.get("grid_rows"), 17)),
-            grid_cols=_as_int(vegetation_index_cfg.get("grid_cols"), _as_int(vegetation_index_defaults.get("grid_cols"), 17)),
-            mapir_profile=_as_dict(vegetation_index_cfg.get("mapir_profile")) or _as_dict(vegetation_index_defaults.get("mapir_profile")),
-            rgb_profile=_as_dict(vegetation_index_cfg.get("rgb_profile")) or _as_dict(vegetation_index_defaults.get("rgb_profile")),
-        ),
-        orthophoto=OrthophotoSettings(
-            odm_docker_image=_as_str(
-                orthophoto_cfg.get("odm_docker_image"),
-                _as_str(orthophoto_defaults.get("odm_docker_image")),
-            ),
-            orthophoto_resolution_cm=_as_int(
-                orthophoto_cfg.get("orthophoto_resolution_cm"),
-                _as_int(orthophoto_defaults.get("orthophoto_resolution_cm"), 1),
-            ),
-        ),
-    )
+    return _build_settings(AppSettings, load_config(), DEFAULT_CONFIG)

@@ -12,10 +12,10 @@ from fastapi.responses import HTMLResponse
 from agrivision.app import dependencies as deps
 from agrivision.app.formatters import step_summary
 from agrivision.app.health import service_health
-from agrivision.app.schemas.runs import RunRecord
 from agrivision.config import load_config
+from agrivision.integrations.weather.client import _authorized_get, get_token
+from agrivision.schemas.runs import RunRecord
 from agrivision.services.service_control import missing_service_repos, service_controls
-from agrivision.services.weather.client import _authorized_get, get_token
 
 router = APIRouter()
 
@@ -170,7 +170,7 @@ def _latest_report_weather_context() -> tuple[object | None, dict[str, Any] | No
     if latest_report is None:
         return None, None, None
     run = deps.run_service.load_run(latest_report.run_id)
-    weather_dir = Path(run.run_dir) / "workspace" / "output" / "weather"
+    weather_dir = deps.storage_service.run_dir(run.run_id) / "workspace" / "output" / "weather"
     current_candidate = _read_json(weather_dir / "current_weather.json")
     forecast_candidate = _read_json(weather_dir / "forecast5.json")
     current_payload = current_candidate if isinstance(current_candidate, dict) else None

@@ -6,6 +6,7 @@ import json
 from pathlib import Path
 from typing import Any, Dict, Optional
 
+from agrivision.config.paths import resolve_project_path
 from agrivision.pipeline.report.assets import rel_to_report
 from agrivision.pipeline.report.html import safe_html
 
@@ -27,7 +28,7 @@ def _render_artifact_link_row(label: str, artifact_path: str, output_dir: Path) 
     if not artifact_path:
         return f"<tr><th align='left'>{safe_html(label)}</th><td><em>Not available</em></td></tr>"
     try:
-        path = Path(artifact_path)
+        path = resolve_project_path(artifact_path)
         if path.exists():
             href = rel_to_report(path, output_dir)
             link_html = f'<a href="{safe_html(href)}">{safe_html(href)}</a>'
@@ -90,13 +91,13 @@ def render_weather_section(
 <table border="1" cellpadding="6" cellspacing="0">
   <tr><th align="left">Status</th><td><span style="color:{status_color}; font-weight:bold;">{safe_html(status_label)}</span></td></tr>
   <tr><th align="left">Location</th><td>{safe_html(location_name)}</td></tr>
-  <tr><th align="left">Report history range</th><td>{safe_html(weather_summary.get('history_start_date', 'N/A'))} â†’ {safe_html(weather_summary.get('history_end_date', 'N/A'))}</td></tr>
+  <tr><th align="left">Report history range</th><td>{safe_html(weather_summary.get('history_start_date', 'N/A'))} → {safe_html(weather_summary.get('history_end_date', 'N/A'))}</td></tr>
 </table>
 
 <h3>Current Weather Conditions</h3>
 <table border="1" cellpadding="6" cellspacing="0">
   <tr><th align="left">Observed at</th><td>{safe_html(current_time)}</td></tr>
-  <tr><th align="left">Temperature</th><td>{safe_html(current_temp)} Â°C</td></tr>
+  <tr><th align="left">Temperature</th><td>{safe_html(current_temp)} °C</td></tr>
   <tr><th align="left">Humidity</th><td>{safe_html(current_humidity)} %</td></tr>
   <tr><th align="left">Wind speed</th><td>{safe_html(current_wind)} m/s</td></tr>
   <tr><th align="left">Pressure</th><td>{safe_html(current_pressure)} hPa</td></tr>
@@ -259,7 +260,7 @@ def render_irrigation_section(
 
     eto_link_html = ""
     try:
-        eto_path = Path(eto_artifact_path)
+        eto_path = resolve_project_path(eto_artifact_path)
         if eto_path.exists():
             href = rel_to_report(eto_path, output_dir)
             eto_link_html = f'<a href="{safe_html(href)}">{safe_html(href)}</a>'
@@ -270,7 +271,7 @@ def render_irrigation_section(
 
     if eto_ok and eto_count == 0:
         eto_count_msg = (
-            "0 values (no calculations returned yet â€” expected if meteo ingestion hasnâ€™t "
+            "0 values (no calculations returned yet — expected if meteo ingestion hasn’t "
             "populated the DB for this range)"
         )
     elif eto_count is None:
@@ -334,11 +335,11 @@ def render_irrigation_section(
   <tr><th align="left">Created default parcel this run</th><td>{safe_html(created_default)}</td></tr>
 </table>
 
-<h3>ETo (FAO-56 Penmanâ€“Monteith) â€” Official get-calculations workflow</h3>
+<h3>ETo (FAO-56 Penman–Monteith) — Official get-calculations workflow</h3>
 <table border="1" cellpadding="6" cellspacing="0">
   <tr><th align="left">Request status</th><td><span style="color:{eto_color}; font-weight:bold;">{safe_html(eto_label)}</span> (HTTP {safe_html(eto_status)})</td></tr>
   <tr><th align="left">Location ID</th><td>{safe_html(eto_location_id)}</td></tr>
-  <tr><th align="left">Date range</th><td>{safe_html(eto_from)} â†’ {safe_html(eto_to)}</td></tr>
+  <tr><th align="left">Date range</th><td>{safe_html(eto_from)} → {safe_html(eto_to)}</td></tr>
   <tr><th align="left">Response format</th><td>{safe_html(eto_formatting or "JSON-LD")}</td></tr>
   <tr><th align="left">Returned values</th><td>{safe_html(eto_count_msg)}</td></tr>
   <tr><th align="left">ETo statistics</th><td>{safe_html(eto_statistics or "Not available")}</td></tr>

@@ -26,13 +26,15 @@ The supported operator deployment methods are the provided start files and Docke
 
 ## Source Structure
 
-- `agrivision/app/`: dashboard and API surface
 - `agrivision/config/`: configuration loading and typed settings
-- `agrivision/domain/`: internal contracts and models
-- `agrivision/integrations/`: translation boundaries for external systems
+- `agrivision/schemas/`: shared Pydantic models and the safe-ID rule
+- `agrivision/runtime/`: installing and running the OpenAgri services (pinned clones, `.env` sync, Docker Compose)
+- `agrivision/integrations/`: HTTP clients for external systems
 - `agrivision/pipeline/`: stage orchestration and artifact generation
-- `agrivision/runtime/`: runtime and container helpers
 - `agrivision/services/`: run state, exports, previews, settings persistence, service control
+- `agrivision/app/`: dashboard and API surface
+
+Each package imports only from the ones listed before it (see `docs/architecture/overview.md`).
 
 ## Validation
 

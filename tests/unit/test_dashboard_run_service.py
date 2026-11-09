@@ -3,7 +3,7 @@ from __future__ import annotations
 import json
 from pathlib import Path
 
-from agrivision.app.schemas.runs import RunCreateRequest
+from agrivision.schemas.runs import RunCreateRequest
 from agrivision.services.run_service import RunService, RunStartBlocked
 from agrivision.services.storage_service import StorageService
 
@@ -35,8 +35,8 @@ def test_run_record_creation_and_status_update(tmp_path: Path) -> None:
     service = RunService(storage)
 
     record = service.create_run_record(_request('upload-seed'))
-    assert Path(record.run_dir).exists()
-    assert Path(record.logs_path).exists()
+    assert storage.resolve_recorded_path(record.run_dir).exists()
+    assert storage.resolve_recorded_path(record.logs_path).exists()
     assert record.progress_percent == 0
     assert record.stages
 
@@ -246,7 +246,7 @@ def test_request_stop_marks_running_run_cancelled(tmp_path: Path, monkeypatch) -
     (upload_dir / 'rgb').mkdir(parents=True, exist_ok=True)
     (upload_dir / 'mapir').mkdir(parents=True, exist_ok=True)
     service = RunService(storage)
-    monkeypatch.setattr(service, '_stop_odm_containers', lambda: None)
+    monkeypatch.setattr(service, '_stop_odm_containers', lambda run_id: None)
 
     record = service.create_run_record(_request('upload-seed'))
     service.update_status(record.run_id, status='running')
@@ -284,7 +284,7 @@ def test_failed_run_stores_diagnostic_summary_and_raw_log(tmp_path: Path, monkey
     monkeypatch.setattr('agrivision.services.run_service.run_full_pipeline', fail_pipeline)
 
     failed = service.launch_run(record.run_id)
-    log_text = Path(failed.logs_path).read_text(encoding='utf-8')
+    log_text = storage.resolve_recorded_path(failed.logs_path).read_text(encoding='utf-8')
 
     assert failed.status == 'failed'
     assert failed.finished_at is not None
@@ -450,8 +450,8 @@ def test_run_output_helpers_respect_configured_runs_output_root(tmp_path: Path, 
 
     outputs = service._discover_outputs(run_dir)
 
-    assert Path(outputs['report_html']).parent == tmp_path / 'artifacts' / 'per-run' / 'run-configured'
-    assert Path(outputs['orthophoto_rgb']).parent == tmp_path / 'artifacts' / 'per-run' / 'run-configured' / 'orthophotos'
+    assert storage.resolve_recorded_path(outputs['report_html']).parent == tmp_path / 'artifacts' / 'per-run' / 'run-configured'
+    assert storage.resolve_recorded_path(outputs['orthophoto_rgb']).parent == tmp_path / 'artifacts' / 'per-run' / 'run-configured' / 'orthophotos'
 
 
 def test_clear_incomplete_removes_failed_and_cancelled_runs(tmp_path: Path) -> None:
@@ -612,11 +612,11 @@ def test_discover_outputs_copies_report_to_per_run_output(tmp_path: Path, monkey
     mapir_ortho.parent.mkdir(parents=True)
     mapir_ortho.write_text('mapir', encoding='utf-8')
     outputs = service._discover_outputs(run_dir)
-    saved_report = Path(outputs['report_html'])
+    saved_report = storage.resolve_recorded_path(outputs['report_html'])
     assert saved_report.exists()
     assert saved_report.parent == tmp_path / 'output' / 'runs' / 'run-1'
     assert saved_report.name == 'final-vineyard-report.html'
-    assert Path(outputs['orthophoto_rgb']).parent == tmp_path / 'output' / 'runs' / 'run-1' / 'orthophotos'
+    assert storage.resolve_recorded_path(outputs['orthophoto_rgb']).parent == tmp_path / 'output' / 'runs' / 'run-1' / 'orthophotos'
     assert Path(outputs['orthophoto_mapir']).name == 'orthophoto_mapir.tif'
 
 
@@ -668,7 +668,7 @@ def test_orthophoto_only_outputs_do_not_attach_stale_analysis_files(tmp_path: Pa
     outputs = service._discover_outputs(run_dir)
 
     assert sorted(outputs) == ['orthophoto_mapir', 'orthophoto_rgb']
-    assert Path(outputs['orthophoto_rgb']).parent == tmp_path / 'output' / 'runs' / 'ortho-only' / 'orthophotos'
+    assert storage.resolve_recorded_path(outputs['orthophoto_rgb']).parent == tmp_path / 'output' / 'runs' / 'ortho-only' / 'orthophotos'
 
 
 def test_stage_inputs_for_run_stages_files_inside_workspace(tmp_path: Path) -> None:
@@ -833,6 +833,78 @@ def test_back_to_back_runs_keep_outputs_isolated_and_track_reused_orthophotos(tm
     assert second_loaded.artifacts['orthophoto_rgb'].source_run_id == first.run_id
     assert second_loaded.artifacts['orthophoto_rgb'].source_path == first_loaded.outputs['orthophoto_rgb']
 
-    artifacts_payload = json.loads((Path(second_loaded.run_dir) / 'artifacts.json').read_text(encoding='utf-8'))
+    artifacts_payload = json.loads((storage.resolve_recorded_path(second_loaded.run_dir) / 'artifacts.json').read_text(encoding='utf-8'))
     assert artifacts_payload['orthophoto_rgb']['origin'] == 'restored_from_previous_run'
     assert artifacts_payload['orthophoto_rgb']['source_run_id'] == first.run_id
+
+
+def test_stage_update_after_stop_keeps_run_cancelled(tmp_path: Path, monkeypatch) -> None:
+    storage = StorageService(project_root=tmp_path)
+    storage.upload_dir('upload-seed')
+    service = RunService(storage)
+    monkeypatch.setattr(service, '_stop_odm_containers', lambda run_id: None)
+    record = service.create_run_record(_request('upload-seed'))
+    service.update_status(record.run_id, status='running')
+
+    service.request_stop(record.run_id)
+    late = service.update_stage(record.run_id, 'run_odm_rgb', 'completed', 'RGB orthophoto complete')
+
+    assert late.status == 'cancelled'
+
+
+def test_stopped_run_blocks_new_runs_until_its_thread_ends(tmp_path: Path) -> None:
+    import threading
+
+    storage = StorageService(project_root=tmp_path)
+    storage.upload_dir('upload-seed')
+    service = RunService(storage)
+    first = service.create_run_record(_request('upload-seed'))
+    second = service.create_run_record(_request('upload-seed'))
+    service.update_status(first.run_id, status='cancelled')
+    release = threading.Event()
+    worker = threading.Thread(target=release.wait)
+    worker.start()
+    service._threads[first.run_id] = worker
+    try:
+        assert service._active_run_blocker(second.run_id).run_id == first.run_id
+    finally:
+        release.set()
+        worker.join()
+    assert service._active_run_blocker(second.run_id) is None
+
+
+def test_stop_targets_only_this_runs_odm_containers(tmp_path: Path, monkeypatch) -> None:
+    from agrivision.services import run_service as run_service_module
+
+    calls: list[list[str]] = []
+    monkeypatch.setattr(run_service_module.subprocess, 'run', lambda cmd, **kwargs: calls.append(cmd))
+    service = RunService(StorageService(project_root=tmp_path))
+
+    service._stop_odm_containers('20260401T182808Z-28e38084')
+
+    assert [cmd[-1] for cmd in calls] == [
+        'agrivision-odm-20260401T182808Z-28e38084-rgb',
+        'agrivision-odm-20260401T182808Z-28e38084-mapir',
+        'agrivision-odm-20260401T182808Z-28e38084-thermal',
+    ]
+
+
+def test_refreshing_latest_orthophoto_run_never_erases_its_outputs(tmp_path: Path) -> None:
+    storage = StorageService(project_root=tmp_path)
+    storage.upload_dir('upload-seed')
+    service = RunService(storage)
+    record = service.create_run_record(_request('upload-seed'))
+    report = tmp_path / 'output' / 'runs' / record.run_id / 'field.html'
+    report.parent.mkdir(parents=True)
+    report.write_text('report', encoding='utf-8')
+    outputs = {
+        'report_html': storage.to_recorded_path(report),
+        'orthophoto_rgb': 'data/odm_project_rgb/project/odm_orthophoto/odm_orthophoto.tif',
+    }
+    service.update_status(record.run_id, status='completed', outputs=outputs)
+    before = (storage.run_dir(record.run_id) / 'status.json').read_text(encoding='utf-8')
+
+    service.ensure_latest_orthophoto_run_saved()
+
+    assert service.load_run(record.run_id).outputs == outputs
+    assert (storage.run_dir(record.run_id) / 'status.json').read_text(encoding='utf-8') == before

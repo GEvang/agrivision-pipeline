@@ -3,7 +3,7 @@ from __future__ import annotations
 from pathlib import Path
 from typing import Any
 
-from agrivision.services.irrigation.bootstrap import (
+from agrivision.integrations.irrigation.bootstrap import (
     ensure_irrigation_auth_parcel_and_eto,
 )
 

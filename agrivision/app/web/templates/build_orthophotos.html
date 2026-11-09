@@ -8,7 +8,7 @@
   {'key': 'maximum', 'label': 'Maximum Detail', 'resolution_cm': 1, 'reduce_images': false, 'description': 'Highest resolution for maximum accuracy and zoom.'}
 ] %}
 {% set camera_sources = [
-  {'key': 'rgb', 'label': 'RGB', 'icon': 'rgb (2).png', 'raw_name': 'rgb_files', 'ortho_name': 'rgb_orthophoto', 'recommended': 'Recommended: 50-500 images', 'supported_raw': 'Supported: JPG, JPEG, TIFF', 'supported_ortho': 'Supported: TIF, TIFF'},
+  {'key': 'rgb', 'label': 'RGB', 'icon': 'rgb.png', 'raw_name': 'rgb_files', 'ortho_name': 'rgb_orthophoto', 'recommended': 'Recommended: 50-500 images', 'supported_raw': 'Supported: JPG, JPEG, TIFF', 'supported_ortho': 'Supported: TIF, TIFF'},
   {'key': 'mapir', 'label': 'MAPIR', 'icon': 'olive-branch.png', 'raw_name': 'mapir_files', 'ortho_name': 'mapir_orthophoto', 'recommended': 'Recommended: 50-500 images', 'supported_raw': 'Supported: JPG, TIFF', 'supported_ortho': 'Supported: TIF, TIFF'},
   {'key': 'thermal', 'label': 'Thermal', 'icon': 'thermometer.png', 'raw_name': 'thermal_files', 'ortho_name': 'thermal_orthophoto', 'recommended': 'Recommended: 50-500 images', 'supported_raw': 'Supported: JPG, TIFF, TIF', 'supported_ortho': 'Supported: TIF, TIFF'}
 ] %}
@@ -258,12 +258,12 @@
       <div class="ortho-camera-grid ortho-camera-grid-library orthophoto-open-grid">
         {% if item.rgb_ready %}
         <a class="camera-tile camera-ready camera-tile-action camera-tile-rich" href="/artifacts/{{ item.rgb_run_id or item.run_id }}/orthophoto-rgb">
-          <img class="camera-tile-icon" src="/static/icons/rgb (2).png" alt="" />
+          <img class="camera-tile-icon" src="/static/icons/rgb.png" alt="" />
           <div><span>RGB</span><strong>Open</strong></div>
         </a>
         {% else %}
         <a class="camera-tile camera-{{ 'pending' if item.rgb_uploaded else 'missing' }} camera-tile-action camera-tile-rich" href="/runs/orthophotos?complete_run_id={{ item.run_id }}&camera_kind=rgb">
-          <img class="camera-tile-icon" src="/static/icons/rgb (2).png" alt="" />
+          <img class="camera-tile-icon" src="/static/icons/rgb.png" alt="" />
           <div><span>RGB</span><strong>{{ 'Add source' if item.rgb_uploaded else 'Missing' }}</strong></div>
         </a>
         {% endif %}

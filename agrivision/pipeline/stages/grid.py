@@ -22,6 +22,54 @@ from agrivision.pipeline.grid.io import (
 from agrivision.pipeline.grid.render import save_grid_overlay
 from agrivision.pipeline.stages.vegetation_index import save_png
 
+# Cell means and overlays are computed on an average-resampled copy of the index
+# raster capped at this many pixels; a full-resolution 1 cm orthophoto would
+# otherwise need tens of gigabytes for the index and the RGB mask together.
+MAX_ANALYSIS_PIXELS = 16_000_000
+
+
+def _read_index_for_analysis(path: Path) -> tuple[np.ndarray, Any, Any, float]:
+    """Read the index raster at a bounded resolution, averaging valid pixels."""
+    with rasterio.open(path) as src:
+        scale = min(1.0, (MAX_ANALYSIS_PIXELS / float(src.width * src.height)) ** 0.5)
+        if scale >= 1.0:
+            return src.read(1).astype("float32"), src.transform, src.crs, 1.0
+        height = max(1, int(round(src.height * scale)))
+        width = max(1, int(round(src.width * scale)))
+        arr = src.read(
+            1,
+            out_shape=(height, width),
+            masked=True,
+            resampling=Resampling.average,
+        ).filled(np.nan).astype("float32")
+        transform = src.transform * src.transform.scale(src.width / width, src.height / height)
+        return arr, transform, src.crs, scale
+
+
+def _scale_rgb_to_8bit(rgb: np.ndarray, dtype: str) -> np.ndarray:
+    """Bring 16-bit or float RGB onto the 0-255 scale the mask thresholds use."""
+    if dtype == "uint8":
+        return rgb
+    valid = rgb[np.isfinite(rgb) & (rgb > 0)]
+    if valid.size == 0:
+        return rgb
+    high = float(np.percentile(valid, 99.5))
+    if high <= 255.0:
+        return rgb
+    return np.clip(rgb * (255.0 / high), 0.0, 255.0)
+
+
+def _thresholds_for_index(
+    index_mode: str, rgb_profile: dict[str, Any], poor_max: float, medium_max: float
+) -> tuple[float, float]:
+    """Use the RGB profile's own thresholds for the pseudo index, NDVI ones otherwise."""
+    if str(index_mode).strip().lower() != "pseudo":
+        return poor_max, medium_max
+    try:
+        return float(rgb_profile["poor_max"]), float(rgb_profile["medium_max"])
+    except (KeyError, TypeError, ValueError):
+        return poor_max, medium_max
+
 
 def _save_masked_index_png(arr: np.ndarray, out_png: Path, title: str, out_dir: Path) -> None:
     max_edge = 1800
@@ -66,6 +114,7 @@ def _analysis_mask_from_rgb(
         with rasterio.open(rgb_path) as src:
             if src.count < 3:
                 return None
+            rgb_dtype = src.dtypes[0]
             if reference_transform is not None and reference_crs is not None and src.crs is not None:
                 rgb = np.zeros((3, full_height, full_width), dtype="float32")
                 for out_idx, band_idx in enumerate((1, 2, 3)):
@@ -88,7 +137,7 @@ def _analysis_mask_from_rgb(
     except (OSError, rasterio.errors.RasterioError):
         return None
 
-    red, green, blue = rgb
+    red, green, blue = _scale_rgb_to_8bit(rgb, rgb_dtype)
     total = red + green + blue
     finite = np.isfinite(total)
     brightness = total / 3.0
@@ -158,11 +207,16 @@ def run_grid_report(
         raise FileNotFoundError(f"Index file not found: {vegetation_index_tif}")
 
     index_name, index_mode, source_dataset = load_index_identity(vegetation_index_meta_json)
+    poor_max_cfg, medium_max_cfg = _thresholds_for_index(
+        index_mode, cast(dict, resolved["rgb_profile"]), poor_max_cfg, medium_max_cfg
+    )
 
-    with rasterio.open(vegetation_index_tif) as src:
-        arr = src.read(1).astype("float32")
-        index_transform = src.transform
-        index_crs = src.crs
+    arr, index_transform, index_crs, analysis_scale = _read_index_for_analysis(vegetation_index_tif)
+    if analysis_scale < 1.0:
+        print(
+            f"[Grid] Index raster averaged to {arr.shape[1]}x{arr.shape[0]} px "
+            f"({analysis_scale:.3f}x) to keep memory bounded."
+        )
 
     arr[~np.isfinite(arr)] = np.nan
     analysis_arr = arr
@@ -289,6 +343,7 @@ def run_grid_report(
         threshold_mode=threshold_mode,
         calibration_percentiles=[float(calibration_percentiles[0]), float(calibration_percentiles[1])],
         min_cell_valid_fraction=min_cell_valid_fraction,
+        analysis_scale=analysis_scale,
     )
 
     print("\n[AgriVision] Grid report complete.")

@@ -3,7 +3,7 @@ from __future__ import annotations
 import shutil
 from pathlib import Path
 
-from agrivision.app.schemas.runs import RunCreateRequest
+from agrivision.schemas.runs import RunCreateRequest
 from agrivision.services.preflight_service import PreflightService
 from agrivision.services.storage_service import StorageService
 

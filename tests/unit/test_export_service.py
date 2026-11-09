@@ -4,7 +4,7 @@ import json
 import zipfile
 from pathlib import Path
 
-from agrivision.app.schemas.runs import RunCreateRequest
+from agrivision.schemas.runs import RunCreateRequest
 from agrivision.services.export_service import RunExportService
 from agrivision.services.run_service import RunService
 from agrivision.services.storage_service import StorageService

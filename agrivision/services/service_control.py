@@ -8,16 +8,17 @@ from pathlib import Path
 from typing import Callable
 
 from agrivision.config.settings import get_settings
-from agrivision.services.host_service_helper import (
+from agrivision.runtime import irrigation as irrigation_runtime
+from agrivision.runtime import pdm as pdm_runtime
+from agrivision.runtime import weather as weather_runtime
+from agrivision.runtime.host_helper import (
     INSTALL_TIMEOUT_SECONDS,
     installed_service_state,
 )
-from agrivision.services.host_service_helper import (
+from agrivision.runtime.host_helper import (
     submit_command as submit_host_helper_command,
 )
-from agrivision.services.irrigation import runtime as irrigation_runtime
-from agrivision.services.pdm import runtime as pdm_runtime
-from agrivision.services.runtime import (
+from agrivision.runtime.service_runtime import (
     ServiceBootstrapError,
     check_first_reachable_url,
     compose_logs,
@@ -27,7 +28,6 @@ from agrivision.services.runtime import (
     project_service_dir,
     service_control_state,
 )
-from agrivision.services.weather import client as weather_client
 
 
 @dataclass(frozen=True)
@@ -53,7 +53,7 @@ def service_descriptors() -> dict[str, ServiceDescriptor]:
             base_url=weather_base,
             repo_dir=project_service_dir("OpenAgri-WeatherService"),
             readiness_urls=(f"{weather_base}/docs", f"{weather_base}/openapi.json", f"{weather_base}/"),
-            ensure=weather_client.ensure_weather_repo_and_env,
+            ensure=weather_runtime.ensure_weather_repo_and_env,
             docs_url=f"{weather_base}/docs",
         ),
         "irrigation": ServiceDescriptor(

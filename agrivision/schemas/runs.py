@@ -6,6 +6,8 @@ from typing import Any, Literal
 
 from pydantic import BaseModel, Field, field_validator
 
+from agrivision.schemas.ids import SAFE_ID_PATTERN
+
 RunStatusValue = Literal['queued', 'running', 'completed', 'failed', 'cancelled']
 StageStateValue = Literal['pending', 'running', 'completed', 'failed', 'skipped', 'cancelled']
 ArtifactOriginValue = Literal['generated_in_run_workspace', 'copied_from_workspace', 'restored_from_previous_run']
@@ -25,7 +27,7 @@ class RunParameters(BaseModel):
     flight_date: date | None = None
     orthophoto_preset: str | None = None
     orthophoto_resolution_cm: int | None = Field(default=None, ge=1, le=20)
-    source_orthophoto_run_id: str | None = None
+    source_orthophoto_run_id: str | None = Field(default=None, pattern=SAFE_ID_PATTERN)
     camera_targets: list[str] = Field(default_factory=list)
     import_camera_targets: list[str] = Field(default_factory=list)
     pdm_crop: str | None = None
@@ -54,7 +56,7 @@ class RunCreateRequest(BaseModel):
     field_name: str | None = Field(default=None, max_length=120)
     selected_steps: StepSelection = Field(default_factory=StepSelection)
     parameters: RunParameters = Field(default_factory=RunParameters)
-    upload_run_id: str = Field(min_length=1)
+    upload_run_id: str = Field(pattern=SAFE_ID_PATTERN)
 
     @field_validator('run_name', 'dataset_name', 'field_name')
     @classmethod

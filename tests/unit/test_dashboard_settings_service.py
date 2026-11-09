@@ -4,11 +4,11 @@ import os
 from pathlib import Path
 
 import agrivision.services.settings_service as settings_service_module
-from agrivision.app.schemas.settings import (
+from agrivision.config import settings as config_settings
+from agrivision.schemas.settings import (
     CredentialsUpdateRequest,
     SettingsUpdateRequest,
 )
-from agrivision.config import settings as config_settings
 from agrivision.services.settings_service import SettingsService
 
 
@@ -125,7 +125,7 @@ def test_update_credentials_resyncs_and_restarts_affected_services(tmp_path: Pat
     restarted: list[str] = []
 
     monkeypatch.setattr(
-        settings_service_module.weather_client,
+        settings_service_module.weather_runtime,
         'prepare_weather_repo_and_env',
         lambda: None,
     )
@@ -153,3 +153,45 @@ def test_update_credentials_resyncs_and_restarts_affected_services(tmp_path: Pat
     service.update_credentials(CredentialsUpdateRequest(openweather_api_key='abc123'))
 
     assert restarted == ['weather']
+
+
+def test_credential_sync_skips_missing_services_and_restarts_in_background(tmp_path: Path, monkeypatch) -> None:
+    from types import SimpleNamespace
+
+    installed = tmp_path / 'OpenAgri-WeatherService'
+    installed.mkdir()
+    monkeypatch.delenv('APP_CONTAINER_PROJECT_ROOT', raising=False)
+    monkeypatch.setattr(
+        settings_service_module.service_control,
+        'service_descriptors',
+        lambda: {
+            'weather': SimpleNamespace(repo_dir=installed),
+            'irrigation': SimpleNamespace(repo_dir=tmp_path / 'missing-irrigation'),
+            'pdm': SimpleNamespace(repo_dir=tmp_path / 'missing-pdm'),
+        },
+    )
+    prepared: list[str] = []
+    monkeypatch.setattr(settings_service_module.weather_runtime, 'prepare_weather_repo_and_env', lambda: prepared.append('weather'))
+    monkeypatch.setattr(settings_service_module.irrigation_runtime, 'prepare_repo_and_env', lambda: prepared.append('irrigation'))
+    monkeypatch.setattr(settings_service_module.pdm_runtime, 'prepare_repo_and_env', lambda: prepared.append('pdm'))
+    monkeypatch.setattr(settings_service_module.service_control, 'service_controls', lambda: {'available': True})
+    started: list[tuple[object, tuple]] = []
+
+    class FakeThread:
+        def __init__(self, *, target, args, **kwargs):
+            started.append((target, args))
+
+        def start(self) -> None:
+            pass
+
+    monkeypatch.setattr(settings_service_module.threading, 'Thread', FakeThread)
+    service = SettingsService(
+        config_path=tmp_path / 'config.yaml',
+        env_path=tmp_path / '.env',
+        runtime_settings_path=tmp_path / 'runtime' / 'settings.json',
+    )
+
+    service.update_credentials(CredentialsUpdateRequest(shared_password='new-pass'))
+
+    assert prepared == ['weather']
+    assert started == [(SettingsService._restart_services, (['weather', 'irrigation', 'pdm'],))]

@@ -4,9 +4,9 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
 
-from agrivision.app.schemas.runs import RunRecord
 from agrivision.config import load_config
 from agrivision.pipeline.io.paths import resolve_pipeline_paths
+from agrivision.schemas.runs import RunRecord
 from agrivision.services.storage_service import StorageService
 
 

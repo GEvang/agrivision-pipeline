@@ -3,7 +3,8 @@ from __future__ import annotations
 from contextlib import asynccontextmanager
 from pathlib import Path
 
-from fastapi import FastAPI
+from fastapi import FastAPI, Request
+from fastapi.responses import JSONResponse
 from fastapi.staticfiles import StaticFiles
 
 from agrivision.app import dependencies as deps
@@ -18,6 +19,8 @@ from agrivision.app.routes import (
     settings,
     uploads,
 )
+from agrivision.schemas.ids import InvalidStorageIdError
+from agrivision.services.run_service import RunNotFoundError
 
 
 @asynccontextmanager
@@ -29,6 +32,14 @@ async def lifespan(_: FastAPI):
 
 app = FastAPI(title='AgriVision Dashboard', version='1.0.0', lifespan=lifespan)
 app.mount('/static', StaticFiles(directory=str(Path(__file__).parent / 'web' / 'static')), name='static')
+
+@app.exception_handler(RunNotFoundError)
+@app.exception_handler(InvalidStorageIdError)
+async def _not_found(_: Request, exc: Exception) -> JSONResponse:
+    # Unknown and malformed run/upload IDs both mean "nothing here"; never echo
+    # a path back to the caller.
+    return JSONResponse(status_code=404, content={'detail': 'Not found.'})
+
 
 deps.templates.env.filters['system_datetime'] = format_system_datetime
 deps.templates.env.filters['duration'] = format_duration

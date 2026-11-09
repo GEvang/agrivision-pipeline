@@ -255,6 +255,14 @@ def compose_stop(compose_file: Path, repo_dir: Path) -> None:
     _run_compose_command(compose_file, repo_dir, ["stop"])
 
 
+def compose_down(compose_file: Path, repo_dir: Path, *, remove_images: bool = False) -> None:
+    """Remove the service's containers and volumes (its databases)."""
+    args = ["down", "--volumes"]
+    if remove_images:
+        args += ["--rmi", "all"]
+    _run_compose_command(compose_file, repo_dir, args)
+
+
 def compose_logs(compose_file: Path, repo_dir: Path, *, tail: int = 100) -> str:
     docker = shutil.which("docker")
     docker_compose = shutil.which("docker-compose")

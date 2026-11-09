@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from datetime import date, timedelta
 from pathlib import Path
 from typing import Any
 
@@ -27,11 +28,23 @@ def default_weather_summary(location_name: str) -> dict[str, Any]:
 
 
 def run_weather_enrichment(
-    output_root: Path, location_name: str, *, location: dict[str, Any] | None = None
+    output_root: Path,
+    location_name: str,
+    *,
+    location: dict[str, Any] | None = None,
+    flight_date: date | None = None,
 ) -> dict[str, Any]:
     weather_summary = default_weather_summary(location_name)
+    history_window: dict[str, str] = {}
+    if flight_date is not None:
+        # Fetch history around the flight so disease risk can use the weather
+        # of the flight day instead of today's conditions.
+        history_window = {
+            'history_start_date': (flight_date - timedelta(days=3)).isoformat(),
+            'history_end_date': flight_date.isoformat(),
+        }
     try:
-        weather_summary = collect_weather_snapshot(uav_model='dji_phantom4', location=location)
+        weather_summary = collect_weather_snapshot(uav_model='dji_phantom4', location=location, **history_window)
         weather_summary = persist_weather_artifacts(weather_summary, output_root)
         return weather_summary
     except Exception as exc:  # noqa: BLE001

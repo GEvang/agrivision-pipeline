@@ -1,30 +1,14 @@
 from __future__ import annotations
 
 import re
-from pathlib import Path
 
 from fastapi import APIRouter, HTTPException
 from fastapi.responses import FileResponse, HTMLResponse
 
 from agrivision.app import dependencies as deps
-from agrivision.config.settings import get_project_root
 
 router = APIRouter()
 NO_CACHE_HEADERS = {"Cache-Control": "no-store, max-age=0"}
-
-
-def _resolve_artifact_path(value: str) -> Path:
-    path = Path(value)
-    if path.exists():
-        return path
-    normalized = value.replace('\\', '/')
-    marker = '/agrivision-pipeline/'
-    if marker in normalized:
-        relative = normalized.split(marker, 1)[1]
-        candidate = get_project_root() / relative
-        if candidate.exists():
-            return candidate
-    return path
 
 
 def _strip_embedded_report_chrome(html: str) -> str:
@@ -61,7 +45,7 @@ def artifact(run_id: str, artifact_name: str, embedded: bool = False):
     path = options.get(artifact_name)
     if not path:
         raise HTTPException(status_code=404, detail='Artifact not found.')
-    resolved = _resolve_artifact_path(path)
+    resolved = deps.storage_service.resolve_recorded_path(path)
     if not resolved.exists():
         raise HTTPException(status_code=404, detail='Artifact file missing.')
     if artifact_name == 'report':

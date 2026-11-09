@@ -9,13 +9,16 @@ AgriVision separates the dashboard, configuration, integrations, processing pipe
 
 ## Main Components
 
-- `agrivision/app/`: dashboard, API routes, templates, schemas, and CLI entry
-- `agrivision/config/`: configuration loading and typed settings
-- `agrivision/domain/`: internal contracts and models
-- `agrivision/integrations/`: adapters for OpenAgri and other external payloads
-- `agrivision/pipeline/`: orchestration, stages, artifact I/O, grid/risk/report generation
-- `agrivision/runtime/`: environment and Docker/runtime helpers
-- `agrivision/services/`: run management, exports, previews, settings persistence, and service control
+The package is split into layers. Each layer imports only from the layers
+above it in this list; `tests/unit/test_layering.py` enforces this.
+
+1. `agrivision/config/`: configuration loading and typed settings (`DEFAULT_CONFIG` holds every default)
+2. `agrivision/schemas/`: Pydantic models shared by services and the app, and the safe-ID rule for run/upload folders
+3. `agrivision/runtime/`: installing and running the OpenAgri services next to AgriVision (pinned clones, `.env` sync, Docker Compose, health checks, host helper client)
+4. `agrivision/integrations/`: HTTP clients and flows for the OpenAgri Weather, Irrigation and Pest & Disease services
+5. `agrivision/pipeline/`: orchestration, stages, artifact I/O, grid/risk/report generation
+6. `agrivision/services/`: run management, exports, previews, settings persistence and service control
+7. `agrivision/app/`: dashboard, API routes, templates and CLI entry
 
 ## Data Flow
 

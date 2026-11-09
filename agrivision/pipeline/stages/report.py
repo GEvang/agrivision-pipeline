@@ -7,7 +7,7 @@ from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any, Dict, Optional, cast
 
-from agrivision.config.settings import get_project_root
+from agrivision.config.paths import resolve_project_path
 from agrivision.pipeline.io.geolocation import resolve_orthophoto_location
 from agrivision.pipeline.report.assets import (
     ensure_report_preview,
@@ -98,10 +98,11 @@ def _quality_summary(vegetation_index_meta: dict[str, Any], grid_meta: dict[str,
     medium_max = _read_nested(grid_meta, "thresholds_used", "medium_max")
     classification_mode = grid_meta.get("classification_mode") or "Classification not set"
     flags = vegetation_index_meta.get("quality_flags", [])
+    relative_classes = classification_mode in PERCENTILE_CLASSIFICATION_MODES
 
     quality_state = "OK"
     valid_value = _as_float(valid_percent)
-    if flags:
+    if flags or relative_classes:
         quality_state = "Review"
     if valid_value is not None and valid_value < 20:
         quality_state = "Error"
@@ -114,9 +115,27 @@ def _quality_summary(vegetation_index_meta: dict[str, Any], grid_meta: dict[str,
         "valid_pixels": _format_percent(valid_percent),
         "mean_median": f"{_format_float(mean)} / {_format_float(median)}",
         "thresholds": f"{_format_float(poor_max)} / {_format_float(medium_max)}",
-        "classification": str(classification_mode),
+        "classification": (
+            PERCENTILE_CLASSIFICATION_MODES[classification_mode]
+            if relative_classes
+            else str(classification_mode)
+        ),
         "dataset": str(source_dataset),
     }
+
+
+# Percentile classes rank cells against the rest of this field, so a field that
+# is poor everywhere still shows a third of its cells as "good".
+PERCENTILE_CLASSIFICATION_MODES = {
+    "percentile_fallback": (
+        "Relative to this field: every cell fell into one fixed class, so cells were ranked "
+        "by percentile instead. Good/medium/poor compare cells within this flight only."
+    ),
+    "percentile_calibrated": (
+        "Relative to this field (percentile thresholds). Good/medium/poor compare cells "
+        "within this flight only."
+    ),
+}
 
 
 def _load_disease_risk_summary(
@@ -150,12 +169,7 @@ def _selected_risk_layer(
 
 
 def _report_artifact_path(value: Any) -> Path | None:
-    if not value:
-        return None
-    path = Path(str(value))
-    if path.is_absolute():
-        return path
-    return get_project_root() / path
+    return resolve_project_path(str(value)) if value else None
 
 
 def _risk_target_html(summary: dict[str, Any], selected: dict[str, Any] | None) -> str:
@@ -270,8 +284,12 @@ def _field_assessment_html(assessment: dict[str, Any] | None) -> str:
         '<div class="field-status-metrics"><strong style="color:{color};">{score}</strong><span>field risk score</span>'
         '<span>{affected}</span><span>{timeframe}</span></div>'
         '<p class="field-status-note">Confidence: {confidence}. Evidence: {evidence}. Missing context: {missing}. Method: {method}</p>'
+        '{limitations}'
         '</section>'
     ).format(
+        limitations="".join(
+            f'<p class="field-status-note">{safe_html(note)}</p>' for note in assessment.get("limitations", []) or []
+        ),
         color=color,
         status=safe_html(status),
         target=safe_html(assessment.get("target") or "Selected crop risk"),

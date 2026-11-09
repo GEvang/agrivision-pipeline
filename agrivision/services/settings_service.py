@@ -1,13 +1,12 @@
 from __future__ import annotations
 
 import json
+import logging
+import os
+import threading
 from pathlib import Path
 from typing import Any
 
-from agrivision.app.schemas.settings import (
-    CredentialsUpdateRequest,
-    SettingsUpdateRequest,
-)
 from agrivision.config.runtime import get_runtime_config
 from agrivision.config.settings import (
     DEFAULT_CONFIG,
@@ -20,12 +19,17 @@ from agrivision.config.settings import (
     load_raw_config,
     load_runtime_settings,
 )
+from agrivision.runtime import irrigation as irrigation_runtime
+from agrivision.runtime import pdm as pdm_runtime
+from agrivision.runtime import weather as weather_runtime
+from agrivision.runtime.service_runtime import mask_env_value, update_env_file
+from agrivision.schemas.settings import (
+    CredentialsUpdateRequest,
+    SettingsUpdateRequest,
+)
 from agrivision.services import service_control
-from agrivision.services.irrigation import runtime as irrigation_runtime
-from agrivision.services.pdm import runtime as pdm_runtime
-from agrivision.services.runtime import mask_env_value, update_env_file
-from agrivision.services.weather import client as weather_client
 
+logger = logging.getLogger(__name__)
 
 class SettingsService:
     SECRET_ENV_MAP = {
@@ -224,40 +228,58 @@ class SettingsService:
         if values:
             update_env_file(self.env_path, values)
             for env_name, value in values.items():
-                __import__('os').environ[env_name] = value
+                os.environ[env_name] = value
             self._sync_changed_service_credentials(values)
         return self.get_settings_view()
 
+    SERVICE_CREDENTIAL_ENV = {
+        'weather': ('WEATHER_USERNAME', 'WEATHER_PASSWORD', 'OPENWEATHER_API_KEY'),
+        'irrigation': ('IRRIGATION_EMAIL', 'IRRIGATION_PASSWORD', 'IRRIGATION_TOKEN'),
+        'pdm': ('PDM_USERNAME', 'PDM_PASSWORD', 'PDM_TOKEN'),
+    }
+
     def _sync_changed_service_credentials(self, values: dict[str, str]) -> None:
-        service_keys: list[str] = []
-        if any(
-            env_name in values
-            for env_name in ('WEATHER_USERNAME', 'WEATHER_PASSWORD', 'OPENWEATHER_API_KEY')
-        ):
-            weather_client.prepare_weather_repo_and_env()
-            service_keys.append('weather')
-        if any(
-            env_name in values
-            for env_name in ('IRRIGATION_EMAIL', 'IRRIGATION_PASSWORD', 'IRRIGATION_TOKEN')
-        ):
-            irrigation_runtime.prepare_repo_and_env()
-            service_keys.append('irrigation')
-        if any(
-            env_name in values
-            for env_name in ('PDM_USERNAME', 'PDM_PASSWORD', 'PDM_TOKEN')
-        ):
-            pdm_runtime.prepare_repo_and_env()
-            service_keys.append('pdm')
+        service_keys = [
+            key
+            for key, env_names in self.SERVICE_CREDENTIAL_ENV.items()
+            if any(env_name in values for env_name in env_names)
+        ]
+        if not service_keys:
+            return
+
+        # Only refresh services that are already installed; saving a password must
+        # never clone repositories. In the dashboard container the service folders
+        # live on the host, so the host helper syncs them during the restart.
+        if not os.getenv('APP_CONTAINER_PROJECT_ROOT', '').strip():
+            prepare = {
+                'weather': weather_runtime.prepare_weather_repo_and_env,
+                'irrigation': irrigation_runtime.prepare_repo_and_env,
+                'pdm': pdm_runtime.prepare_repo_and_env,
+            }
+            descriptors = service_control.service_descriptors()
+            for service_key in service_keys:
+                if descriptors[service_key].repo_dir.exists():
+                    prepare[service_key]()
 
         controls = service_control.service_controls()
         if not controls.get('available'):
             return
 
+        # Restarts can take minutes, so they run after the request has returned.
+        threading.Thread(
+            target=self._restart_services,
+            args=(service_keys,),
+            daemon=True,
+            name='agrivision-credential-restart',
+        ).start()
+
+    @staticmethod
+    def _restart_services(service_keys: list[str]) -> None:
         for service_key in service_keys:
             try:
-                service_control.restart_service(service_key, timeout_seconds=240)
+                service_control.restart_service(service_key)
             except Exception:
                 # Persisting credentials should still succeed even if the companion service
                 # cannot be restarted immediately. The next explicit start/restart will
                 # pick up the synchronized .env file.
-                continue
+                logger.warning('Could not restart %s after a credentials change.', service_key, exc_info=True)

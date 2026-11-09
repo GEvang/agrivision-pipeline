@@ -55,3 +55,21 @@ def test_geotiff_location_falls_back_to_coordinates_when_geocoder_is_unavailable
     assert location is not None
     assert location["label"] == "35.80000, 25.20000"
     assert location["geocoded"] is False
+
+
+def test_reverse_geocode_switch_sends_nothing(monkeypatch, tmp_path) -> None:
+    from agrivision.pipeline.io import geolocation
+
+    ortho = tmp_path / "ortho.tif"
+    ortho.write_text("x", encoding="utf-8")
+    monkeypatch.setattr(geolocation, "_centroid_wgs84", lambda path: (35.26, 25.6))
+
+    def fail(*args, **kwargs):
+        raise AssertionError("Nominatim must not be called")
+
+    monkeypatch.setattr(geolocation, "_reverse_geocode", fail)
+
+    result = geolocation.resolve_orthophoto_location([ortho], reverse_geocode=False)
+
+    assert result["label"] == "35.26000, 25.60000"
+    assert result["geocoded"] is False

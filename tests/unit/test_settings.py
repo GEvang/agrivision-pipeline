@@ -2,7 +2,7 @@ import json
 from pathlib import Path
 
 from agrivision.config import runtime, settings
-from agrivision.services.weather import client as weather_client
+from agrivision.integrations.weather import client as weather_client
 
 
 def write_test_config(path: Path) -> None:

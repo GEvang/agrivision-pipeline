@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from pydantic import BaseModel
 
-from agrivision.app.schemas.runs import ReportItem, RunRecord
+from agrivision.schemas.runs import ReportItem, RunRecord
 
 
 class DashboardView(BaseModel):

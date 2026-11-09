@@ -9,7 +9,7 @@ from PIL import Image
 from agrivision.app import api
 from agrivision.app import dependencies as deps
 from agrivision.app.routes import uploads as upload_routes
-from agrivision.app.schemas.runs import RunCreateRequest
+from agrivision.schemas.runs import RunCreateRequest
 from agrivision.services.report_service import ReportService
 from agrivision.services.run_service import RunService, RunStartBlocked
 from agrivision.services.settings_service import SettingsService
@@ -409,8 +409,8 @@ def test_pending_orthophoto_run_times_out_when_upload_never_arrives(tmp_path: Pa
     assert record.errors == ['Upload did not start within 1 seconds.']
 
 
-def test_new_run_template_waits_for_upload_completion_before_redirect() -> None:
-    template = Path('agrivision/app/web/templates/new_run.html').read_text(encoding='utf-8')
+def test_orthophoto_template_waits_for_upload_completion_before_redirect() -> None:
+    template = Path('agrivision/app/web/templates/build_orthophotos.html').read_text(encoding='utf-8')
 
     assert "window.open('', '_blank')" not in template
     assert "window.location.href = uploadPayload?.redirect || initPayload.redirect;" in template

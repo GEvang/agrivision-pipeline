@@ -39,7 +39,7 @@ import shutil
 import subprocess
 import sys
 from pathlib import Path
-from typing import Any
+from typing import Any, cast
 
 from agrivision.pipeline.io.paths import resolve_pipeline_paths
 
@@ -108,9 +108,14 @@ def _docker_user_args() -> list[str]:
     return ["-u", f"{os.getuid()}:{os.getgid()}"]
 
 
-def _odm_container_name(label: str) -> str:
+ODM_CAMERA_LABELS = ("RGB", "MAPIR", "THERMAL")
+
+
+def odm_container_name(label: str, run_id: str | None = None) -> str:
+    """Name ODM containers per run, so stopping one run never stops another's."""
     normalized = "".join(ch.lower() if ch.isalnum() else "-" for ch in label).strip("-")
-    return f"agrivision-odm-{normalized or 'run'}"
+    run_part = "".join(ch if ch.isalnum() or ch in "_-" else "-" for ch in run_id or "").strip("-")
+    return "-".join(part for part in ("agrivision-odm", run_part, normalized or "run") if part)
 
 
 def _odm_dataset_mount_args(project_root: Path) -> tuple[list[str], str]:
@@ -223,7 +228,11 @@ def _prepare_odm_project(src_images_dir: Path, project_root: Path, label: str) -
 
 
 def _run_odm_docker(
-    project_root: Path, label: str, odm_docker_image: str, ortho_resolution_cm: int
+    project_root: Path,
+    label: str,
+    odm_docker_image: str,
+    ortho_resolution_cm: int,
+    run_id: str | None = None,
 ) -> None:
     """
     Execute the ODM Docker container for the project located under project_root.
@@ -234,7 +243,7 @@ def _run_odm_docker(
         *_docker_run_prefix(),
         *_docker_user_args(),
         "--name",
-        _odm_container_name(label),
+        odm_container_name(label, run_id),
         *mount_args,
         odm_docker_image,
         "--project-path",
@@ -267,124 +276,62 @@ def _run_odm_docker(
 # ---------------------------------------------------------------------
 # Public functions
 # ---------------------------------------------------------------------
+def _run_odm_for_camera(
+    label: str,
+    images_key: str,
+    project_key: str,
+    ortho_resolution_cm: int | None,
+    workspace_root: Path | None,
+    config: dict[str, Any] | None,
+    run_id: str | None,
+) -> None:
+    print(f"\n[ODM-{label}] Starting ODM photogrammetry for {label} dataset...")
+    settings = _get_odm_settings(workspace_root=workspace_root, config=config)
+    project_root = cast(Path, settings[project_key])
+    input_folder = _choose_input_folder(label=label, full_dir=cast(Path, settings[images_key]))
+    _prepare_odm_project(src_images_dir=input_folder, project_root=project_root, label=label)
+    _run_odm_docker(
+        project_root=project_root,
+        label=label,
+        odm_docker_image=str(settings["odm_docker_image"]),
+        ortho_resolution_cm=int(ortho_resolution_cm or cast(int, settings["ortho_resolution_cm"])),
+        run_id=run_id,
+    )
+
+
 def run_odm_rgb(
     ortho_resolution_cm: int | None = None,
     workspace_root: Path | None = None,
     config: dict[str, Any] | None = None,
+    run_id: str | None = None,
 ) -> None:
-    """
-    Run ODM for the RGB dataset.
-
-    Uses full-resolution RGB images.
-
-    Writes project into:
-      - data/odm_project_rgb/project
-    """
-    print("\n[ODM-RGB] Starting ODM photogrammetry for RGB dataset...")
-    settings = _get_odm_settings(workspace_root=workspace_root, config=config)
-
-    images_full_rgb = settings["images_full_rgb"]
-    odm_project_root_rgb = settings["odm_project_root_rgb"]
-    odm_docker_image = settings["odm_docker_image"]
-    resolved_resolution_cm = ortho_resolution_cm or settings["ortho_resolution_cm"]
-
-    input_folder = _choose_input_folder(
-        label="RGB",
-        full_dir=images_full_rgb,
-    )
-
-    _prepare_odm_project(
-        src_images_dir=input_folder,
-        project_root=odm_project_root_rgb,
-        label="RGB",
-    )
-
-    _run_odm_docker(
-        project_root=odm_project_root_rgb,
-        label="RGB",
-        odm_docker_image=odm_docker_image,
-        ortho_resolution_cm=resolved_resolution_cm,
-    )
+    """Run ODM on the full-resolution RGB images into data/odm_project_rgb/project."""
+    _run_odm_for_camera("RGB", "images_full_rgb", "odm_project_root_rgb", ortho_resolution_cm, workspace_root, config, run_id)
 
 
 def run_odm_mapir(
     ortho_resolution_cm: int | None = None,
     workspace_root: Path | None = None,
     config: dict[str, Any] | None = None,
+    run_id: str | None = None,
 ) -> None:
-    """
-    Run ODM for the MAPIR dataset.
-
-    Uses full-resolution MAPIR images.
-
-    Writes project into:
-      - data/odm_project_mapir/project
-
-    """
-    print("\n[ODM-MAPIR] Starting ODM photogrammetry for MAPIR dataset...")
-    settings = _get_odm_settings(workspace_root=workspace_root, config=config)
-
-    images_full_mapir = settings["images_full_mapir"]
-    odm_project_root_mapir = settings["odm_project_root_mapir"]
-    odm_docker_image = settings["odm_docker_image"]
-    resolved_resolution_cm = ortho_resolution_cm or settings["ortho_resolution_cm"]
-
-    input_folder = _choose_input_folder(
-        label="MAPIR",
-        full_dir=images_full_mapir,
-    )
-
-    _prepare_odm_project(
-        src_images_dir=input_folder,
-        project_root=odm_project_root_mapir,
-        label="MAPIR",
-    )
-
-    _run_odm_docker(
-        project_root=odm_project_root_mapir,
-        label="MAPIR",
-        odm_docker_image=odm_docker_image,
-        ortho_resolution_cm=resolved_resolution_cm,
-    )
+    """Run ODM on the full-resolution MAPIR images into data/odm_project_mapir/project."""
+    _run_odm_for_camera("MAPIR", "images_full_mapir", "odm_project_root_mapir", ortho_resolution_cm, workspace_root, config, run_id)
 
 
 def run_odm_thermal(
     ortho_resolution_cm: int | None = None,
     workspace_root: Path | None = None,
     config: dict[str, Any] | None = None,
+    run_id: str | None = None,
 ) -> None:
-    """
-    Run ODM for the thermal dataset.
+    """Run ODM on the thermal images into data/odm_project_thermal/project.
 
     Thermal imagery often has less visual texture than RGB imagery. This
     enables thermal orthophoto creation, but externally generated thermal
     orthos can still be the more reliable route for hard datasets.
     """
-    print("\n[ODM-THERMAL] Starting ODM photogrammetry for thermal dataset...")
-    settings = _get_odm_settings(workspace_root=workspace_root, config=config)
-
-    images_full_thermal = settings["images_full_thermal"]
-    odm_project_root_thermal = settings["odm_project_root_thermal"]
-    odm_docker_image = settings["odm_docker_image"]
-    resolved_resolution_cm = ortho_resolution_cm or settings["ortho_resolution_cm"]
-
-    input_folder = _choose_input_folder(
-        label="THERMAL",
-        full_dir=images_full_thermal,
-    )
-
-    _prepare_odm_project(
-        src_images_dir=input_folder,
-        project_root=odm_project_root_thermal,
-        label="THERMAL",
-    )
-
-    _run_odm_docker(
-        project_root=odm_project_root_thermal,
-        label="THERMAL",
-        odm_docker_image=odm_docker_image,
-        ortho_resolution_cm=resolved_resolution_cm,
-    )
+    _run_odm_for_camera("THERMAL", "images_full_thermal", "odm_project_root_thermal", ortho_resolution_cm, workspace_root, config, run_id)
 
 
 def run_odm() -> None:

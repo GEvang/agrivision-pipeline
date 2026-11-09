@@ -29,7 +29,7 @@ def test_orchestrator_skip_path_runs_with_mocked_stages(monkeypatch, tmp_path):
     })
     monkeypatch.setattr(orchestrator, 'run_grid_report', lambda **kwargs: None)
     monkeypatch.setattr(orchestrator, 'run_report', lambda **kwargs: None)
-    monkeypatch.setattr(orchestrator, 'run_weather_enrichment', lambda output_root, location_name: {'enabled': True, 'notes': []})
+    monkeypatch.setattr(orchestrator, 'run_weather_enrichment', lambda output_root, location_name, **kwargs: {'enabled': True, 'notes': []})
     monkeypatch.setattr(orchestrator, 'run_irrigation_enrichment', lambda base_url, **kwargs: {'enabled': True, 'authenticated': True, 'notes': []})
     monkeypatch.setattr(orchestrator, 'run_pdm_enrichment', lambda **kwargs: {'status': 'success', 'notes': []})
 
@@ -57,7 +57,7 @@ def test_orchestrator_can_skip_irrigation(monkeypatch, tmp_path):
     })
     monkeypatch.setattr(orchestrator, 'run_grid_report', lambda **kwargs: None)
     monkeypatch.setattr(orchestrator, 'run_report', lambda **kwargs: None)
-    monkeypatch.setattr(orchestrator, 'run_weather_enrichment', lambda output_root, location_name: {'enabled': True, 'notes': []})
+    monkeypatch.setattr(orchestrator, 'run_weather_enrichment', lambda output_root, location_name, **kwargs: {'enabled': True, 'notes': []})
 
     def fail_irrigation(base_url, **kwargs):
         raise AssertionError('irrigation should be skipped')
@@ -90,7 +90,7 @@ def test_orchestrator_passes_run_scoped_integration_artifact_dirs(monkeypatch, t
     })
     monkeypatch.setattr(orchestrator, 'run_grid_report', lambda **kwargs: None)
     monkeypatch.setattr(orchestrator, 'run_report', lambda **kwargs: None)
-    monkeypatch.setattr(orchestrator, 'run_weather_enrichment', lambda output_root, location_name: {'enabled': True, 'notes': []})
+    monkeypatch.setattr(orchestrator, 'run_weather_enrichment', lambda output_root, location_name, **kwargs: {'enabled': True, 'notes': []})
 
     def fake_irrigation(base_url, **kwargs):
         captured['irrigation_output_dir'] = kwargs.get('output_dir')

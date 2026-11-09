@@ -5,14 +5,15 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
 
+from agrivision.config.paths import to_project_path
 from agrivision.config.settings import get_project_root, get_settings, load_config
+from agrivision.integrations.pdm.bootstrap import bootstrap_pdm_context
+from agrivision.integrations.pdm.catalog import get_models_for_crop, get_pdm_model
 from agrivision.integrations.pdm.client import (
     PdmClient,
     get_pdm_service_config,
     write_pdm_artifact,
 )
-from agrivision.services.pdm.bootstrap import bootstrap_pdm_context
-from agrivision.services.pdm.catalog import get_models_for_crop, get_pdm_model
 
 RISK_ORDER = {'low': 1, 'moderate': 2, 'medium': 2, 'high': 3, 'critical': 4}
 _RISK_LABELS = {'low', 'moderate', 'medium', 'high', 'critical'}
@@ -45,7 +46,7 @@ def _write_json(name: str, payload: dict[str, Any], *, artifact_dir: Path | None
     path.mkdir(parents=True, exist_ok=True)
     path = path / name
     path.write_text(json.dumps(payload, indent=2), encoding='utf-8')
-    return str(path)
+    return to_project_path(path)
 
 
 def _extract_risk_entries(payload: dict[str, Any]) -> list[dict[str, Any]]:

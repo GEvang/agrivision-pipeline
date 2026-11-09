@@ -10,7 +10,7 @@ from agrivision.integrations.pdm.adapter import (
     _summarize_risks,
     collect_pdm_snapshot,
 )
-from agrivision.services.pdm.catalog import get_models_for_crop
+from agrivision.integrations.pdm.catalog import get_models_for_crop
 
 
 def test_extracts_fuzzy_jsonld_risk_score_and_class() -> None:

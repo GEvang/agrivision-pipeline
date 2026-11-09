@@ -1,16 +1,6 @@
 from __future__ import annotations
 
-from dataclasses import dataclass
 from pathlib import Path
-
-
-@dataclass
-class PipelineFlags:
-    skip_odm: bool = False
-    skip_odm_rgb: bool = False
-    skip_odm_mapir: bool = False
-    skip_vegetation_index: bool = False
-
 
 VALID_EXTS = ('.jpg', '.jpeg', '.png', '.tif', '.tiff')
 

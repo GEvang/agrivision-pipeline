@@ -3,7 +3,7 @@ from __future__ import annotations
 from fastapi import APIRouter, HTTPException
 from fastapi.responses import RedirectResponse
 
-from agrivision.services.runtime import ServiceBootstrapError
+from agrivision.runtime.service_runtime import ServiceBootstrapError
 from agrivision.services.service_control import (
     ensure_missing_services,
     ensure_service,

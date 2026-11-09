@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-agrivision.services.irrigation.bootstrap
+agrivision.integrations.irrigation.bootstrap
 
 Bootstraps OpenAgri Irrigation Management Service auth + parcels + ETo (official workflow).
 
@@ -36,9 +36,11 @@ from datetime import date, timedelta
 from pathlib import Path
 from typing import Any, Dict, List, Optional, Tuple
 
+from agrivision.config.paths import to_project_path
 from agrivision.config.settings import get_project_root, get_settings
-from agrivision.services.irrigation.runtime import ensure_service_available
-from agrivision.services.weather.client import fetch_history_daily
+from agrivision.integrations.common.geometry import parse_openagri_point_wkt
+from agrivision.integrations.weather.client import fetch_history_daily
+from agrivision.runtime.irrigation import ensure_service_available
 
 
 def _get_bootstrap_paths(output_dir: Path | None = None) -> dict[str, Path]:
@@ -101,16 +103,7 @@ def _write_weather_debug_artifact(payload: Dict[str, Any], *, output_dir: Path |
 
 
 def _extract_lat_lon_from_wkt(wkt: str) -> tuple[float, float] | None:
-    text = (wkt or "").strip()
-    if not text.upper().startswith("POINT"):
-        return None
-    try:
-        coords = text[text.index("(") + 1 : text.rindex(")")].replace(",", " ").split()
-        lat = float(coords[0])
-        lon = float(coords[1])
-        return lat, lon
-    except (IndexError, ValueError):
-        return None
+    return parse_openagri_point_wkt(wkt)
 
 
 def _count_eto_values(payload: Any) -> Optional[int]:
@@ -525,7 +518,7 @@ def _run_weather_debug_probe(
     preview = json.dumps(history_payload, indent=2)[:900] if isinstance(history_payload, (dict, list)) else str(history_payload)[:900]
     return {
         "ok": ok,
-        "artifact_path": str(paths["weather_debug_path"]),
+        "artifact_path": to_project_path(paths["weather_debug_path"]),
         "preview": preview,
         "response": history_payload,
         "error": error,
@@ -749,7 +742,7 @@ def _fetch_eto_state(
     if verbose:
         print(
             f"[Irrigation] Fetching ETo via get-calculations for location_id={effective_location_id} "
-            f"({from_date_str} â†’ {to_date_str})..."
+            f"({from_date_str} → {to_date_str})..."
         )
 
     eto_status, eto_resp = fetch_eto_get_calculations(
@@ -866,7 +859,7 @@ def _fetch_eto_state(
                 "ok": 200 <= soil_status < 300,
                 "available": soil_resp not in ({}, None),
             },
-            "artifact_path": str(paths["eto_path"]),
+            "artifact_path": to_project_path(paths["eto_path"]),
             "preview": eto_preview,
             "weather_debug": weather_debug,
         },

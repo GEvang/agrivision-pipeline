@@ -58,6 +58,9 @@ vegetation_index:
     index_mode: "pseudo"
     red_band: 1
     nir_band: 2
+    # (G - R) / (G + R) has a much smaller range than NDVI; calibrate per camera.
+    poor_max: 0.0
+    medium_max: 0.08
 
 weather:
   base_url: "http://127.0.0.1:8010"

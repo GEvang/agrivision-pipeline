@@ -7,8 +7,8 @@ from urllib.error import URLError
 from urllib.request import Request as UrlRequest
 from urllib.request import urlopen
 
-from agrivision.app.schemas.runs import RunCreateRequest
 from agrivision.config import get_project_root, load_config
+from agrivision.schemas.runs import RunCreateRequest
 from agrivision.services.storage_service import StorageService
 
 

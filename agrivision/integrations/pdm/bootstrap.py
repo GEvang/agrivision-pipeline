@@ -4,7 +4,9 @@ import json
 from pathlib import Path
 from typing import Any
 
+from agrivision.config.paths import to_project_path
 from agrivision.config.settings import get_project_root, get_settings
+from agrivision.integrations.pdm.catalog import get_pdm_model
 from agrivision.integrations.pdm.client import (
     PdmClient,
     build_weather_dataset_csv,
@@ -15,7 +17,6 @@ from agrivision.integrations.pdm.client import (
     get_pdm_service_config,
     write_pdm_artifact,
 )
-from agrivision.services.pdm.catalog import get_pdm_model
 
 
 def _output_dir(artifact_dir: Path | None = None) -> Path:
@@ -31,7 +32,7 @@ def _output_dir(artifact_dir: Path | None = None) -> Path:
 def _write_json(name: str, payload: dict[str, Any], *, artifact_dir: Path | None = None) -> str:
     path = _output_dir(artifact_dir=artifact_dir) / name
     path.write_text(json.dumps(payload, indent=2), encoding='utf-8')
-    return str(path)
+    return to_project_path(path)
 
 
 def bootstrap_pdm_context(
@@ -60,7 +61,7 @@ def bootstrap_pdm_context(
         csv_payload = build_weather_dataset_csv(weather_summary, parcel_reference=parcel_wkt)
         csv_path = _output_dir(artifact_dir=artifact_dir) / 'weather_dataset.csv'
         csv_path.write_text(csv_payload, encoding='utf-8')
-        dataset_csv_artifact = str(csv_path)
+        dataset_csv_artifact = to_project_path(csv_path)
         try:
             records = build_weather_dataset_records(weather_summary, parcel_reference=parcel_wkt)
             dataset_upload = client.upload_weather_dataset(parcel_id=int(parcel_state['parcel_id']), records=records)

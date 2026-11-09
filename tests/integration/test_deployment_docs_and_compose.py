@@ -1,6 +1,5 @@
-from pathlib import Path
-
 import tomllib
+from pathlib import Path
 
 
 def test_root_compose_tags_image_with_project_version() -> None:

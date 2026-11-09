@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import csv
 import json
-from datetime import datetime
+from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any, Dict, List, Tuple
 
@@ -41,6 +41,7 @@ def get_grid_settings(
         "grid_cols": int(config["vegetation_index"]["grid_cols"]),
         "poor_max_cfg": float(config["vegetation_index"]["poor_max"]),
         "medium_max_cfg": float(config["vegetation_index"]["medium_max"]),
+        "rgb_profile": config["vegetation_index"].get("rgb_profile") or {},
         "threshold_mode": str(config["vegetation_index"].get("threshold_mode", "fixed")),
         "calibration_percentiles": config["vegetation_index"].get("calibration_percentiles", [33, 66]),
         "min_cell_valid_fraction": float(config["vegetation_index"].get("min_cell_valid_fraction", 0.2)),
@@ -199,11 +200,12 @@ def save_grid_metadata(
     threshold_mode: str = "fixed",
     calibration_percentiles: list[float] | None = None,
     min_cell_valid_fraction: float = 0.0,
+    analysis_scale: float = 1.0,
 ) -> None:
     out_path.parent.mkdir(parents=True, exist_ok=True)
 
     payload = {
-        "generated_at_utc": datetime.utcnow().replace(microsecond=0).isoformat() + "Z",
+        "generated_at_utc": datetime.now(UTC).replace(microsecond=0).isoformat().replace("+00:00", "Z"),
         "index_name": index_name,
         "index_mode": index_mode,
         "source_dataset": source_dataset,
@@ -212,6 +214,7 @@ def save_grid_metadata(
         "threshold_mode_configured": threshold_mode,
         "calibration_percentiles": calibration_percentiles or [],
         "min_cell_valid_fraction": float(min_cell_valid_fraction),
+        "analysis_scale": float(analysis_scale),
         "thresholds_used": {
             "poor_max": float(poor_max_used),
             "medium_max": float(medium_max_used),

@@ -5,7 +5,7 @@ from pathlib import Path
 
 from PIL import Image
 
-from agrivision.app.schemas.runs import RunCreateRequest
+from agrivision.schemas.runs import RunCreateRequest
 from agrivision.services.report_service import ReportService
 from agrivision.services.run_service import RunService
 from agrivision.services.storage_service import StorageService
@@ -35,7 +35,7 @@ def test_report_listing_and_preview_generation(tmp_path: Path) -> None:
     items = report_service.list_reports()
     assert len(items) == 1
     assert items[0].preview_path is not None
-    assert Path(items[0].preview_path).exists()
+    assert storage.resolve_recorded_path(items[0].preview_path).exists()
 
 
 def test_latest_report_skips_preview_generation_by_default(tmp_path: Path) -> None:

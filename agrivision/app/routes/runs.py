@@ -6,8 +6,8 @@ from fastapi import APIRouter, Form, HTTPException, Request
 from fastapi.responses import HTMLResponse, RedirectResponse
 
 from agrivision.app import dependencies as deps
-from agrivision.app.schemas.runs import RunCreateRequest
-from agrivision.services.pdm.catalog import PDM_MODEL_CATALOG
+from agrivision.integrations.pdm.catalog import PDM_MODEL_CATALOG
+from agrivision.schemas.runs import RunCreateRequest
 from agrivision.services.run_service import RunStartBlocked
 
 router = APIRouter()
@@ -103,15 +103,7 @@ def _report_card(run, report) -> dict[str, object]:
 
 
 def _artifact_path_exists(value: str) -> bool:
-    path = Path(value)
-    if path.exists():
-        return True
-    normalized = value.replace('\\', '/')
-    marker = '/agrivision-pipeline/'
-    if marker not in normalized:
-        return False
-    relative = normalized.split(marker, 1)[1]
-    return (deps.storage_service.layout.project_root / relative).exists()
+    return deps.storage_service.resolve_recorded_path(value).exists()
 
 
 def _new_run_page_context(
@@ -208,7 +200,7 @@ def _new_run_page_context(
                 {
                     'key': key,
                     'label': key.upper(),
-                    'icon': {'rgb': 'rgb (2).png', 'mapir': 'olive-branch.png', 'thermal': 'thermometer.png'}.get(key, 'report.png'),
+                    'icon': {'rgb': 'rgb.png', 'mapir': 'olive-branch.png', 'thermal': 'thermometer.png'}.get(key, 'report.png'),
                 }
                 for key in ('rgb', 'mapir', 'thermal')
                 if not library_item.get(f'{key}_ready')
@@ -217,7 +209,7 @@ def _new_run_page_context(
                 missing_cameras = [{
                     'key': str(camera_kind),
                     'label': str(camera_kind).upper(),
-                    'icon': {'rgb': 'rgb (2).png', 'mapir': 'olive-branch.png', 'thermal': 'thermometer.png'}.get(str(camera_kind), 'report.png'),
+                    'icon': {'rgb': 'rgb.png', 'mapir': 'olive-branch.png', 'thermal': 'thermometer.png'}.get(str(camera_kind), 'report.png'),
                 }]
             completion_context = {
                 'run_id': complete_run_id,
